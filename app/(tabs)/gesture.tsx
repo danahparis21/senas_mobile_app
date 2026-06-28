@@ -37,7 +37,7 @@ const modules = [
     progress: 60,
     xp: 100,
     locked: false,
-    route: '/gesture/alphabet1',
+    route: '/gesture/webview-camera',  // ✅ Updated!
     image: require('../../assets/images/img/alphabet.png'),
     lessons: 13,
   },
@@ -410,7 +410,7 @@ export default function GestureMain() {
             <View style={styles.quickAccessGrid}>
               <TouchableOpacity
                 style={styles.quickAccessItem}
-                onPress={() => router.push('/gesture/alphabet1')}
+                onPress={() => router.push('/gesture/webview-camera')}
               >
                 <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
                   <Ionicons name="text-outline" size={24} color="#3B82F6" />

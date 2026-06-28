@@ -1,13 +1,15 @@
 # 📱 Mobile App Development Setup
 
-## Prerequisites
+## 📋 Prerequisites
 
 Before starting, make sure the following tools are installed:
 
-* Node.js (v16 or later)
-* Expo CLI
-* iOS Simulator (macOS only) or Android Emulator
-* Physical iOS/Android device (optional)
+- Node.js & npm
+- Expo CLI
+- PHP 8.0+ with Composer
+- ngrok (for HTTPS tunneling)
+- iOS Simulator (macOS only) or Android Emulator (optional)
+- Physical iOS/Android device with Expo Go (recommended)
 
 ---
 
@@ -16,7 +18,7 @@ Before starting, make sure the following tools are installed:
 ## 1. Clone the Repository
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/danahparis21/senas_mobile_app.git
 cd senas_mobile_app
 ```
 
@@ -26,33 +28,52 @@ cd senas_mobile_app
 
 ```bash
 npm install
+```
 
-# or
+Install the required Expo packages:
 
-yarn install
+```bash
+npx expo install react-native-webview expo-web-browser expo-camera
 ```
 
 ---
 
-## 3. Start the Laravel Backend
+# 🖥️ Running the Laravel Backend
 
-Make sure the Laravel backend is running before launching the mobile application.
+Navigate to the Laravel backend:
 
 ```bash
 cd ../Senas_TeacherWebDashboard
+```
 
+Install PHP dependencies:
+
+```bash
+composer install
+```
+
+Create the environment file and generate the application key:
+
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Run the Laravel server:
+
+```bash
 php artisan serve --host=0.0.0.0 --port=8000
 ```
 
 ---
 
-## 4. Configure API URL
+# 🌐 Configure API URL
 
-### Option A: Local IP Address (Recommended for Physical Devices)
+## Option A: Local IP Address (Recommended for Physical Devices)
 
-Find your local IP address:
+Find your local IP address.
 
-#### macOS / Linux
+### macOS / Linux
 
 ```bash
 ipconfig getifaddr en0
@@ -62,7 +83,7 @@ ipconfig getifaddr en0
 ifconfig | grep "inet " | grep -v 127.0.0.1
 ```
 
-#### Windows
+### Windows
 
 ```bash
 ipconfig | findstr "IPv4"
@@ -82,7 +103,7 @@ Update `app.json`:
 
 ---
 
-### Option B: Localhost (Emulator/Simulator Only)
+## Option B: Localhost (Simulator/Emulator)
 
 ```json
 {
@@ -96,81 +117,108 @@ Update `app.json`:
 
 ---
 
-### Option C: ngrok (External Testing)
+## Option C: ngrok (Recommended for Gesture Recognition)
 
-Install and configure ngrok:
+Since the gesture recognition feature uses a WebView with camera access, HTTPS is required (especially on iOS).
+
+Start ngrok:
 
 ```bash
-# macOS
-brew install ngrok
-
-# Add your auth token
-ngrok config add-authtoken YOUR_AUTH_TOKEN
-
-# Expose Laravel server
-ngrok http 8000
+ngrok http 8000 --host-header=rewrite
 ```
 
-Copy the generated HTTPS URL and update `app.json`:
+Copy the generated HTTPS URL, for example:
 
-```json
-{
-  "expo": {
-    "extra": {
-      "apiUrl": "https://your-ngrok-url.ngrok-free.app/api"
-    }
-  }
-}
 ```
+https://abc123.ngrok-free.app
+```
+
+Update:
+
+- `GESTURE_URL` in `app/gesture/webview-camera.tsx`
+
+or your API URL if necessary.
 
 ---
 
-# 🚀 Running the Application
+# 🚀 Running the Mobile App
 
-## Start Expo Development Server
+Start the Expo development server:
 
 ```bash
-npx expo start
+npx expo start -c
 ```
+
+Then:
+
+- Open **Expo Go**
+- Scan the QR Code
+- Ensure your phone and computer are connected to the same Wi-Fi network
 
 ---
 
-## Run on iOS Simulator
+## iOS Simulator
 
 ```bash
-# Press "i" in the Expo terminal
-
-# or
-
 npx expo start --ios
 ```
 
+or press **i** inside the Expo terminal.
+
 ---
 
-## Run on Android Emulator
+## Android Emulator
 
 ```bash
-# Press "a" in the Expo terminal
-
-# or
-
 npx expo start --android
 ```
 
+or press **a** inside the Expo terminal.
+
 ---
 
-## Run on a Physical Device
+# 🔄 Recommended Development Workflow
 
-1. Install **Expo Go** from the App Store or Google Play Store.
-2. Open Expo Go.
-3. Scan the QR code shown in the terminal.
-4. Ensure your device and computer are connected to the same Wi-Fi network.
+1. Start the Laravel backend.
+2. Start ngrok.
+3. Copy the ngrok HTTPS URL.
+4. Update `GESTURE_URL` inside `app/gesture/webview-camera.tsx`.
+5. Start Expo.
+6. Test the application using Expo Go.
+
+---
+
+# 🔑 Important Notes
+
+## Camera Access
+
+- **iOS Safari:** HTTPS is required for camera access.
+- **Android:** HTTP works, but HTTPS is recommended.
+- **Development:** Use ngrok for HTTPS tunneling.
+
+---
+
+## Gesture Recognition
+
+- **A–Y:** TensorFlow Lite model
+- **J & Z:** Heuristic detection (ported from the Python implementation)
+- **Real-time detection:** MediaPipe.js running inside a WebView
+
+---
+
+## Why WebView Instead of Native Camera?
+
+The project uses **MediaPipe.js inside a WebView** because it:
+
+- Works in Expo Go (no custom development build required)
+- Provides consistent performance across iOS and Android
+- Makes updating ML models easier
 
 ---
 
 # 🛠️ Troubleshooting
 
-## 1. Network Request Timed Out
+## Network Request Timed Out
 
 Verify your IP address:
 
@@ -180,8 +228,8 @@ ipconfig getifaddr en0
 
 Ensure:
 
-* The API URL in `app.json` matches your local IP.
-* Laravel is running.
+- The API URL is correct.
+- Laravel is running.
 
 ```bash
 php artisan serve --host=0.0.0.0 --port=8000
@@ -189,7 +237,7 @@ php artisan serve --host=0.0.0.0 --port=8000
 
 ---
 
-## 2. JSON Parse Error
+## JSON Parse Error
 
 Clear Laravel caches:
 
@@ -207,9 +255,9 @@ php artisan serve --host=0.0.0.0 --port=8000
 
 ---
 
-## 3. SafeAreaView Has Been Deprecated
+## SafeAreaView Has Been Deprecated
 
-Install the recommended package:
+Install:
 
 ```bash
 npx expo install react-native-safe-area-context
@@ -221,7 +269,7 @@ Replace:
 import { SafeAreaView } from 'react-native';
 ```
 
-With:
+with:
 
 ```javascript
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -229,21 +277,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 ---
 
-## 4. Database Connection Error
+## Database Connection Error
 
-Check MySQL status:
+Check MySQL:
 
 ```bash
 brew services list | grep mysql
 ```
 
-Start MySQL if necessary:
+Start MySQL:
 
 ```bash
 brew services start mysql
 ```
 
-Verify your Laravel `.env` file:
+Example `.env`:
 
 ```env
 DB_CONNECTION=mysql
@@ -256,9 +304,7 @@ DB_PASSWORD=your_password
 
 ---
 
-## 5. Expo Cache Issues
-
-Clear the cache and restart Expo:
+## Expo Cache Issues
 
 ```bash
 npx expo start -c
@@ -266,21 +312,22 @@ npx expo start -c
 
 ---
 
-# 📚 Quick Commands Reference
+# 📚 Quick Commands
 
-| Command                                        | Description                |
-| ---------------------------------------------- | -------------------------- |
-| `ipconfig getifaddr en0`                       | Get local IP address       |
-| `php artisan serve --host=0.0.0.0 --port=8000` | Start Laravel backend      |
-| `npx expo start -c`                            | Start Expo and clear cache |
-| `php artisan optimize:clear`                   | Clear Laravel caches       |
-| `brew services list \| grep mysql`             | Check MySQL status         |
+| Command | Description |
+|----------|-------------|
+| `npm install` | Install project dependencies |
+| `composer install` | Install Laravel dependencies |
+| `php artisan serve --host=0.0.0.0 --port=8000` | Start Laravel backend |
+| `ngrok http 8000 --host-header=rewrite` | Create HTTPS tunnel |
+| `npx expo start -c` | Start Expo and clear cache |
+| `php artisan optimize:clear` | Clear Laravel caches |
 
 ---
 
 # 🔐 Environment Variables
 
-Create an optional `.env` file in the mobile application root:
+Optional mobile `.env`:
 
 ```env
 API_URL=http://192.168.1.35:8000/api
@@ -293,15 +340,17 @@ API_URL=http://192.168.1.35:8000/api
 ```text
 senas_mobile_app/
 ├── app/
-│   ├── (tabs)/
-│   │   ├── dashboard.tsx
-│   │   └── ...
-│   ├── lesson/
-│   │   └── [id].tsx
-│   └── services/
-│       └── api.js
+│   ├── (tabs)/                     # Main application tabs
+│   ├── gesture/
+│   │   ├── webview-camera.tsx      # WebView camera integration
+│   │   └── utils/
+│   │       └── heuristics.ts       # J/Z gesture heuristics
+│   └── _layout.tsx                 # Navigation setup
 ├── assets/
-├── app.json
+│   └── models/                     # TensorFlow Lite models
+├── services/
+│   └── api.js                      # Laravel API integration
+├── app.json                        # Expo configuration
 └── package.json
 ```
 
@@ -309,19 +358,10 @@ senas_mobile_app/
 
 # ⚡ Useful Shell Aliases
 
-Add the following to your `~/.zshrc` or `~/.bashrc`:
-
 ```bash
-# Get local IP
 alias myip="ipconfig getifaddr en0"
-
-# Start Laravel backend
 alias start-laravel="php artisan serve --host=0.0.0.0 --port=8000"
-
-# Start Expo and clear cache
 alias start-expo="npx expo start -c"
-
-# Clear Laravel caches
 alias clear-laravel="php artisan optimize:clear"
 ```
 
