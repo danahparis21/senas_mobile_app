@@ -1,0 +1,53 @@
+{
+  "version": "1.0.0",
+  "models": {
+    "static_model": {
+      "file": "static_model.tflite",
+      "description": "MobileNetV2 for alphabet recognition (A-Z)",
+      "input_shape": [
+        1,
+        128,
+        128,
+        3
+      ],
+      "output_shape": [
+        1,
+        26
+      ],
+      "framework": "TensorFlow Lite"
+    },
+    "lstm_model": {
+      "file": "lstm_model.tflite",
+      "description": "LSTM for dynamic gestures (J and Z)",
+      "input_shape": [
+        1,
+        15,
+        63
+      ],
+      "output_shape": [
+        1,
+        2
+      ],
+      "framework": "TensorFlow Lite"
+    },
+    "greetings_model": {
+      "file": "greetings_model.tflite",
+      "description": "LSTM for greeting recognition",
+      "input_shape": [
+        1,
+        45,
+        126
+      ],
+      "output_shape": [
+        1,
+        6
+      ],
+      "framework": "TensorFlow Lite"
+    }
+  },
+  "label_maps": {
+    "alphabet": "reverse_label_map.json",
+    "greetings": "greetings_label_map.json"
+  },
+  "notes": "Converted from Python models using TF Lite converter"
+}

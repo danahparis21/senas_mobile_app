@@ -1,15 +1,19 @@
 {
   "expo": {
-    "name": "senas-mobile-app2",
-    "slug": "senas-mobile-app2",
+    "name": "Senas_APPDEV",
+    "slug": "Senas_APPDEV",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "senasmobileapp2",
+    "scheme": "senasappdev",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.Senas-APPDEV",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -38,11 +42,25 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "react-native-fast-tflite",
+        {
+          "enableAndroidGpuLibraries": true,
+          "enableCoreMLDelegate": true
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "apiUrl": "http://192.168.1.35:8000/api",
+      "router": {},
+      "eas": {
+        "projectId": "fa620a96-0e77-4a36-9400-454d4683b5af"
+      }
     }
   }
 }
