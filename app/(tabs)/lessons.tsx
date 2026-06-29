@@ -9,7 +9,9 @@ import {
   Dimensions,
   Animated,
   ActivityIndicator,
-  Easing
+  Easing,
+  StatusBar,
+  Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -27,6 +29,14 @@ import {
 } from '../../components/ui/icons';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// ── GRADIENT BACKGROUND COLORS ─────────────────────────────────────
+const GRADIENT = {
+  start: '#87CEEB',
+  mid: '#B3E5FC',
+  mid2: '#E3F2FD',
+  end: '#F5F9FF',
+};
 
 // Mascot asset path
 const MascotImage = require('../../assets/images/img/senyas_logo.png');
@@ -66,7 +76,7 @@ function PlayIcon({ color = '#fff', size = 24 }: { color?: string; size?: number
   );
 }
 
-// Animated Cloud Component - Clean and simple
+// Animated Cloud Component
 function AnimatedCloud({ scale = 1, opacity = 0.5 }) {
   return (
     <Svg width={120 * scale} height={60 * scale} viewBox="0 0 120 60" opacity={opacity}>
@@ -112,6 +122,7 @@ const getCategoryIcon = (category: string, color: string, size: number = 24) => 
   }
 };
 
+// ── MOCK DATA ──────────────────────────────────────────────────────────
 // Default Baseline Lessons (Tab 0)
 const defaultLessonsData = [
   {
@@ -452,363 +463,371 @@ export default function Lessons() {
   const activePos = points[activePathIndex];
 
   return (
-    <View style={styles.container}>
-      {/* Animated Gradient Background */}
-      <View style={StyleSheet.absoluteFillObject}>
-        <Svg width={screenWidth} height={screenHeight}>
-          <Defs>
-            <LinearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#87CEEB" stopOpacity="1" />
-              <Stop offset="30%" stopColor="#B3E5FC" stopOpacity="0.9" />
-              <Stop offset="70%" stopColor="#E3F2FD" stopOpacity="0.8" />
-              <Stop offset="100%" stopColor="#F5F9FF" stopOpacity="0.9" />
-            </LinearGradient>
-          </Defs>
-          <Rect width={screenWidth} height={screenHeight} fill="url(#bgGrad)" />
-        </Svg>
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Sun with animated glow */}
-      <Animated.View style={[styles.sunContainer, { opacity: sunGlow }]}>
-        <Svg width="120" height="120" viewBox="0 0 120 120">
-          <Circle cx="60" cy="60" r="45" fill="#FCD34D" opacity="0.9" />
-          <Circle cx="60" cy="60" r="55" fill="#FCD34D" opacity="0.3" />
-          <Circle cx="60" cy="60" r="70" fill="#FCD34D" opacity="0.1" />
-          {/* Sun rays */}
-          {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
-            <Rect
-              key={i}
-              x="54"
-              y="5"
-              width="12"
-              height="20"
-              rx="6"
-              fill="#FCD34D"
-              opacity="0.6"
-              transform={`rotate(${angle}, 60, 60)`}
-            />
-          ))}
-        </Svg>
-      </Animated.View>
-
-      {/* Floating Clouds */}
-      <View style={styles.floatingSky} pointerEvents="none">
-        <Animated.View style={[styles.cloudWrapper, { top: 40, transform: [{ translateX: cloud1Anim }] }]}>
-          <AnimatedCloud scale={1.5} opacity={0.4} />
-        </Animated.View>
-        <Animated.View style={[styles.cloudWrapper, { top: 180, transform: [{ translateX: cloud2Anim }] }]}>
-          <AnimatedCloud scale={1.2} opacity={0.3} />
-        </Animated.View>
-        <Animated.View style={[styles.cloudWrapper, { top: 350, transform: [{ translateX: cloud3Anim }] }]}>
-          <AnimatedCloud scale={1.8} opacity={0.35} />
-        </Animated.View>
-        <Animated.View style={[styles.cloudWrapper, { top: 500, transform: [{ translateX: cloud4Anim }] }]}>
-          <AnimatedCloud scale={1.3} opacity={0.3} />
-        </Animated.View>
-      </View>
-
-      {/* Top Bar */}
-      <View style={styles.topBar}>
-        <Text style={styles.logoText}>SEÑAS</Text>
-        <View style={styles.topBarRight}>
-          <View style={styles.xpTopBadge}>
-            <Text style={styles.xpTopText}>⚡ {xp} XP</Text>
-          </View>
-          <View style={styles.streakBadge}>
-            <FlameIcon size={16} color="#fb923c" />
-            <Text style={styles.streakText}>{streak}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Unit Banner */}
-      <View style={styles.unitBanner}>
-        <View style={styles.bannerRow}>
-          <Pressable
-            style={[styles.arrowButton, activeTab === 0 && styles.arrowButtonDisabled]}
-            onPress={() => activeTab === 1 && switchTab(0)}
-            disabled={activeTab === 0}
-          >
-            <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === 0 ? "#94A3B8" : "#fff"} strokeWidth="3">
-              <Path d="M15 18l-6-6 6-6" />
-            </Svg>
-          </Pressable>
-
-          <View style={styles.bannerTitleContainer}>
-            <Text style={styles.unitTitle}>
-              {activeTab === 0 ? "Unit 1: Basics" : "Teacher's Lessons"}
-            </Text>
-            <Text style={styles.unitDesc}>
-              {activeTab === 0
-                ? "Master the alphabet and essential greetings"
-                : "Assigned lessons from your instructor"}
-            </Text>
-          </View>
-
-          <Pressable
-            style={[styles.arrowButton, activeTab === 1 && styles.arrowButtonDisabled]}
-            onPress={() => activeTab === 0 && switchTab(1)}
-            disabled={activeTab === 1}
-          >
-            <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === 1 ? "#94A3B8" : "#fff"} strokeWidth="3">
-              <Path d="M9 18l6-6-6-6" />
-            </Svg>
-          </Pressable>
+      <View style={styles.container}>
+        {/* Animated Gradient Background */}
+        <View style={StyleSheet.absoluteFillObject}>
+          <Svg width={screenWidth} height={screenHeight}>
+            <Defs>
+              <LinearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={GRADIENT.start} stopOpacity="1" />
+                <Stop offset="30%" stopColor={GRADIENT.mid} stopOpacity="0.9" />
+                <Stop offset="70%" stopColor={GRADIENT.mid2} stopOpacity="0.8" />
+                <Stop offset="100%" stopColor={GRADIENT.end} stopOpacity="0.9" />
+              </LinearGradient>
+            </Defs>
+            <Rect width={screenWidth} height={screenHeight} fill="url(#bgGrad)" />
+          </Svg>
         </View>
 
-        {totalNodes > 0 && (
-          <View style={styles.progressSection}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${pct}%` }]} />
-            </View>
-            <View style={styles.progressTextRow}>
-              <Text style={styles.progressText}>
-                {completedNodesCount} of {totalNodes} lessons done
-              </Text>
-              <Text style={styles.progressText}>{pct}% Completed</Text>
-            </View>
-          </View>
-        )}
-      </View>
+        {/* Sun with animated glow */}
+        <Animated.View style={[styles.sunContainer, { opacity: sunGlow }]}>
+          <Svg width="120" height="120" viewBox="0 0 120 120">
+            <Circle cx="60" cy="60" r="45" fill="#FCD34D" opacity="0.9" />
+            <Circle cx="60" cy="60" r="55" fill="#FCD34D" opacity="0.3" />
+            <Circle cx="60" cy="60" r="70" fill="#FCD34D" opacity="0.1" />
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+              <Rect
+                key={i}
+                x="54"
+                y="5"
+                width="12"
+                height="20"
+                rx="6"
+                fill="#FCD34D"
+                opacity="0.6"
+                transform={`rotate(${angle}, 60, 60)`}
+              />
+            ))}
+          </Svg>
+        </Animated.View>
 
-      {/* Main Scroll Content */}
-      <Animated.View style={[styles.mapContainer, { opacity: tabFadeAnim }]}>
-        {activeTab === 1 && loadingTeacher ? (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#2563EB" />
-            <Text style={styles.loaderText}>Loading lessons...</Text>
-          </View>
-        ) : totalNodes === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIllustrationBox}>
-              <BookIcon size={64} color="#93C5FD" />
+        {/* Floating Clouds */}
+        <View style={styles.floatingSky} pointerEvents="none">
+          <Animated.View style={[styles.cloudWrapper, { top: 40, transform: [{ translateX: cloud1Anim }] }]}>
+            <AnimatedCloud scale={1.5} opacity={0.4} />
+          </Animated.View>
+          <Animated.View style={[styles.cloudWrapper, { top: 180, transform: [{ translateX: cloud2Anim }] }]}>
+            <AnimatedCloud scale={1.2} opacity={0.3} />
+          </Animated.View>
+          <Animated.View style={[styles.cloudWrapper, { top: 350, transform: [{ translateX: cloud3Anim }] }]}>
+            <AnimatedCloud scale={1.8} opacity={0.35} />
+          </Animated.View>
+          <Animated.View style={[styles.cloudWrapper, { top: 500, transform: [{ translateX: cloud4Anim }] }]}>
+            <AnimatedCloud scale={1.3} opacity={0.3} />
+          </Animated.View>
+        </View>
+
+        {/* Top Bar */}
+        <View style={styles.topBar}>
+          <Text style={styles.logoText}>SEÑAS</Text>
+          <View style={styles.topBarRight}>
+            <View style={styles.xpTopBadge}>
+              <Text style={styles.xpTopText}>⚡ {xp} XP</Text>
             </View>
-            <Text style={styles.emptyTitle}>No Lessons Yet!</Text>
-            <Text style={styles.emptySubText}>
-              Your teacher hasn't uploaded any lessons yet. Check back later!
-            </Text>
-            <Pressable style={styles.emptyRefreshBtn} onPress={loadLessonsData}>
-              <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
-            </Pressable>
+            <View style={styles.streakBadge}>
+              <FlameIcon size={16} color="#fb923c" />
+              <Text style={styles.streakText}>{streak}</Text>
+            </View>
           </View>
-        ) : (
-          <ScrollView
-            contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* SVG Path Connections */}
-            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-              <Svg width={screenWidth} height={totalNodes * NODE_ROW_HEIGHT}>
-                {/* Background Track */}
-                {backgroundPathD !== '' && (
-                  <Path
-                    d={backgroundPathD}
-                    fill="none"
-                    stroke="#93C5FD"
-                    strokeWidth="6"
-                    strokeLinecap="round"
-                    strokeDasharray="8 12"
-                    opacity={0.4}
-                  />
-                )}
-                {/* Completed Path with Glow */}
-                {progressPathD !== '' && (
-                  <>
-                    <Path
-                      d={progressPathD}
-                      fill="none"
-                      stroke="#2563EB"
-                      strokeWidth="12"
-                      strokeLinecap="round"
-                      opacity={0.15}
-                    />
-                    <Path
-                      d={progressPathD}
-                      fill="none"
-                      stroke="#3B82F6"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                    />
-                  </>
-                )}
+        </View>
+
+        {/* Unit Banner */}
+        <View style={styles.unitBanner}>
+          <View style={styles.bannerRow}>
+            <Pressable
+              style={[styles.arrowButton, activeTab === 0 && styles.arrowButtonDisabled]}
+              onPress={() => activeTab === 1 && switchTab(0)}
+              disabled={activeTab === 0}
+            >
+              <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === 0 ? "#94A3B8" : "#fff"} strokeWidth="3">
+                <Path d="M15 18l-6-6 6-6" />
               </Svg>
-            </View>
+            </Pressable>
 
-            {/* Bobbing Mascot */}
-            {activePos && (
-              <Animated.View
-                style={[
-                  styles.mascotContainer,
-                  {
-                    left: (cycle => {
-                      const xPct = cycle[activePathIndex % cycle.length];
-                      return xPct > 0.5 ? activePos.x - 95 : activePos.x + 50;
-                    })([0.5, 0.76, 0.5, 0.24]),
-                    top: activePos.y - 75,
-                    transform: [{ translateY: bobY }],
-                  },
-                ]}
-                pointerEvents="none"
-              >
-                <Image
-                  source={MascotImage}
-                  style={styles.mascotImage}
-                  contentFit="contain"
-                />
-                <View style={styles.mascotBubble}>
-                  <Text style={styles.mascotBubbleText}>🌟 You got this!</Text>
-                </View>
-              </Animated.View>
-            )}
-
-            {/* Checkpoint Nodes */}
-            {currentLessons.map((lesson, index) => {
-              const pos = points[index];
-              const isSelected = expandedId === lesson.id;
-
-              let nodeBg = lesson.color;
-              let iconColor = '#fff';
-
-              if (lesson.locked) {
-                nodeBg = '#CBD5E1';
-                iconColor = '#64748B';
-              }
-
-              return (
-                <View
-                  key={lesson.id}
-                  style={[
-                    styles.nodeAbsoluteContainer,
-                    {
-                      left: pos.x - NODE_RADIUS,
-                      top: pos.y - NODE_RADIUS,
-                    },
-                  ]}
-                >
-                  {lesson.active && !lesson.locked && (
-                    <Animated.View
-                      style={[
-                        styles.pulseRing,
-                        {
-                          backgroundColor: lesson.color,
-                          transform: [{ scale: pulseScale }],
-                          opacity: pulseOpacity,
-                        },
-                      ]}
-                    />
-                  )}
-
-                  <Pressable
-                    onPress={() => setExpandedId(isSelected ? null : lesson.id)}
-                    style={({ pressed }) => [
-                      styles.nodeCircle,
-                      {
-                        backgroundColor: nodeBg,
-                        shadowColor: lesson.locked ? '#94A3B8' : lesson.color,
-                        transform: [{ scale: pressed ? 0.95 : 1 }],
-                      },
-                    ]}
-                  >
-                    {lesson.locked ? (
-                      <LockIcon size={24} color={iconColor} />
-                    ) : lesson.done ? (
-                      <CheckIcon size={26} color={iconColor} />
-                    ) : lesson.active ? (
-                      <PlayIcon color={iconColor} size={24} />
-                    ) : (
-                      getCategoryIcon(lesson.category, iconColor, 24)
-                    )}
-                  </Pressable>
-
-                  <View style={styles.nodeLabelBox}>
-                    {lesson.active && !lesson.locked && (
-                      <View style={styles.nextBadge}>
-                        <Text style={styles.nextBadgeText}>NEXT UP</Text>
-                      </View>
-                    )}
-                    <Text
-                      style={[
-                        styles.nodeTitleText,
-                        lesson.active && styles.nodeTitleTextActive,
-                        lesson.locked && styles.nodeTitleTextLocked,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {lesson.title}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-        )}
-      </Animated.View>
-
-      {/* Floating Detail Sheet */}
-      {selectedLesson && (
-        <View style={styles.overlayContainer}>
-          <Pressable style={styles.backdrop} onPress={() => setExpandedId(null)} />
-
-          <View style={styles.bottomCard}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.cardIconContainer, { backgroundColor: selectedLesson.iconBg }]}>
-                {getCategoryIcon(selectedLesson.category, selectedLesson.color, 24)}
-              </View>
-              <View style={styles.cardHeaderMeta}>
-                <Text style={[styles.cardCategoryText, { color: selectedLesson.color }]}>
-                  {selectedLesson.category.toUpperCase()}
-                </Text>
-                <Text style={styles.cardTitleText}>{selectedLesson.title}</Text>
-              </View>
-              <Pressable style={styles.closeCardBtn} onPress={() => setExpandedId(null)}>
-                <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5">
-                  <Line x1="18" y1="6" x2="6" y2="18" />
-                  <Line x1="6" y1="6" x2="18" y2="18" />
-                </Svg>
-              </Pressable>
-            </View>
-
-            <Text style={styles.cardDescText}>{selectedLesson.desc}</Text>
-
-            <View style={styles.cardInfoRow}>
-              <View style={styles.cardInfoBadge}>
-                <Text style={styles.cardInfoBadgeText}>⏱️ {selectedLesson.duration}</Text>
-              </View>
-              <View style={[styles.cardInfoBadge, { backgroundColor: '#EEF2FF' }]}>
-                <Text style={[styles.cardInfoBadgeText, { color: '#4338CA' }]}>⚡ +{selectedLesson.xp} XP</Text>
-              </View>
+            <View style={styles.bannerTitleContainer}>
+              <Text style={styles.unitTitle}>
+                {activeTab === 0 ? "Unit 1: Basics" : "Teacher's Lessons"}
+              </Text>
+              <Text style={styles.unitDesc}>
+                {activeTab === 0
+                  ? "Master the alphabet and essential greetings"
+                  : "Assigned lessons from your instructor"}
+              </Text>
             </View>
 
             <Pressable
-              onPress={() => {
-                setExpandedId(null);
-                router.push(`/lesson/${selectedLesson.id}` as any);
-              }}
-              style={[
-                styles.cardActionBtn,
-                { backgroundColor: selectedLesson.locked ? '#CBD5E1' : selectedLesson.color },
-              ]}
-              disabled={selectedLesson.locked}
+              style={[styles.arrowButton, activeTab === 1 && styles.arrowButtonDisabled]}
+              onPress={() => activeTab === 0 && switchTab(1)}
+              disabled={activeTab === 1}
             >
-              <Text style={styles.cardActionBtnText}>
-                {selectedLesson.locked
-                  ? "🔒 LOCKED"
-                  : selectedLesson.done
-                    ? "🔄 REVIEW LESSON"
-                    : "🚀 START LESSON"}
-              </Text>
+              <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === 1 ? "#94A3B8" : "#fff"} strokeWidth="3">
+                <Path d="M9 18l6-6-6-6" />
+              </Svg>
             </Pressable>
           </View>
+
+          {totalNodes > 0 && (
+            <View style={styles.progressSection}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${pct}%` }]} />
+              </View>
+              <View style={styles.progressTextRow}>
+                <Text style={styles.progressText}>
+                  {completedNodesCount} of {totalNodes} lessons done
+                </Text>
+                <Text style={styles.progressText}>{pct}% Completed</Text>
+              </View>
+            </View>
+          )}
         </View>
-      )}
-    </View>
+
+        {/* Main Scroll Content */}
+        <Animated.View style={[styles.mapContainer, { opacity: tabFadeAnim }]}>
+          {activeTab === 1 && loadingTeacher ? (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator size="large" color="#2563EB" />
+              <Text style={styles.loaderText}>Loading lessons...</Text>
+            </View>
+          ) : totalNodes === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIllustrationBox}>
+                <BookIcon size={64} color="#93C5FD" />
+              </View>
+              <Text style={styles.emptyTitle}>No Lessons Yet!</Text>
+              <Text style={styles.emptySubText}>
+                Your teacher hasn't uploaded any lessons yet. Check back later!
+              </Text>
+              <Pressable style={styles.emptyRefreshBtn} onPress={loadLessonsData}>
+                <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <ScrollView
+              contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* SVG Path Connections */}
+              <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+                <Svg width={screenWidth} height={totalNodes * NODE_ROW_HEIGHT}>
+                  {/* Background Track */}
+                  {backgroundPathD !== '' && (
+                    <Path
+                      d={backgroundPathD}
+                      fill="none"
+                      stroke="#93C5FD"
+                      strokeWidth="6"
+                      strokeLinecap="round"
+                      strokeDasharray="8 12"
+                      opacity={0.4}
+                    />
+                  )}
+                  {/* Completed Path with Glow */}
+                  {progressPathD !== '' && (
+                    <>
+                      <Path
+                        d={progressPathD}
+                        fill="none"
+                        stroke="#2563EB"
+                        strokeWidth="12"
+                        strokeLinecap="round"
+                        opacity={0.15}
+                      />
+                      <Path
+                        d={progressPathD}
+                        fill="none"
+                        stroke="#3B82F6"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                      />
+                    </>
+                  )}
+                </Svg>
+              </View>
+
+              {/* Bobbing Mascot */}
+              {activePos && (
+                <Animated.View
+                  style={[
+                    styles.mascotContainer,
+                    {
+                      left: (cycle => {
+                        const xPct = cycle[activePathIndex % cycle.length];
+                        return xPct > 0.5 ? activePos.x - 95 : activePos.x + 50;
+                      })([0.5, 0.76, 0.5, 0.24]),
+                      top: activePos.y - 75,
+                      transform: [{ translateY: bobY }],
+                    },
+                  ]}
+                  pointerEvents="none"
+                >
+                  <Image
+                    source={MascotImage}
+                    style={styles.mascotImage}
+                    contentFit="contain"
+                  />
+                  <View style={styles.mascotBubble}>
+                    <Text style={styles.mascotBubbleText}>🌟 You got this!</Text>
+                  </View>
+                </Animated.View>
+              )}
+
+              {/* Checkpoint Nodes */}
+              {currentLessons.map((lesson, index) => {
+                const pos = points[index];
+                const isSelected = expandedId === lesson.id;
+
+                let nodeBg = lesson.color;
+                let iconColor = '#fff';
+
+                if (lesson.locked) {
+                  nodeBg = '#CBD5E1';
+                  iconColor = '#64748B';
+                }
+
+                return (
+                  <View
+                    key={lesson.id}
+                    style={[
+                      styles.nodeAbsoluteContainer,
+                      {
+                        left: pos.x - NODE_RADIUS,
+                        top: pos.y - NODE_RADIUS,
+                      },
+                    ]}
+                  >
+                    {lesson.active && !lesson.locked && (
+                      <Animated.View
+                        style={[
+                          styles.pulseRing,
+                          {
+                            backgroundColor: lesson.color,
+                            transform: [{ scale: pulseScale }],
+                            opacity: pulseOpacity,
+                          },
+                        ]}
+                      />
+                    )}
+
+                    <Pressable
+                      onPress={() => setExpandedId(isSelected ? null : lesson.id)}
+                      style={({ pressed }) => [
+                        styles.nodeCircle,
+                        {
+                          backgroundColor: nodeBg,
+                          shadowColor: lesson.locked ? '#94A3B8' : lesson.color,
+                          transform: [{ scale: pressed ? 0.95 : 1 }],
+                        },
+                      ]}
+                    >
+                      {lesson.locked ? (
+                        <LockIcon size={24} color={iconColor} />
+                      ) : lesson.done ? (
+                        <CheckIcon size={26} color={iconColor} />
+                      ) : lesson.active ? (
+                        <PlayIcon color={iconColor} size={24} />
+                      ) : (
+                        getCategoryIcon(lesson.category, iconColor, 24)
+                      )}
+                    </Pressable>
+
+                    <View style={styles.nodeLabelBox}>
+                      {lesson.active && !lesson.locked && (
+                        <View style={styles.nextBadge}>
+                          <Text style={styles.nextBadgeText}>NEXT UP</Text>
+                        </View>
+                      )}
+                      <Text
+                        style={[
+                          styles.nodeTitleText,
+                          lesson.active && styles.nodeTitleTextActive,
+                          lesson.locked && styles.nodeTitleTextLocked,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {lesson.title}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </Animated.View>
+
+        {/* Floating Detail Sheet */}
+        {selectedLesson && (
+          <View style={styles.overlayContainer}>
+            <Pressable style={styles.backdrop} onPress={() => setExpandedId(null)} />
+
+            <View style={styles.bottomCard}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.cardIconContainer, { backgroundColor: selectedLesson.iconBg }]}>
+                  {getCategoryIcon(selectedLesson.category, selectedLesson.color, 24)}
+                </View>
+                <View style={styles.cardHeaderMeta}>
+                  <Text style={[styles.cardCategoryText, { color: selectedLesson.color }]}>
+                    {selectedLesson.category.toUpperCase()}
+                  </Text>
+                  <Text style={styles.cardTitleText}>{selectedLesson.title}</Text>
+                </View>
+                <Pressable style={styles.closeCardBtn} onPress={() => setExpandedId(null)}>
+                  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5">
+                    <Line x1="18" y1="6" x2="6" y2="18" />
+                    <Line x1="6" y1="6" x2="18" y2="18" />
+                  </Svg>
+                </Pressable>
+              </View>
+
+              <Text style={styles.cardDescText}>{selectedLesson.desc}</Text>
+
+              <View style={styles.cardInfoRow}>
+                <View style={styles.cardInfoBadge}>
+                  <Text style={styles.cardInfoBadgeText}>⏱️ {selectedLesson.duration}</Text>
+                </View>
+                <View style={[styles.cardInfoBadge, { backgroundColor: '#EEF2FF' }]}>
+                  <Text style={[styles.cardInfoBadgeText, { color: '#4338CA' }]}>⚡ +{selectedLesson.xp} XP</Text>
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  setExpandedId(null);
+                  router.push(`/lesson/${selectedLesson.id}` as any);
+                }}
+                style={[
+                  styles.cardActionBtn,
+                  { backgroundColor: selectedLesson.locked ? '#CBD5E1' : selectedLesson.color },
+                ]}
+                disabled={selectedLesson.locked}
+              >
+                <Text style={styles.cardActionBtnText}>
+                  {selectedLesson.locked
+                    ? "🔒 LOCKED"
+                    : selectedLesson.done
+                      ? "🔄 REVIEW LESSON"
+                      : "🚀 START LESSON"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
+// ── STYLES ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: 'transparent',
   },
   sunContainer: {
     position: 'absolute',
@@ -834,7 +853,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: Platform.OS === 'ios' ? 8 : 16,
     paddingBottom: 8,
     zIndex: 5,
   },

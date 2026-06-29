@@ -145,16 +145,13 @@ function AttemptCard({ attempt, index, total }: { attempt: any; index: number; t
           </View>
         </View>
 
-        {/* Score bar row */}
+        {/* Score bar row - FIXED: percentage text on the right side of the bar */}
         <View style={cardStyles.barRow}>
-          {/* Tracker Background & Fill */}
           <View style={cardStyles.barWrapper}>
             <View style={cardStyles.barTrack}>
               <View style={[cardStyles.barFill, { width: `${pct}%` as any, backgroundColor: accentColor }]} />
             </View>
           </View>
-
-          {/* Text is now safely outside the wrapper, completely centered on the row */}
           <Text style={[cardStyles.pctText, { color: accentColor }]}>{pct}%</Text>
         </View>
 
@@ -205,18 +202,15 @@ const cardStyles = StyleSheet.create({
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   dateText: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
 
-  // ─── TARGET FIX AREA ─────────────────────────────────────
+  // ─── FIXED: Bar and text side by side ─────────────────────────────────────
   barRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
+    gap: 10,
     width: '100%',
-    height: 20, // Forces space so text doesn't overlap rows above/below
   },
   barWrapper: {
-    width: '100%',
-    justifyContent: 'center',
+    flex: 1,
   },
   barTrack: {
     height: 8,
@@ -227,15 +221,13 @@ const cardStyles = StyleSheet.create({
   },
   barFill: { height: '100%', borderRadius: 99 },
   pctText: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
     fontSize: 14,
     fontWeight: '900',
-    backgroundColor: 'transparent',
+    minWidth: 44,
+    textAlign: 'right',
+    flexShrink: 0,
   },
-  // ──────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
 
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusPill: {

@@ -11,6 +11,20 @@ import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// ─── Colors for slides ──────────────────────────────────────────────────────
+const SLIDE_COLORS = [
+  '#2563EB', // Blue
+  '#059669', // Green
+  '#D97706', // Amber
+  '#7C3AED', // Purple
+  '#DC2626', // Red
+  '#0891B2', // Cyan
+  '#C026D3', // Fuchsia
+  '#EA580C', // Orange
+  '#4F46E5', // Indigo
+  '#0D9488', // Teal
+];
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Option {
   option_id: number;
@@ -66,296 +80,257 @@ interface QuizAnswer {
   selected_option_id: number | null;
   is_correct: boolean;
 }
-
-// ─── SVG Icon Components ─────────────────────────────────────────────────────
-function StarIcon({ size = 18, color = '#FBBF24' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </Svg>
-  );
+interface LeaderboardEntry {
+  rank: number;
+  student_id: number;
+  name: string;
+  username: string;
+  best_score: number;
+  attempts: number;
+  attempts_to_achieve?: number;
+  is_me: boolean;
+  initials: string;
+  xp_earned: number;
 }
 
-function TrophyIcon({ size = 28, color = '#FBBF24' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2" />
-      <Path d="M6 2v7a6 6 0 0 0 12 0V2" />
-      <Path d="M12 15v7" />
-      <Path d="M8 22h8" />
-    </Svg>
-  );
+// ─── SVG Icons ──────────────────────────────────────────────────────────────
+function CheckCircleIcon({ color = '#10B981' }: { color?: string }) {
+  return <Svg width="18" height="18" viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Polyline points="8 12 11 15 16 9" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></Svg>;
 }
-
-function ZapIcon({ size = 18, color = '#D97706' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-    </Svg>
-  );
+function XCircleIcon({ color = '#EF4444' }: { color?: string }) {
+  return <Svg width="18" height="18" viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Line x1="15" y1="9" x2="9" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" /><Line x1="9" y1="9" x2="15" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" /></Svg>;
 }
-
-function AwardIcon({ size = 22, color = '#2563EB' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Circle cx="12" cy="8" r="6" />
-      <Path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
-    </Svg>
-  );
+function TrophyIcon({ color = '#fbbf24' }: { color?: string }) {
+  return <Svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><Path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><Path d="M4 22h16" /><Path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" /><Path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" /><Path d="M18 2H6v7a6 6 0 0 0 12 0V2z" /></Svg>;
 }
-
-function FlameIcon({ size = 18, color = '#F97316' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
-    </Svg>
-  );
+function ZapIcon({ size = 14, color = '#D97706' }: { size?: number; color?: string }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></Svg>;
 }
-
-function RefreshIcon({ size = 16, color = '#6B7280' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Path d="M23 4v6h-6" />
-      <Path d="M1 20v-6h6" />
-      <Path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-    </Svg>
-  );
-}
-
 function HomeIcon({ size = 16, color = '#fff' }: { size?: number; color?: string }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><Polyline points="9 22 9 12 15 12 15 22" /></Svg>;
+}
+function RefreshIcon({ size = 15, color = '#2563EB' }: { size?: number; color?: string }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M23 4v6h-6" /><Path d="M1 20v-6h6" /><Path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></Svg>;
+}
+function BookIcon({ size = 16, color = '#1848c8' }: { size?: number; color?: string }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" /><Path d="M8 2v4" /><Path d="M16 2v4" /></Svg>;
+}
+function MedalIcon({ size = 16, color = '#F59E0B' }: { size?: number; color?: string }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M12 15l-3-3 3-3 3 3-3 3z" /><Path d="M8 12l-3 3 3 3 3-3" /><Path d="M16 12l3 3-3 3-3-3" /></Svg>;
+}
+function ChevronLeftIcon({ color = '#fff', size = 24 }: { color?: string; size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <Polyline points="9 22 9 12 15 12 15 22" />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M15 18l-6-6 6-6" />
     </Svg>
   );
 }
 
-function HandIcon({ size = 18, color = '#92400E' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
-      <Path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
-      <Path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
-      <Path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-    </Svg>
-  );
+interface PodiumBlockProps {
+  rank: number;
+  height: number;
+  width: number;
 }
 
-function ClipboardIcon({ size = 32, color = '#2563EB' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">
-      <Path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-      <Rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-    </Svg>
-  );
-}
+function Podium3DBlock({ rank, height, width }: PodiumBlockProps) {
+  const dy = rank === 1 ? 12 : 10;
+  const w = width;
+  const h = height;
 
-function BarChartIcon({ size = 18, color = '#2563EB' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Line x1="18" y1="20" x2="18" y2="10" />
-      <Line x1="12" y1="20" x2="12" y2="4" />
-      <Line x1="6" y1="20" x2="6" y2="14" />
-      <Line x1="2" y1="20" x2="22" y2="20" />
-    </Svg>
-  );
-}
+  // Colors based on rank
+  let topColors = ['#FFFBEB', '#FDE68A'];
+  let leftColors = ['#FBBF24', '#D97706'];
+  let rightColors = ['#D97706', '#B45309'];
+  let glowColor = '#FBBF24';
 
-function CheckCircleIcon({ size = 22, color = '#059669' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Circle cx="12" cy="12" r="10" />
-      <Polyline points="8 12 11 15 16 9" />
-    </Svg>
-  );
-}
+  if (rank === 2) {
+    topColors = ['#F8FAFC', '#CBD5E1'];
+    leftColors = ['#94A3B8', '#64748B'];
+    rightColors = ['#64748B', '#475569'];
+    glowColor = '#94A3B8';
+  } else if (rank === 3) {
+    topColors = ['#FFEDD5', '#FED7AA'];
+    leftColors = ['#F97316', '#C2410C'];
+    rightColors = ['#C2410C', '#9A3412'];
+    glowColor = '#F97316';
+  }
 
-function XCircleIcon({ size = 22, color = '#DC2626' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
-      <Circle cx="12" cy="12" r="10" />
-      <Line x1="15" y1="9" x2="9" y2="15" />
-      <Line x1="9" y1="9" x2="15" y2="15" />
-    </Svg>
-  );
-}
-
-// ─── Animated Score Ring ──────────────────────────────────────────────────────
-function ScoreRing({ percentage, passed }: { percentage: number; passed: boolean }) {
-  const anim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: 1,
-      duration: 1200,
-      useNativeDriver: false,
-    }).start();
-  }, []);
-
-  const ringColor = passed ? '#10B981' : '#F87171';
-  const ringBg = passed ? 'rgba(16,185,129,0.12)' : 'rgba(248,113,113,0.12)';
+  const gradTopId = `gradTop-${rank}`;
+  const gradLeftId = `gradLeft-${rank}`;
+  const gradRightId = `gradRight-${rank}`;
 
   return (
-    <View style={scoreRingStyles.container}>
-      <View style={[scoreRingStyles.wrapper, { backgroundColor: ringBg }]}>
-        <Animated.View
-          style={[
-            scoreRingStyles.pulse,
-            {
-              backgroundColor: ringColor,
-              opacity: anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.3, 0.08, 0] }),
-              transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.4] }) }],
-            },
-          ]}
-        />
-        {/* Circular SVG Progress Ring */}
-        <Svg width="120" height="120" viewBox="0 0 120 120" style={scoreRingStyles.svgRing}>
-          <Circle
-            cx="60"
-            cy="60"
-            r="50"
-            stroke="#E5E7EB"
-            strokeWidth="8"
-            fill="none"
-          />
-          <Circle
-            cx="60"
-            cy="60"
-            r="50"
-            stroke={ringColor}
-            strokeWidth="8"
-            fill="none"
-            strokeDasharray="314.159"
-            strokeDashoffset={314.159 - (314.159 * percentage) / 100}
-            strokeLinecap="round"
-            transform="rotate(-90 60 60)"
-          />
-        </Svg>
-        <View style={scoreRingStyles.content}>
-          <Text style={[scoreRingStyles.pctText, { color: ringColor }]}>{percentage}%</Text>
-          <Text style={scoreRingStyles.label}>{passed ? 'Passed!' : 'Keep Going!'}</Text>
-        </View>
+    <View style={{
+      shadowColor: glowColor,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.75,
+      shadowRadius: 12,
+      elevation: 10,
+      alignItems: 'center',
+    }}>
+      <Svg width={w} height={h + 2 * dy} viewBox={`0 0 ${w} ${h + 2 * dy}`}>
+        <Defs>
+          <LinearGradient id={gradTopId} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={topColors[0]} />
+            <Stop offset="100%" stopColor={topColors[1]} />
+          </LinearGradient>
+          <LinearGradient id={gradLeftId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor={leftColors[0]} />
+            <Stop offset="100%" stopColor={leftColors[1]} />
+          </LinearGradient>
+          <LinearGradient id={gradRightId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor={rightColors[0]} />
+            <Stop offset="100%" stopColor={rightColors[1]} />
+          </LinearGradient>
+        </Defs>
+
+        {/* Front-Left Face */}
+        <Path d={`M 0 ${dy} L ${w / 2} ${2 * dy} L ${w / 2} ${h + 2 * dy} L 0 ${h + dy} Z`} fill={`url(#${gradLeftId})`} />
+
+        {/* Front-Right Face */}
+        <Path d={`M ${w / 2} ${2 * dy} L ${w} ${dy} L ${w} ${h + dy} L ${w / 2} ${h + 2 * dy} Z`} fill={`url(#${gradRightId})`} />
+
+        {/* Top Face */}
+        <Path d={`M 0 ${dy} L ${w / 2} 0 L ${w} ${dy} L ${w / 2} ${2 * dy} Z`} fill={`url(#${gradTopId})`} />
+
+        {/* Glowing borders */}
+        <Path d={`M 0 ${dy} L ${w / 2} ${2 * dy} L ${w} ${dy} L ${w / 2} 0 Z`} stroke={glowColor} strokeWidth="1.5" fill="none" opacity="0.95" />
+        <Path d={`M 0 ${dy} L 0 ${h + dy} L ${w / 2} ${h + 2 * dy} L ${w} ${h + dy} L ${w} ${dy}`} stroke={glowColor} strokeWidth="1.5" fill="none" opacity="0.8" />
+        <Path d={`M ${w / 2} ${2 * dy} L ${w / 2} ${h + 2 * dy}`} stroke={glowColor} strokeWidth="1.5" fill="none" opacity="0.8" />
+      </Svg>
+      <View style={{
+        position: 'absolute',
+        top: dy + (h / 3) - 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <Text style={{
+          fontSize: rank === 1 ? 34 : 26,
+          fontWeight: '900',
+          color: '#fff',
+          textShadowColor: 'rgba(0,0,0,0.3)',
+          textShadowOffset: { width: 1.5, height: 1.5 },
+          textShadowRadius: 3,
+        }}>
+          {rank}
+        </Text>
       </View>
     </View>
   );
 }
 
-const scoreRingStyles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 16,
-  },
-  wrapper: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  pulse: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-  },
-  svgRing: {
-    position: 'absolute',
-  },
-  content: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pctText: {
-    fontSize: 36,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#6B7280',
-    marginTop: 2,
-  },
-});
-
-// ─── Attempt Card ─────────────────────────────────────────────────────────────
-function AttemptCard({ attempt, index, total }: { attempt: any; index: number; total: number }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 350, delay: index * 80, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 350, delay: index * 80, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  const passed = attempt.percentage >= 60;
-  const isPerfect = attempt.percentage === 100;
-  const attemptNumber = total - index;
-
-  const barColor = isPerfect ? '#FBBF24' : passed ? '#10B981' : '#F87171';
-  const bgColor = isPerfect ? '#FEF3C7' : passed ? '#ECFDF5' : '#FEF2F2';
-  const borderColor = isPerfect ? '#F59E0B' : passed ? '#6EE7B7' : '#FCA5A5';
-
+// ─── Exit Modal ──────────────────────────────────────────────────────────────
+function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: () => void }) {
   return (
-    <Animated.View
-      style={[
-        attemptCardStyles.card,
-        { backgroundColor: bgColor, borderColor, opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-      ]}
-    >
-      <View style={attemptCardStyles.left}>
-        <View style={[attemptCardStyles.numBadge, { backgroundColor: barColor }]}>
-          <Text style={attemptCardStyles.numText}>#{attemptNumber}</Text>
-        </View>
-        <View>
-          <Text style={attemptCardStyles.dateText}>
-            {new Date(attempt.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </Text>
-          {attempt.xp_earned > 0 && (
-            <Text style={attemptCardStyles.xpText}>+{attempt.xp_earned} XP earned</Text>
-          )}
-        </View>
-      </View>
-
-      <View style={attemptCardStyles.right}>
-        <View style={[attemptCardStyles.scorePill, { backgroundColor: barColor }]}>
-          <Text style={attemptCardStyles.scoreText}>{attempt.percentage}%</Text>
-        </View>
-        <Text style={[attemptCardStyles.passedText, { color: barColor }]}>
-          {isPerfect ? '⭐ Perfect' : passed ? '✅ Pass' : '❌ Fail'}
-        </Text>
-      </View>
-    </Animated.View>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={s.overlay} onPress={onClose}>
+        <Pressable style={s.exitModal} onPress={e => e.stopPropagation()}>
+          <View style={s.exitIconBox}>
+            <Svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <Polyline points="16 17 21 12 16 7" />
+              <Line x1="21" y1="12" x2="9" y2="12" />
+            </Svg>
+          </View>
+          <Text style={s.exitTitle}>Exit Lesson?</Text>
+          <Text style={s.exitDesc}>Your progress will be saved. Are you sure you want to exit?</Text>
+          <View style={s.exitBtns}>
+            <Pressable style={s.stayBtn} onPress={onClose}>
+              <Text style={s.stayText}>Stay</Text>
+            </Pressable>
+            <Pressable style={s.exitConfirmBtn} onPress={onConfirm}>
+              <Text style={s.exitConfirmText}>Exit</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
-const attemptCardStyles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1.5,
-  },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  numBadge: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  numText: { fontSize: 12, fontWeight: '800', color: '#fff' },
-  dateText: { fontSize: 12, fontWeight: '600', color: '#374151' },
-  xpText: { fontSize: 10, fontWeight: '600', color: '#D97706', marginTop: 2 },
-  right: { alignItems: 'flex-end', gap: 4 },
-  scorePill: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
-  scoreText: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  passedText: { fontSize: 10, fontWeight: '700' },
-});
+// ─── Student Detail Modal ──────────────────────────────────────────────────
+function StudentDetailModal({
+  visible,
+  onClose,
+  student
+}: {
+  visible: boolean;
+  onClose: () => void;
+  student: LeaderboardEntry | null;
+}) {
+  if (!student) return null;
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+  const rankEmoji = student.rank === 1 ? '🥇' : student.rank === 2 ? '🥈' : student.rank === 3 ? '🥉' : `#${student.rank}`;
+  const isPerfect = student.best_score === 100;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={s.overlay} onPress={onClose}>
+        <Pressable style={s.studentDetailModal} onPress={e => e.stopPropagation()}>
+          {/* Close button */}
+          <Pressable style={s.studentDetailClose} onPress={onClose}>
+            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2.5">
+              <Path d="M18 6L6 18M6 6l12 12" />
+            </Svg>
+          </Pressable>
+
+          {/* Avatar */}
+          <View style={[s.studentDetailAvatar, student.is_me && s.studentDetailAvatarMe]}>
+            <Text style={s.studentDetailAvatarText}>{student.initials}</Text>
+          </View>
+
+          {/* Name */}
+          <Text style={s.studentDetailName}>
+            {student.is_me ? 'You' : student.name}
+          </Text>
+          <Text style={s.studentDetailUsername}>@{student.username}</Text>
+
+          {/* Divider */}
+          <View style={s.studentDetailDivider} />
+
+          {/* Stats */}
+          <View style={s.studentDetailStats}>
+            <View style={s.studentDetailStat}>
+              <Text style={s.studentDetailStatLabel}>Rank</Text>
+              <Text style={s.studentDetailStatValue}>{rankEmoji}</Text>
+            </View>
+            <View style={s.studentDetailStatDivider} />
+            <View style={s.studentDetailStat}>
+              <Text style={s.studentDetailStatLabel}>Best Score</Text>
+              <Text style={[s.studentDetailStatValue, isPerfect && { color: '#F59E0B' }]}>
+                {student.best_score}%
+              </Text>
+            </View>
+            <View style={s.studentDetailStatDivider} />
+            <View style={s.studentDetailStat}>
+              <Text style={s.studentDetailStatLabel}>Attempts</Text>
+              <Text style={s.studentDetailStatValue}>
+                {student.attempts_to_achieve || student.attempts}
+              </Text>
+            </View>
+          </View>
+
+          {/* Achievement note */}
+          <View style={s.studentDetailNote}>
+            <Text style={s.studentDetailNoteText}>
+              {student.attempts_to_achieve === 1
+                ? '🏆 Achieved this score on their very first try!'
+                : student.attempts_to_achieve && student.attempts_to_achieve <= 3
+                  ? `⭐ Achieved this score in just ${student.attempts_to_achieve} attempts!`
+                  : `📈 Achieved this score after ${student.attempts_to_achieve || student.attempts} attempts`}
+            </Text>
+          </View>
+
+          <Pressable style={s.studentDetailBtn} onPress={onClose}>
+            <Text style={s.studentDetailBtnText}>Close</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function LessonViewer() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -375,6 +350,24 @@ export default function LessonViewer() {
   const confettiRef = useRef<any>(null);
   const resultsFadeAnim = useRef(new Animated.Value(0)).current;
   const resultsScaleAnim = useRef(new Animated.Value(0.85)).current;
+  // Parallax scroll: score view drifts/fades as leaderboard sheet rises over it
+  const parallelScrollY = useRef(new Animated.Value(0)).current;
+  const resultsScrollRef = useRef<any>(null);
+
+  // Leaderboard state
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [userRank, setUserRank] = useState<number | null>(null);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+
+  // Student detail modal state
+  const [selectedStudent, setSelectedStudent] = useState<LeaderboardEntry | null>(null);
+  const [showStudentDetail, setShowStudentDetail] = useState<boolean>(false);
+
+  // Quiz state for step-by-step
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [questionRevealed, setQuestionRevealed] = useState<boolean>(false);
+  const [currentScore, setCurrentScore] = useState<number>(0);
 
   const fetchAttemptHistory = async () => {
     try {
@@ -382,6 +375,21 @@ export default function LessonViewer() {
       if (response.success) setAttemptHistory(response.attempts);
     } catch (error) {
       console.error('Error fetching attempts:', error);
+    }
+  };
+
+  const fetchLeaderboard = async () => {
+    try {
+      setLoadingLeaderboard(true);
+      const response = await api.getLessonLeaderboard(id);
+      if (response.success) {
+        setLeaderboard(response.rankings);
+        setUserRank(response.user_rank);
+      }
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error);
+    } finally {
+      setLoadingLeaderboard(false);
     }
   };
 
@@ -407,9 +415,9 @@ export default function LessonViewer() {
   useEffect(() => {
     fetchLesson();
     fetchAttemptHistory();
+    fetchLeaderboard();
   }, [id]);
 
-  // Animate results card in and fire confetti
   useEffect(() => {
     if (quizSubmitted && quizResult) {
       Animated.parallel([
@@ -423,6 +431,8 @@ export default function LessonViewer() {
           setConfettiFired(true);
         }, 400);
       }
+      // Refresh leaderboard after quiz
+      fetchLeaderboard();
     }
   }, [quizSubmitted, quizResult]);
 
@@ -443,30 +453,47 @@ export default function LessonViewer() {
     await updateProgress(newSlide);
   };
 
-  const handleQuizAnswer = (questionIndex: number, optionIndex: number): void => {
-    setQuizAnswers((prev: Record<number, number>) => ({ ...prev, [questionIndex]: optionIndex }));
+  const handleExit = () => {
+    setShowExitModal(false);
+    router.dismiss();
+  };
+
+  // ─── Quiz Handlers ────────────────────────────────────────────────────────
+  const handleOptionSelect = (optionIndex: number) => {
+    if (questionRevealed) return;
+    setSelectedOption(optionIndex);
+    setQuestionRevealed(true);
+    const questions = lesson?.quiz?.questions || [];
+    if (optionIndex === questions[currentQuestionIndex]?.options.findIndex(o => o.is_correct)) {
+      setCurrentScore(s => s + 1);
+    }
+  };
+
+  const handleNextQuestion = () => {
+    const questions = lesson?.quiz?.questions || [];
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(i => i + 1);
+      setSelectedOption(null);
+      setQuestionRevealed(false);
+    } else {
+      submitQuiz();
+    }
   };
 
   const submitQuiz = async (): Promise<void> => {
     if (!lesson || !lesson.quiz) return;
     const questions = lesson.quiz.questions;
-    let correct = 0;
-    const answers: QuizAnswer[] = [];
-
-    questions.forEach((q: Question, index: number) => {
-      const selected = quizAnswers[index];
-      const isCorrect = selected !== undefined && q.options[selected]?.is_correct === true;
-      if (isCorrect) correct++;
-      answers.push({
-        question_id: q.question_id,
-        selected_option_id: selected !== undefined ? q.options[selected].option_id : null,
-        is_correct: isCorrect,
-      });
-    });
-
+    const score = currentScore;
     const totalPoints = questions.length;
-    const score = correct;
     const percentage = Math.round((score / totalPoints) * 100);
+
+    const answers: QuizAnswer[] = questions.map((q, index) => {
+      return {
+        question_id: q.question_id,
+        selected_option_id: null,
+        is_correct: false,
+      };
+    });
 
     try {
       const response = await api.submitQuizAttempt(id, {
@@ -506,10 +533,10 @@ export default function LessonViewer() {
   // ─── Loading / Error ─────────────────────────────────────────────────────
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <View style={styles.loadingInner}>
+      <SafeAreaView style={s.loadingContainer}>
+        <View style={s.loadingInner}>
           <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Loading lesson...</Text>
+          <Text style={s.loadingText}>Loading lesson...</Text>
         </View>
       </SafeAreaView>
     );
@@ -517,10 +544,10 @@ export default function LessonViewer() {
 
   if (!lesson) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Lesson not found</Text>
-        <Pressable onPress={() => router.back()} style={styles.errorBackBtn}>
-          <Text style={styles.errorBackBtnText}>← Go Back</Text>
+      <SafeAreaView style={s.loadingContainer}>
+        <Text style={s.errorText}>Lesson not found</Text>
+        <Pressable onPress={() => router.back()} style={s.errorBackBtn}>
+          <Text style={s.errorBackBtnText}>← Go Back</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -528,14 +555,626 @@ export default function LessonViewer() {
 
   const totalSlides = lesson.total_steps;
   const isQuizSlide = currentSlide >= lesson.contents.length;
-  const progressPercent = Math.round(((currentSlide + 1) / totalSlides) * 100);
   const passed = (quizResult?.percentage || 0) >= 60;
   const isPerfect = (quizResult?.percentage || 0) === 100;
+  const currentQuestion = lesson.quiz?.questions[currentQuestionIndex];
+  const slideColor = SLIDE_COLORS[currentSlide % SLIDE_COLORS.length];
+
+  // ─── RENDER: Content Slides ──────────────────────────────────────────────
+  const renderContentSlides = () => {
+    const content = lesson.contents[currentSlide];
+    return (
+      <>
+        <View style={s.glassCard}>
+          <View style={s.heroRow}>
+            <View style={{ flex: 1 }}>
+              <View style={s.moduleBadge}><Text style={s.moduleBadgeText}>LESSON</Text></View>
+              <Text style={s.heroTitle}>{lesson.title}</Text>
+              <Text style={s.heroSub}>{lesson.contents.length} slides · {lesson.difficulty || 'Beginner'}</Text>
+            </View>
+            <Image source={require('../../assets/images/img/senya_blue.png')} style={s.senyaHero} contentFit="contain" />
+          </View>
+        </View>
+
+        <View style={s.dotsRow}>
+          {lesson.contents.map((_, i) => (
+            <Pressable key={i} onPress={() => handleSlideChange(i)}>
+              <View style={[s.dot, {
+                width: i === currentSlide ? 22 : 8,
+                backgroundColor: i <= currentSlide ? slideColor : 'rgba(15,49,114,0.15)'
+              }]} />
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={[s.glassCard, { minHeight: 180 }]}>
+          <View style={[s.slideAccent, { backgroundColor: slideColor }]} />
+          <Text style={[s.slideTitle, { color: slideColor }]}>{content.title}</Text>
+          <Text style={s.slideBody}>{content.content_text}</Text>
+          <Text style={s.slideCounter}>{currentSlide + 1} / {lesson.contents.length}</Text>
+        </View>
+
+        <View style={s.tipRow}>
+          <Image source={require('../../assets/images/img/senyas_logo.png')} style={s.tipLogoSm} contentFit="contain" />
+          <View style={s.tipBubble}>
+            <Text style={s.tipBubbleText}>
+              {currentSlide === 0 ? "Hi! I'm Senya. Let's learn about this lesson!" :
+                currentSlide === lesson.contents.length - 1 ? "You're almost ready for the quiz. You've got this!" :
+                  "Keep going! You're doing great!"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={s.navRow}>
+          {currentSlide > 0 && (
+            <Pressable style={s.ghostBtn} onPress={() => handleSlideChange(currentSlide - 1)}>
+              <Text style={s.ghostBtnText}>← Back</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={[s.primaryBtn, currentSlide === lesson.contents.length - 1 && s.goldBtn, currentSlide > 0 ? { flex: 2 } : { flex: 1 }]}
+            onPress={() => {
+              if (currentSlide === lesson.contents.length - 1) {
+                setCurrentSlide(totalSlides);
+              } else {
+                handleSlideChange(currentSlide + 1);
+              }
+            }}
+          >
+            <Text style={s.primaryBtnText}>
+              {currentSlide === lesson.contents.length - 1 ? '🧠 Start Quiz' : 'Next →'}
+            </Text>
+          </Pressable>
+        </View>
+      </>
+    );
+  };
+
+  // ─── RENDER: Quiz Step-by-Step ──────────────────────────────────────────
+  const renderQuiz = () => {
+    if (!lesson.quiz || !currentQuestion) return null;
+
+    if (quizSubmitted) {
+      return renderResults();
+    }
+
+    const isCorrect = selectedOption !== null && selectedOption === currentQuestion.options.findIndex(o => o.is_correct);
+    const totalQuestions = lesson.quiz.questions.length;
+
+    return (
+      <>
+        <Pressable style={s.backToLessonBtn} onPress={() => setCurrentSlide(0)}>
+          <BookIcon size={16} color="#1848c8" />
+          <Text style={s.backToLessonText}>← Back to Lesson</Text>
+        </Pressable>
+
+        <View style={s.glassCard}>
+          <View style={s.progressHeader}>
+            <Text style={s.progressLabel}>Question {currentQuestionIndex + 1} of {totalQuestions}</Text>
+            <View style={s.xpBadge}><Text style={s.xpText}>⚡ {currentScore * 10} XP</Text></View>
+          </View>
+          <View style={s.progressDots}>
+            {lesson.quiz.questions.map((_, i) => (
+              <View key={i} style={[s.progressDot, {
+                backgroundColor: i < currentQuestionIndex ? '#22c55e' :
+                  i === currentQuestionIndex ? '#2563EB' : 'rgba(15,49,114,0.10)'
+              }]} />
+            ))}
+          </View>
+        </View>
+
+        <View style={[s.glassCard, s.questionCard]}>
+          <Text style={s.questionEmoji}>❓</Text>
+          <Text style={s.questionText}>{currentQuestion.question_text}</Text>
+          {currentQuestion.media_url && (
+            <Image source={{ uri: currentQuestion.media_url }} style={s.questionMedia} contentFit="contain" />
+          )}
+        </View>
+
+        {currentQuestion.options.map((opt, i) => {
+          const isSel = selectedOption === i;
+          const isCorr = i === currentQuestion.options.findIndex(o => o.is_correct);
+          let bgColor = 'rgba(255,255,255,0.62)';
+          let borderColor = 'rgba(255,255,255,0.85)';
+          let textColor = '#0f3172';
+          let circleBg = 'rgba(15,49,114,0.08)';
+
+          if (questionRevealed) {
+            if (isCorr) { bgColor = 'rgba(236,253,245,0.9)'; borderColor = '#6EE7B7'; textColor = '#065F46'; circleBg = '#10B981'; }
+            else if (isSel) { bgColor = 'rgba(254,242,242,0.9)'; borderColor = '#FCA5A5'; textColor = '#991B1B'; circleBg = '#EF4444'; }
+            else { bgColor = 'rgba(255,255,255,0.35)'; textColor = '#9CA3AF'; }
+          } else if (isSel) {
+            bgColor = 'rgba(239,246,255,0.9)'; borderColor = '#93C5FD'; textColor = '#1D4ED8'; circleBg = '#2563EB';
+          }
+
+          return (
+            <Pressable key={`${currentQuestionIndex}-${i}`} style={[s.optionCard, { backgroundColor: bgColor, borderColor }]}
+              onPress={() => handleOptionSelect(i)} disabled={questionRevealed}>
+              <View style={[s.optionCircle, { backgroundColor: circleBg }]}>
+                {questionRevealed && isCorr ? <CheckCircleIcon color="#fff" /> :
+                  questionRevealed && isSel && !isCorr ? <XCircleIcon color="#fff" /> :
+                    <Text style={[s.optionLetter, { color: isSel ? '#fff' : '#4b7bbb' }]}>{String.fromCharCode(65 + i)}</Text>}
+              </View>
+              <Text style={[s.optionText, { color: textColor }]}>{opt.option_text}</Text>
+            </Pressable>
+          );
+        })}
+
+        <View style={s.feedbackRow}>
+          <Image source={require('../../assets/images/img/senya_teaching.png')} style={s.senyaFeedback} contentFit="contain" />
+          <View style={[s.feedbackBubble, questionRevealed && isCorrect ? s.feedbackCorrect : questionRevealed && !isCorrect ? s.feedbackWrong : {}]}>
+            {questionRevealed && isCorrect && <CheckCircleIcon />}
+            {questionRevealed && !isCorrect && <XCircleIcon />}
+            <Text style={[s.feedbackText, questionRevealed && isCorrect ? { color: '#065f46' } : questionRevealed ? { color: '#991b1b' } : {}]}>
+              {questionRevealed
+                ? (isCorrect
+                  ? (currentQuestion.options.find(o => o.is_correct)?.option_text || 'Correct!')
+                  : (currentQuestion.options.find(o => o.is_correct)?.option_text || 'Incorrect!'))
+                : 'Read carefully and pick the best answer!'}
+            </Text>
+          </View>
+        </View>
+
+        {questionRevealed && (
+          <Pressable style={[s.primaryBtn, isCorrect && s.goldBtn]} onPress={handleNextQuestion}>
+            <Text style={s.primaryBtnText}>
+              {currentQuestionIndex < totalQuestions - 1 ? 'Next Question →' : 'See Results →'}
+            </Text>
+          </Pressable>
+        )}
+      </>
+    );
+  };
+
+  // ─── RENDER: Results Sub-Views ──────────────────────────────────────────
+  const renderScoreView = () => {
+    const score = quizResult?.score || 0;
+    const total = quizResult?.total || 0;
+    const pct = quizResult?.percentage || 0;
+    const xpEarned = quizResult?.xpEarned || 0;
+    const stars = pct === 100 ? 3 : pct >= 80 ? 2 : pct >= 50 ? 1 : 0;
+
+    const { label, color } =
+      pct === 100 ? { label: 'Perfect Score!', color: '#F59E0B' } :
+        pct >= 80 ? { label: 'Excellent!', color: '#10B981' } :
+          pct >= 60 ? { label: 'Good Job!', color: '#2563EB' } :
+            { label: 'Keep Practicing!', color: '#8B5CF6' };
+
+    return (
+      <Animated.View style={[s.resultsContainer, {
+        opacity: resultsFadeAnim,
+        transform: [{ scale: resultsScaleAnim }],
+      }]}>
+        {/* Back to Lesson button */}
+        <Pressable style={s.backToLessonBtn} onPress={() => {
+          setQuizSubmitted(false);
+          setCurrentQuestionIndex(0);
+          setSelectedOption(null);
+          setQuestionRevealed(false);
+          setCurrentScore(0);
+          setQuizResult(null);
+          setConfettiFired(false);
+          resultsFadeAnim.setValue(0);
+          resultsScaleAnim.setValue(0.85);
+          setCurrentSlide(0);
+        }}>
+          <BookIcon size={16} color="#1848c8" />
+          <Text style={s.backToLessonText}>← Back to Lesson</Text>
+        </Pressable>
+
+        {/* Result card */}
+        <View style={[s.glassCard, { alignItems: 'center', paddingVertical: 28 }]}>
+          <Image source={require('../../assets/images/img/senya_teaching.png')} style={s.resultSenya} contentFit="contain" />
+
+          {/* Big Circular Percentage Score Badge */}
+          <View style={s.scoreCircleBadge}>
+            <Text style={s.scoreCircleText}>{pct}%</Text>
+            <Text style={s.scoreCircleSub}>Score</Text>
+          </View>
+
+          <View style={s.starsRow}>
+            {[1, 2, 3].map(i => (
+              <Text key={i} style={[s.star, { opacity: i <= stars ? 1 : 0.15, transform: [{ scale: i <= stars ? 1.25 : 1 }] }]}>
+                ⭐
+              </Text>
+            ))}
+          </View>
+
+          <Text style={[s.resultLabel, { color }]}>{label}</Text>
+          <Text style={s.scoreSubtitle}>{score} out of {total} correct answers</Text>
+
+          <View style={s.xpEarnedBadge}>
+            <Text style={s.xpEarnedText}>⚡ +{xpEarned} XP Earned!</Text>
+          </View>
+
+          {userRank && (
+            <View style={s.userRankBadge}>
+              <Text style={s.userRankText}>🏆 Rank #{userRank} on Leaderboard</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Scroll hint - more padding and raised higher */}
+        <View style={s.scrollHintContainer}>
+          <View style={s.scrollHintPill}>
+            <Text style={s.scrollHintText}>👆 Swipe up for the Leaderboard</Text>
+            <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1848c8" strokeWidth="2.5" strokeLinecap="round">
+              <Path d="M12 19V5M5 12l7-7 7 7" />
+            </Svg>
+          </View>
+        </View>
+      </Animated.View>
+    );
+  };
+
+  const handleStudentPress = (student: LeaderboardEntry) => {
+    setSelectedStudent(student);
+    setShowStudentDetail(true);
+  };
+
+  const renderLeaderboardView = () => {
+    const rankings = leaderboard;
+    const rest = rankings.slice(3);
+
+    const rank1 = rankings.find(r => r.rank === 1) || null;
+    const rank2 = rankings.find(r => r.rank === 2) || null;
+    const rank3 = rankings.find(r => r.rank === 3) || null;
+
+    // ─── Improved percentile calculation ─────────────────────────────────
+    let rankPercentileText = "Complete the quiz to see your ranking!";
+    let rankNumText = "#—";
+
+    if (userRank && rankings.length > 0) {
+      rankNumText = `#${userRank}`;
+      // Calculate percentile: (number of people below you / total people) * 100
+      // People below = total - userRank
+      const peopleBelow = rankings.length - userRank;
+      const percentile = Math.round((peopleBelow / rankings.length) * 100);
+
+      if (userRank === 1) {
+        rankPercentileText = `🥇 You're #1! You outscored everyone else!`;
+      } else if (userRank === 2) {
+        rankPercentileText = `🥈 You're #2! You're in the top tier!`;
+      } else if (userRank === 3) {
+        rankPercentileText = `🥉 You're #3! Amazing performance!`;
+      } else {
+        // More natural phrasing for lower ranks
+        const topPercent = Math.round((userRank / rankings.length) * 100);
+        if (topPercent <= 25) {
+          rankPercentileText = `📈 You're in the top ${100 - percentile}% — keep pushing!`;
+        } else if (topPercent <= 50) {
+          rankPercentileText = `👏 You're doing better than ${percentile}% of your classmates!`;
+        } else {
+          rankPercentileText = `💪 Keep practicing! You're improving!`;
+        }
+      }
+    } else if (rankings.length > 0) {
+      rankPercentileText = "You haven't ranked on this leaderboard yet. Try again!";
+    }
+
+    return (
+      <View style={s.leaderboardContainer}>
+        {/* Custom Header */}
+        <View style={s.leaderboardHeader}>
+          <Text style={s.leaderboardHeaderTitle}>🏆 Leaderboard</Text>
+        </View>
+
+        {/* Rank Banner - improved styling */}
+        {userRank ? (
+          <View style={s.rankBanner}>
+            <View style={s.rankBannerLeft}>
+              <View style={s.rankBannerNumContainer}>
+                <Text style={s.rankBannerNum}>{rankNumText}</Text>
+              </View>
+              <View style={s.rankBannerDivider} />
+              <View style={s.rankBannerContent}>
+                <Text style={s.rankBannerMessage}>{rankPercentileText}</Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={[s.rankBanner, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <Text style={[s.rankBannerMessage, { textAlign: 'center', marginBottom: 0 }]}>
+              {rankPercentileText}
+            </Text>
+          </View>
+        )}
+
+        {/* Podium Layout */}
+        <View style={s.podiumRow}>
+          {/* Rank 2 (Left) */}
+          <View style={s.podiumCol}>
+            {rank2 ? (
+              <>
+                <View style={s.podiumAvatarContainer}>
+                  <Pressable onPress={() => handleStudentPress(rank2)}>
+                    <View style={[s.podiumAvatar, { borderColor: '#E5E7EB', backgroundColor: '#9CA3AF' }]}>
+                      <Text style={s.podiumAvatarInitials}>{rank2.initials}</Text>
+                    </View>
+                  </Pressable>
+                  <Text style={s.podiumBadge}>🥈</Text>
+                </View>
+                <Text style={s.podiumName} numberOfLines={1}>{rank2.is_me ? 'You' : rank2.name}</Text>
+                <View style={s.podiumScoreBadge}>
+                  <Text style={s.podiumScoreText}>{rank2.best_score}%</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[s.podiumAvatar, s.podiumAvatarPlaceholder]}>
+                  <Text style={s.podiumAvatarPlaceholderText}>—</Text>
+                </View>
+                <Text style={s.podiumNamePlaceholder}>TBD</Text>
+                <View style={s.podiumScoreBadgePlaceholder}>
+                  <Text style={s.podiumScoreTextPlaceholder}>—</Text>
+                </View>
+              </>
+            )}
+            <View style={[s.podiumBlock, s.podiumBlockSilver]}>
+              <Text style={s.podiumBlockNumber}>2</Text>
+            </View>
+          </View>
+
+          {/* Rank 1 (Middle) */}
+          <View style={s.podiumCol}>
+            {rank1 ? (
+              <>
+                <View style={s.podiumAvatarContainer}>
+                  <View style={s.crownContainer}>
+                    <Text style={{ fontSize: 22 }}>👑</Text>
+                  </View>
+                  <Pressable onPress={() => handleStudentPress(rank1)}>
+                    <View style={[s.podiumAvatar, s.podiumAvatarFirst, { borderColor: '#FBBF24', backgroundColor: '#F59E0B' }]}>
+                      <Text style={s.podiumAvatarInitials}>{rank1.initials}</Text>
+                    </View>
+                  </Pressable>
+                  <Text style={s.podiumBadge}>🥇</Text>
+                </View>
+                <Text style={[s.podiumName, { fontWeight: '800' }]} numberOfLines={1}>{rank1.is_me ? 'You' : rank1.name}</Text>
+                <View style={[s.podiumScoreBadge, s.podiumScoreBadgeGold]}>
+                  <Text style={[s.podiumScoreText, { color: '#D97706' }]}>{rank1.best_score}%</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[s.podiumAvatar, s.podiumAvatarFirst, s.podiumAvatarPlaceholder]}>
+                  <Text style={s.podiumAvatarPlaceholderText}>—</Text>
+                </View>
+                <Text style={s.podiumNamePlaceholder}>TBD</Text>
+                <View style={s.podiumScoreBadgePlaceholder}>
+                  <Text style={s.podiumScoreTextPlaceholder}>—</Text>
+                </View>
+              </>
+            )}
+            <View style={[s.podiumBlock, s.podiumBlockGold]}>
+              <Text style={s.podiumBlockNumber}>1</Text>
+            </View>
+          </View>
+
+          {/* Rank 3 (Right) */}
+          <View style={s.podiumCol}>
+            {rank3 ? (
+              <>
+                <View style={s.podiumAvatarContainer}>
+                  <Pressable onPress={() => handleStudentPress(rank3)}>
+                    <View style={[s.podiumAvatar, { borderColor: '#F97316', backgroundColor: '#C2410C' }]}>
+                      <Text style={s.podiumAvatarInitials}>{rank3.initials}</Text>
+                    </View>
+                  </Pressable>
+                  <Text style={s.podiumBadge}>🥉</Text>
+                </View>
+                <Text style={s.podiumName} numberOfLines={1}>{rank3.is_me ? 'You' : rank3.name}</Text>
+                <View style={s.podiumScoreBadge}>
+                  <Text style={s.podiumScoreText}>{rank3.best_score}%</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[s.podiumAvatar, s.podiumAvatarPlaceholder]}>
+                  <Text style={s.podiumAvatarPlaceholderText}>—</Text>
+                </View>
+                <Text style={s.podiumNamePlaceholder}>TBD</Text>
+                <View style={s.podiumScoreBadgePlaceholder}>
+                  <Text style={s.podiumScoreTextPlaceholder}>—</Text>
+                </View>
+              </>
+            )}
+            <View style={[s.podiumBlock, s.podiumBlockBronze]}>
+              <Text style={s.podiumBlockNumber}>3</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* White Curved Card for Rank 4+ */}
+        <View style={s.leaderboardListCard}>
+          <Text style={s.leaderboardListTitle}>All Rankings</Text>
+
+          {loadingLeaderboard ? (
+            <View style={s.loadingLeaderboard}>
+              <ActivityIndicator size="small" color="#1848c8" />
+              <Text style={s.loadingLeaderboardText}>Loading rankings...</Text>
+            </View>
+          ) : rankings.length === 0 ? (
+            <Text style={s.noRankingsText}>No entries yet. Be the first to rank!</Text>
+          ) : rest.length === 0 ? (
+            <Text style={s.noRankingsText}>Only the top 3 are on the board so far!</Text>
+          ) : (
+            rest.map((r, index) => {
+              const itemRank = r.rank;
+              return (
+                <Pressable
+                  key={r.student_id}
+                  style={[
+                    s.leaderboardListItem,
+                    r.is_me && s.leaderboardListItemMe,
+                    index < rest.length - 1 && s.leaderboardListItemBorder
+                  ]}
+                  onPress={() => handleStudentPress(r)}
+                >
+                  <View style={s.listRankCircle}>
+                    <Text style={s.listRankText}>{itemRank}</Text>
+                  </View>
+
+                  <View style={[s.listAvatar, r.is_me && { backgroundColor: '#1848c8' }]}>
+                    <Text style={s.listAvatarText}>{r.initials}</Text>
+                  </View>
+
+                  <View style={s.listNameContainer}>
+                    <Text style={[s.listName, r.is_me && s.listNameMe]}>
+                      {r.is_me ? 'You' : r.name}
+                    </Text>
+                    <Text style={s.listAttempts}>{r.attempts} {r.attempts === 1 ? 'try' : 'tries'}</Text>
+                  </View>
+
+                  <Text style={[s.listScoreText, r.is_me && s.listScoreTextMe]}>
+                    {r.best_score}%
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+
+          {/* Attempt History - moved here below rankings */}
+          <Pressable
+            style={[s.historyToggleBtn, { marginTop: 18 }]}
+            onPress={() => setShowHistory(!showHistory)}
+          >
+            <View style={s.historyToggleLeft}>
+              <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" strokeWidth="2" strokeLinecap="round">
+                <Circle cx="12" cy="12" r="10" />
+                <Path d="M12 6v6l4 2" />
+              </Svg>
+              <Text style={s.historyToggleText}>Your Attempt History</Text>
+              <View style={s.historyCountBadge}>
+                <Text style={s.historyCountText}>{attemptHistory.length}</Text>
+              </View>
+            </View>
+            <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1848c8" strokeWidth="2.5">
+              {showHistory ? <Path d="M18 15l-6-6-6 6" /> : <Path d="M6 9l6 6 6-6" />}
+            </Svg>
+          </Pressable>
+
+          {showHistory && (
+            <View style={s.historyList}>
+              {attemptHistory.length === 0 ? (
+                <Text style={s.historyEmpty}>No previous attempts found.</Text>
+              ) : (
+                attemptHistory.map((attempt, index) => (
+                  <View key={index} style={s.historyItem}>
+                    <Text style={s.historyItemLabel}>Attempt #{attemptHistory.length - index}</Text>
+                    <View style={s.historyItemScore}>
+                      <Text style={[s.historyItemScoreText, { color: attempt.percentage >= 60 ? '#10B981' : '#EF4444' }]}>
+                        {attempt.percentage}%
+                      </Text>
+                      <Text style={s.historyItemStatus}>
+                        {attempt.percentage >= 60 ? '✅ Passed' : '❌ Failed'}
+                      </Text>
+                    </View>
+                    <Text style={s.historyItemDate}>
+                      {new Date(attempt.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+
+          {/* Action buttons at the bottom of Leaderboard - smaller */}
+          <View style={s.leaderboardActions}>
+            <Pressable style={[s.smallBtn, s.smallGhostBtn]} onPress={() => {
+              setQuizSubmitted(false);
+              setCurrentQuestionIndex(0);
+              setSelectedOption(null);
+              setQuestionRevealed(false);
+              setCurrentScore(0);
+              setQuizResult(null);
+              setConfettiFired(false);
+              resultsFadeAnim.setValue(0);
+              resultsScaleAnim.setValue(0.85);
+              setCurrentSlide(0);
+              // Scroll back to top
+              resultsScrollRef.current?.scrollTo?.({ y: 0, animated: true });
+            }}>
+              <RefreshIcon size={14} color="#0f3172" />
+              <Text style={s.smallBtnText}>Try Again</Text>
+            </Pressable>
+            <Pressable style={[s.smallBtn, s.smallPrimaryBtn]} onPress={() => router.push('/(tabs)/dashboard')}>
+              <HomeIcon size={14} color="#fff" />
+              <Text style={[s.smallBtnText, { color: '#fff' }]}>Dashboard</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderResults = () => {
+    const SCREEN_HEIGHT = Dimensions.get('window').height;
+    const scoreTranslateY = parallelScrollY.interpolate({
+      inputRange: [0, SCREEN_HEIGHT],
+      outputRange: [0, -SCREEN_HEIGHT * 0.15],
+      extrapolate: 'clamp',
+    });
+    const scoreOpacity = parallelScrollY.interpolate({
+      inputRange: [0, SCREEN_HEIGHT * 0.25, SCREEN_HEIGHT * 0.5],
+      outputRange: [1, 0.75, 0],
+      extrapolate: 'clamp',
+    });
+    const scoreScale = parallelScrollY.interpolate({
+      inputRange: [0, SCREEN_HEIGHT * 0.5],
+      outputRange: [1, 0.95],
+      extrapolate: 'clamp',
+    });
+    const bgColor = parallelScrollY.interpolate({
+      inputRange: [0, SCREEN_HEIGHT * 0.4],
+      outputRange: ['#eaf5fd', '#1848c8'],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <Animated.View style={{ flex: 1, backgroundColor: bgColor }}>
+        <Animated.ScrollView
+          ref={resultsScrollRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 0 }}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: parallelScrollY } } }],
+            { useNativeDriver: false }
+          )}
+        >
+          {/* Top bar */}
+          <View style={[s.topBar, { paddingHorizontal: 16, paddingTop: 8 }]}>
+            <Text style={s.logoText}>SEÑAS</Text>
+            <Pressable style={s.exitBtn} onPress={() => setShowExitModal(true)}>
+              <Text style={s.exitBtnText}>✕ Exit</Text>
+            </Pressable>
+          </View>
+
+          {/* Score layer — parallax drift + fade */}
+          <Animated.View style={{
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+            opacity: scoreOpacity,
+            transform: [{ translateY: scoreTranslateY }, { scale: scoreScale }],
+          }}>
+            {renderScoreView()}
+          </Animated.View>
+
+          {/* Leaderboard sheet — rises over the score view */}
+          <View style={s.leaderboardSheet}>
+            <View style={s.sheetHandle} />
+            {renderLeaderboardView()}
+          </View>
+        </Animated.ScrollView>
+      </Animated.View>
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-
-      {/* Confetti Layer */}
+    <SafeAreaView style={[s.container, { backgroundColor: '#eaf5fd' }]}>
+      {/* Confetti */}
       {passed && (
         <ConfettiCannon
           ref={confettiRef}
@@ -549,690 +1188,155 @@ export default function LessonViewer() {
         />
       )}
 
-      {/* ─── Top Bar ─────────────────────────────────────────────────────── */}
-      <View style={styles.topBar}>
-        <Pressable onPress={() => setShowExitModal(true)} style={styles.backBtn}>
-          <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f3172" strokeWidth="2.5">
-            <Path d="M19 12H5" /><Path d="M12 19l-7-7 7-7" />
-          </Svg>
-        </Pressable>
+      <ExitModal
+        visible={showExitModal}
+        onClose={() => setShowExitModal(false)}
+        onConfirm={handleExit}
+      />
 
-        <View style={styles.topBarCenter}>
-          <Text style={styles.topBarTitle} numberOfLines={1}>{lesson.title}</Text>
-          {/* Progress Bar */}
-          <View style={styles.topProgressTrack}>
-            <View style={[styles.topProgressFill, { width: `${Math.min(progressPercent, 100)}%` }]} />
+      {/* Student Detail Modal */}
+      <StudentDetailModal
+        visible={showStudentDetail}
+        onClose={() => setShowStudentDetail(false)}
+        student={selectedStudent}
+      />
+
+      {quizSubmitted ? (
+        renderResults()
+      ) : (
+        <ScrollView contentContainerStyle={s.moduleScroll}>
+          <View style={s.topBar}>
+            <Text style={s.logoText}>SEÑAS</Text>
+            <Pressable style={s.exitBtn} onPress={() => setShowExitModal(true)}>
+              <Text style={s.exitBtnText}>✕ Exit</Text>
+            </Pressable>
           </View>
-        </View>
-
-        <View style={styles.slideBadge}>
-          <Text style={styles.slideBadgeText}>{Math.min(currentSlide + 1, totalSlides)}/{totalSlides}</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-
-        {/* ─── Content Slide ─────────────────────────────────────────────── */}
-        {!isQuizSlide ? (
-          <View style={styles.slideCard}>
-            <View style={styles.slideTopRow}>
-              <View style={styles.stepPill}>
-                <Text style={styles.stepPillText}>Step {currentSlide + 1}</Text>
-              </View>
-              <View style={styles.typePill}>
-                <Text style={styles.typePillText}>
-                  {lesson.contents[currentSlide]?.content_type?.toUpperCase() || 'TEXT'}
-                </Text>
-              </View>
-            </View>
-
-            <Text style={styles.slideTitle}>{lesson.contents[currentSlide]?.title || ''}</Text>
-
-            {lesson.contents[currentSlide]?.media_url && (
-              <View style={styles.mediaWrapper}>
-                <Image
-                  source={{ uri: lesson.contents[currentSlide]?.media_url }}
-                  style={styles.slideMedia}
-                  contentFit="contain"
-                />
-              </View>
-            )}
-
-            <Text style={styles.slideContent}>{lesson.contents[currentSlide]?.content_text || ''}</Text>
-
-            {lesson.contents[currentSlide]?.gesture_name && (
-              <View style={styles.gestureHint}>
-                <HandIcon size={18} color="#92400E" />
-                <Text style={styles.gestureText}>Gesture: {lesson.contents[currentSlide]?.gesture_name}</Text>
-              </View>
-            )}
-          </View>
-
-        ) : (
-          // ─── Quiz Slide ─────────────────────────────────────────────────
-          <View style={styles.quizContainer}>
-            {!quizSubmitted ? (
-              <>
-                <View style={styles.quizHeader}>
-                  <View style={styles.quizIconBox}>
-                    <ClipboardIcon size={32} color="#2563EB" />
-                  </View>
-                  <Text style={styles.quizTitle}>{lesson.quiz?.title || 'Quiz Time!'}</Text>
-                  <Text style={styles.quizDescription}>{lesson.quiz?.description || ''}</Text>
-                </View>
-
-                {lesson.quiz?.questions.map((q: Question, qIndex: number) => (
-                  <View key={qIndex} style={styles.questionCard}>
-                    <View style={styles.questionNumRow}>
-                      <View style={styles.questionNumBadge}>
-                        <Text style={styles.questionNumText}>{qIndex + 1}</Text>
-                      </View>
-                      <Text style={styles.questionNumLabel}>of {lesson.quiz?.questions.length}</Text>
-                    </View>
-
-                    <Text style={styles.questionText}>{q.question_text}</Text>
-
-                    {q.media_url && (
-                      <Image source={{ uri: q.media_url }} style={styles.questionMedia} contentFit="contain" />
-                    )}
-
-                    <View style={styles.optionsContainer}>
-                      {q.options.map((opt: Option, oIndex: number) => {
-                        const selected = quizAnswers[qIndex] === oIndex;
-                        return (
-                          <Pressable
-                            key={oIndex}
-                            style={[styles.optionButton, selected && styles.optionSelected]}
-                            onPress={() => handleQuizAnswer(qIndex, oIndex)}
-                          >
-                            <View style={[styles.optionLetter, selected && styles.optionLetterSelected]}>
-                              <Text style={[styles.optionLetterText, selected && styles.optionLetterTextSelected]}>
-                                {String.fromCharCode(65 + oIndex)}
-                              </Text>
-                            </View>
-                            <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                              {opt.option_text}
-                            </Text>
-                            {selected && (
-                              <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5">
-                                <Polyline points="20 6 9 17 4 12" />
-                              </Svg>
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ))}
-
-                <Pressable
-                  style={[
-                    styles.submitButton,
-                    Object.keys(quizAnswers).length < (lesson.quiz?.questions.length || 0) && styles.submitDisabled,
-                  ]}
-                  onPress={submitQuiz}
-                  disabled={Object.keys(quizAnswers).length < (lesson.quiz?.questions.length || 0)}
-                >
-                  <Text style={styles.submitButtonText}>Submit Quiz</Text>
-                </Pressable>
-
-                <Text style={styles.answerCount}>
-                  {Object.keys(quizAnswers).length}/{lesson.quiz?.questions.length || 0} answered
-                </Text>
-              </>
-            ) : (
-              // ─── Quiz Results ─────────────────────────────────────────
-              <Animated.View
-                style={[
-                  styles.resultsCard,
-                  {
-                    opacity: resultsFadeAnim,
-                    transform: [{ scale: resultsScaleAnim }],
-                  },
-                ]}
-              >
-                {/* Trophy / Result Header */}
-                <View style={[styles.resultHeaderBanner, { backgroundColor: passed ? '#ECFDF5' : '#FEF2F2' }]}>
-                  <View style={[styles.resultHeaderIconBox, { backgroundColor: passed ? 'rgba(5,150,105,0.12)' : 'rgba(220,38,38,0.10)' }]}>
-                    {isPerfect ? (
-                      <StarIcon size={36} color="#D97706" />
-                    ) : passed ? (
-                      <TrophyIcon size={36} color="#059669" />
-                    ) : (
-                      <XCircleIcon size={36} color="#DC2626" />
-                    )}
-                  </View>
-                  <Text style={[styles.resultHeaderTitle, { color: passed ? '#065F46' : '#991B1B' }]}>
-                    {isPerfect ? 'Perfect Score!' : passed ? 'Amazing Work!' : 'Keep Practicing!'}
-                  </Text>
-                  <Text style={[styles.resultHeaderSub, { color: passed ? '#059669' : '#DC2626' }]}>
-                    {isPerfect
-                      ? 'You got every single question right!'
-                      : passed
-                        ? 'You passed the quiz, great job!'
-                        : "Don't give up — try again and you'll ace it!"}
-                  </Text>
-                </View>
-
-                {/* Score Ring - Now perfectly centered */}
-                <ScoreRing percentage={quizResult?.percentage || 0} passed={passed} />
-
-                {/* Score Number Display */}
-                <View style={styles.scoreRow}>
-                  <Text style={styles.scoreNum}>{quizResult?.score || 0}</Text>
-                  <Text style={styles.scoreSlash}>/</Text>
-                  <Text style={styles.scoreTotal}>{quizResult?.total || 0}</Text>
-                  <Text style={styles.scoreLabel}>{' '}correct</Text>
-                </View>
-
-                {/* XP Earned Banner */}
-                <View style={styles.xpBanner}>
-                  <View style={styles.xpBannerLeft}>
-                    <View style={styles.xpBannerIconBox}>
-                      <ZapIcon size={15} color="#D97706" />
-                    </View>
-                    <Text style={styles.xpBannerLabel}>XP Earned</Text>
-                  </View>
-                  <Text style={styles.xpBannerValue}>+{quizResult?.xpEarned || 0} XP</Text>
-                </View>
-
-                {/* Stats Row */}
-                <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <View style={styles.statIconBox}>
-                      <ZapIcon size={14} color="#2563EB" />
-                    </View>
-                    <Text style={styles.statValue}>{quizResult?.totalXp || 0}</Text>
-                    <Text style={styles.statLabel}>Total XP</Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.statItem}>
-                    <View style={styles.statIconBox}>
-                      <AwardIcon size={14} color="#059669" />
-                    </View>
-                    <Text style={styles.statValue}>Lvl {quizResult?.level || 1}</Text>
-                    <Text style={styles.statLabel}>Level</Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.statItem}>
-                    <View style={styles.statIconBox}>
-                      <FlameIcon size={14} color="#F97316" />
-                    </View>
-                    <Text style={styles.statValue}>{quizResult?.streakDays || 0}</Text>
-                    <Text style={styles.statLabel}>Day Streak</Text>
-                  </View>
-                </View>
-
-                {/* Action Buttons */}
-                <Pressable style={styles.finishBtn} onPress={() => router.push('/(tabs)/dashboard')}>
-                  <HomeIcon size={16} color="#fff" />
-                  <Text style={styles.finishBtnText}>Go to Dashboard</Text>
-                </Pressable>
-
-                <Pressable style={styles.retryBtn} onPress={() => {
-                  setQuizSubmitted(false);
-                  setQuizAnswers({});
-                  setQuizResult(null);
-                  setConfettiFired(false);
-                  resultsFadeAnim.setValue(0);
-                  resultsScaleAnim.setValue(0.85);
-                }}>
-                  <RefreshIcon size={15} color="#2563EB" />
-                  <Text style={styles.retryBtnText}>Try Again</Text>
-                </Pressable>
-
-                {/* ─── Attempt History Section ──────────────────────────── */}
-                <Pressable
-                  style={styles.historyToggleBtn}
-                  onPress={() => setShowHistory(!showHistory)}
-                >
-                  <View style={styles.historyToggleLeft}>
-                    <BarChartIcon size={16} color="#2563EB" />
-                    <Text style={styles.historyToggleText}>Attempt History</Text>
-                    <View style={styles.historyCountBadge}>
-                      <Text style={styles.historyCountText}>{attemptHistory.length}</Text>
-                    </View>
-                  </View>
-                  <Svg
-                    width="16" height="16" viewBox="0 0 24 24"
-                    fill="none" stroke="#2563EB" strokeWidth="2.5"
-                  >
-                    {showHistory
-                      ? <Path d="M18 15l-6-6-6 6" />
-                      : <Path d="M6 9l6 6 6-6" />}
-                  </Svg>
-                </Pressable>
-
-                {showHistory && (
-                  <View style={styles.historyList}>
-                    {attemptHistory.length === 0 ? (
-                      <Text style={styles.historyEmpty}>No previous attempts found.</Text>
-                    ) : (
-                      attemptHistory.map((attempt, index) => (
-                        <AttemptCard
-                          key={index}
-                          attempt={attempt}
-                          index={index}
-                          total={attemptHistory.length}
-                        />
-                      ))
-                    )}
-
-                    {/* History Summary Stats */}
-                    {attemptHistory.length > 1 && (
-                      <View style={styles.historySummary}>
-                        <View style={styles.historySummaryItem}>
-                          <Text style={styles.historySummaryValue}>
-                            {Math.round(attemptHistory.reduce((a, b) => a + b.percentage, 0) / attemptHistory.length)}%
-                          </Text>
-                          <Text style={styles.historySummaryLabel}>Avg Score</Text>
-                        </View>
-                        <View style={styles.historySummaryDivider} />
-                        <View style={styles.historySummaryItem}>
-                          <Text style={styles.historySummaryValue}>
-                            {Math.max(...attemptHistory.map(a => a.percentage))}%
-                          </Text>
-                          <Text style={styles.historySummaryLabel}>Best Score</Text>
-                        </View>
-                        <View style={styles.historySummaryDivider} />
-                        <View style={styles.historySummaryItem}>
-                          <Text style={styles.historySummaryValue}>{attemptHistory.length}</Text>
-                          <Text style={styles.historySummaryLabel}>Attempts</Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </Animated.View>
-            )}
-          </View>
-        )}
-
-        {/* ─── Navigation ──────────────────────────────────────────────────── */}
-        {!quizSubmitted && (
-          <View style={styles.navRow}>
-            {currentSlide > 0 && (
-              <Pressable
-                style={styles.navPrevBtn}
-                onPress={() => handleSlideChange(currentSlide - 1)}
-              >
-                <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f3172" strokeWidth="2.5">
-                  <Path d="M19 12H5" /><Path d="M12 19l-7-7 7-7" />
-                </Svg>
-                <Text style={styles.navPrevText}>Previous</Text>
-              </Pressable>
-            )}
-
-            {currentSlide < totalSlides - 1 && (
-              <Pressable
-                style={[styles.navNextBtn, { flex: currentSlide === 0 ? 1 : undefined }]}
-                onPress={() => handleSlideChange(currentSlide + 1)}
-              >
-                <Text style={styles.navNextText}>
-                  {currentSlide === lesson.contents.length - 1 ? 'Start Quiz' : 'Next'}
-                </Text>
-                <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
-                  <Path d="M5 12h14" /><Path d="M12 5l7 7-7 7" />
-                </Svg>
-              </Pressable>
-            )}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* ─── Exit Modal ──────────────────────────────────────────────────────── */}
-      <Modal visible={showExitModal} transparent animationType="fade">
-        <Pressable style={styles.modalOverlay} onPress={() => setShowExitModal(false)}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalEmoji}>🚪</Text>
-            <Text style={styles.modalTitle}>Exit Lesson?</Text>
-            <Text style={styles.modalDescription}>
-              Your progress is saved. You can continue later from where you left off!
-            </Text>
-            <View style={styles.modalButtons}>
-              <Pressable style={styles.modalContinueBtn} onPress={() => setShowExitModal(false)}>
-                <Text style={styles.modalContinueBtnText}>Keep Learning</Text>
-              </Pressable>
-              <Pressable
-                style={styles.modalExitBtn}
-                onPress={() => { setShowExitModal(false); router.push('/(tabs)/dashboard'); }}
-              >
-                <Text style={styles.modalExitBtnText}>Exit</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
+          {!isQuizSlide ? renderContentSlides() : renderQuiz()}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F6FF' },
+// ─── Styles ──────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  container: { flex: 1 },
 
   // Loading
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F6FF' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eaf5fd' },
   loadingInner: { alignItems: 'center', gap: 12 },
   loadingText: { fontSize: 15, fontWeight: '600', color: '#4B7FCC' },
   errorText: { fontSize: 18, color: '#DC2626', marginBottom: 16, fontWeight: '700' },
   errorBackBtn: { backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 24 },
   errorBackBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
-  // Top Bar
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 14,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 4,
-    gap: 10,
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(15,49,114,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topBarCenter: { flex: 1 },
-  topBarTitle: { fontSize: 14, fontWeight: '800', color: '#0f3172', marginBottom: 6 },
-  topProgressTrack: {
-    height: 5,
-    backgroundColor: 'rgba(15,49,114,0.10)',
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  topProgressFill: {
-    height: '100%',
-    backgroundColor: '#2563EB',
-    borderRadius: 99,
-  },
-  slideBadge: {
-    backgroundColor: 'rgba(37,99,235,0.12)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  slideBadgeText: { fontSize: 11, fontWeight: '800', color: '#2563EB' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
 
-  // Scroll Content
-  content: { padding: 16, paddingBottom: 50, gap: 14 },
+  // Exit modal
+  exitModal: { width: '88%', maxWidth: 340, backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 28, padding: 28, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 48, elevation: 24 },
+  exitIconBox: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(239,68,68,0.10)', borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  exitTitle: { fontSize: 20, fontWeight: '800', color: '#0f3172', marginBottom: 8 },
+  exitDesc: { fontSize: 13, color: '#6B7280', fontWeight: '500', lineHeight: 20, marginBottom: 24, textAlign: 'center' },
+  exitBtns: { flexDirection: 'row', gap: 12, width: '100%' },
+  stayBtn: { flex: 1, paddingVertical: 13, backgroundColor: 'rgba(15,49,114,0.07)', borderWidth: 1, borderColor: 'rgba(15,49,114,0.10)', borderRadius: 40, alignItems: 'center' },
+  stayText: { fontSize: 14, fontWeight: '700', color: '#0f3172' },
+  exitConfirmBtn: { flex: 1.3, paddingVertical: 13, backgroundColor: '#DC2626', borderRadius: 40, alignItems: 'center', shadowColor: '#DC2626', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 8 },
+  exitConfirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
-  // Slide Card
-  slideCard: {
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    padding: 22,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 5,
-  },
-  slideTopRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  stepPill: {
-    backgroundColor: '#2563EB',
-    borderRadius: 99,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  stepPillText: { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
-  typePill: {
-    backgroundColor: 'rgba(15,49,114,0.08)',
-    borderRadius: 99,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  typePillText: { fontSize: 11, fontWeight: '700', color: '#0f3172', letterSpacing: 0.5 },
-  slideTitle: { fontSize: 22, fontWeight: '900', color: '#0f3172', marginBottom: 14, lineHeight: 28 },
-  mediaWrapper: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    marginBottom: 14,
-    backgroundColor: '#F0F6FF',
-  },
-  slideMedia: { width: '100%', height: 200 },
-  slideContent: { fontSize: 16, lineHeight: 26, color: '#374151' },
-  gestureHint: {
+  // Layout
+  moduleScroll: { padding: 16, paddingBottom: 60 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
+  exitBtn: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 12, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
+  exitBtnText: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
+
+  // Back to Lesson button
+  backToLessonBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 16,
-    backgroundColor: '#FFF8ED',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#FFE8CC',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginBottom: 4,
   },
-  gestureText: { fontSize: 14, fontWeight: '700', color: '#92400E' },
+  backToLessonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1848c8',
+  },
+
+  // Glass card
+  glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 12, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
+
+  // Module/Content
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  moduleBadge: { backgroundColor: 'rgba(15,49,114,0.08)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, alignSelf: 'flex-start', marginBottom: 8 },
+  moduleBadgeText: { fontSize: 11, fontWeight: '800', color: '#1848c8', letterSpacing: 0.5 },
+  heroTitle: { fontSize: 20, fontWeight: '800', color: '#0f3172', marginBottom: 4 },
+  heroSub: { fontSize: 12, color: '#4b7bbb', fontWeight: '500' },
+  senyaHero: { width: 80, height: 80, flexShrink: 0 },
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginBottom: 12 },
+  dot: { height: 8, borderRadius: 99 },
+  slideAccent: { height: 4, borderRadius: 4, marginBottom: 14, marginHorizontal: -18, marginTop: -18 },
+  slideTitle: { fontSize: 17, fontWeight: '800', marginBottom: 10 },
+  slideBody: { fontSize: 14, color: '#334155', lineHeight: 22 },
+  slideCounter: { fontSize: 11, color: '#9CA3AF', fontWeight: '600', marginTop: 12, textAlign: 'right' },
+  tipRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 14 },
+  tipLogoSm: { width: 56, height: 56, flexShrink: 0 },
+  tipBubble: { flex: 1, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 14, padding: 12 },
+  tipBubbleText: { fontSize: 12, color: '#0f3172', fontWeight: '500', lineHeight: 18 },
+  navRow: { flexDirection: 'row', gap: 10 },
+  primaryBtn: { flex: 1, backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 14, alignItems: 'center', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 10 },
+  goldBtn: { backgroundColor: '#D97706' },
+  primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  ghostBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 60, paddingVertical: 14, alignItems: 'center' },
+  ghostBtnText: { fontSize: 15, fontWeight: '700', color: '#0f3172' },
 
   // Quiz
-  quizContainer: { gap: 14 },
-  quizHeader: {
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  quizIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: 'rgba(37,99,235,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  quizTitle: { fontSize: 20, fontWeight: '900', color: '#0f3172', textAlign: 'center' },
-  quizDescription: { fontSize: 13, color: '#6B7280', textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  progressLabel: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
+  xpBadge: { backgroundColor: 'rgba(245,158,11,0.13)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 10 },
+  xpText: { fontSize: 12, fontWeight: '800', color: '#92400E' },
+  progressDots: { flexDirection: 'row', gap: 4 },
+  progressDot: { flex: 1, height: 5, borderRadius: 99 },
+  questionCard: { alignItems: 'center', paddingVertical: 24 },
+  questionEmoji: { fontSize: 72, marginBottom: 12 },
+  questionText: { fontSize: 16, fontWeight: '800', color: '#0f3172', textAlign: 'center', lineHeight: 24 },
+  questionMedia: { width: '100%', height: 150, borderRadius: 10, marginTop: 12 },
+  optionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 13, marginBottom: 8 },
+  optionCircle: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  optionLetter: { fontSize: 13, fontWeight: '800' },
+  optionText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  feedbackRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginVertical: 12 },
+  senyaFeedback: { width: 80, height: 80, flexShrink: 0 },
+  feedbackBubble: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 16, padding: 12 },
+  feedbackCorrect: { backgroundColor: 'rgba(236,253,245,0.88)', borderColor: '#a7f3d0' },
+  feedbackWrong: { backgroundColor: 'rgba(254,242,242,0.88)', borderColor: '#fecaca' },
+  feedbackText: { flex: 1, fontSize: 12.5, fontWeight: '500', color: '#0f3172', lineHeight: 18 },
 
-  questionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  questionNumRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  questionNumBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  questionNumText: { fontSize: 14, fontWeight: '900', color: '#fff' },
-  questionNumLabel: { fontSize: 12, fontWeight: '600', color: '#9CA3AF' },
-  questionText: { fontSize: 16, fontWeight: '800', color: '#0f3172', marginBottom: 14, lineHeight: 24 },
-  questionMedia: { width: '100%', height: 150, borderRadius: 10, marginBottom: 12 },
+  // Results
+  resultsContainer: { gap: 8 },
+  resultSenya: { width: 90, height: 90, marginBottom: 4 },
+  starsRow: { flexDirection: 'row', gap: 4, marginVertical: 6 },
+  star: { fontSize: 28 },
+  resultLabel: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
+  scoreSubtitle: { fontSize: 14, color: '#6B7280', fontWeight: '500', marginBottom: 8 },
+  xpEarnedBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 18 },
+  xpEarnedText: { fontSize: 14, fontWeight: '800', color: '#92400E' },
+  userRankBadge: { marginTop: 6, backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 16 },
+  userRankText: { fontSize: 14, fontWeight: '700', color: '#D97706' },
 
-  optionsContainer: { gap: 9 },
-  optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 13,
-    borderRadius: 13,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
-  },
-  optionSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-  },
-  optionLetter: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  optionLetterSelected: { backgroundColor: '#2563EB' },
-  optionLetterText: { fontSize: 12, fontWeight: '800', color: '#6B7280' },
-  optionLetterTextSelected: { color: '#fff' },
-  optionText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  optionTextSelected: { color: '#1D4ED8', fontWeight: '700' },
-
-  submitButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 99,
-    paddingVertical: 17,
-    alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  submitDisabled: { opacity: 0.45, shadowOpacity: 0 },
-  submitButtonText: { fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
-  answerCount: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginTop: -6 },
-
-  // Results Card
-  resultsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  resultHeaderBanner: {
-    padding: 24,
-    alignItems: 'center',
-    gap: 6,
-  },
-  resultHeaderIconBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  resultHeaderTitle: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
-  resultHeaderSub: { fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 20 },
-
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 6,
-    paddingHorizontal: 20,
-  },
-  scoreNum: { fontSize: 48, fontWeight: '900', color: '#0f3172' },
-  scoreSlash: { fontSize: 28, fontWeight: '700', color: '#D1D5DB', marginHorizontal: 4 },
-  scoreTotal: { fontSize: 28, fontWeight: '700', color: '#9CA3AF' },
-  scoreLabel: { fontSize: 14, fontWeight: '600', color: '#9CA3AF' },
-
-  xpBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: '#FFFBEB',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1.5,
-    borderColor: '#FDE68A',
-  },
-  xpBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  xpBannerIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: 'rgba(217,119,6,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  xpBannerLabel: { fontSize: 14, fontWeight: '700', color: '#92400E' },
-  xpBannerValue: { fontSize: 22, fontWeight: '900', color: '#D97706' },
-
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    marginHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
-    marginBottom: 20,
-  },
-  statItem: { alignItems: 'center', gap: 4 },
-  statIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: 'rgba(15,49,114,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statValue: { fontSize: 15, fontWeight: '800', color: '#0f3172' },
-  statLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
-  statDivider: { width: 1, height: 40, backgroundColor: 'rgba(0,0,0,0.06)' },
-
-  finishBtn: {
-    marginHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#059669',
-    borderRadius: 99,
-    paddingVertical: 15,
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.30,
-    shadowRadius: 12,
-    elevation: 7,
-    marginBottom: 10,
-  },
-  finishBtnText: { fontSize: 16, fontWeight: '800', color: '#fff' },
-
-  retryBtn: {
-    marginHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(37,99,235,0.10)',
-    borderRadius: 99,
-    paddingVertical: 13,
-    marginBottom: 20,
-  },
-  retryBtnText: { fontSize: 15, fontWeight: '700', color: '#2563EB' },
+  // Rankings / Leaderboard
+  rankingsTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172', marginBottom: 10, marginTop: 4 },
+  loadingLeaderboard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 20 },
+  loadingLeaderboardText: { fontSize: 14, color: '#6B7280' },
+  noRankingsText: { fontSize: 14, color: '#6B7280', textAlign: 'center', paddingVertical: 20 },
 
   // History
   historyToggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 14,
     backgroundColor: '#EFF6FF',
     borderRadius: 14,
     paddingVertical: 13,
@@ -1241,7 +1345,6 @@ const styles = StyleSheet.create({
     borderColor: '#BFDBFE',
   },
   historyToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  historyToggleEmoji: { fontSize: 18 },
   historyToggleText: { fontSize: 14, fontWeight: '700', color: '#1D4ED8' },
   historyCountBadge: {
     backgroundColor: '#2563EB',
@@ -1250,113 +1353,531 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   historyCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
-
-  historyList: { paddingHorizontal: 20, paddingBottom: 20, gap: 0 },
+  historyList: { backgroundColor: 'rgba(255,255,255,0.62)', borderRadius: 14, padding: 12, marginTop: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
   historyEmpty: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 16 },
+  historyItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(15,49,114,0.06)' },
+  historyItemLabel: { fontSize: 13, fontWeight: '600', color: '#0f3172' },
+  historyItemScore: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyItemScoreText: { fontSize: 14, fontWeight: '800' },
+  historyItemStatus: { fontSize: 11, fontWeight: '600', color: '#6B7280' },
+  historyItemDate: { fontSize: 10, color: '#9CA3AF' },
 
-  historySummary: {
-    flexDirection: 'row',
+  // Sub-view: Score View additions
+  scoreCircleBadge: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 5,
+    borderColor: '#3B82F6',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    paddingVertical: 14,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    marginVertical: 10,
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  historySummaryItem: { alignItems: 'center', gap: 3 },
-  historySummaryValue: { fontSize: 18, fontWeight: '900', color: '#0f3172' },
-  historySummaryLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
-  historySummaryDivider: { width: 1, height: 35, backgroundColor: '#E2E8F0' },
+  scoreCircleText: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#1848c8',
+  },
+  scoreCircleSub: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
-  // Navigation
-  navRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  navPrevBtn: {
+  // Sub-view: Leaderboard View styles
+  leaderboardContainer: {
     flex: 1,
+  },
+  leaderboardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  leaderboardHeaderTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  rankBanner: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  rankBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  rankBannerNumContainer: {
+    minWidth: 48,
+    alignItems: 'center',
+  },
+  rankBannerNum: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FBBF24',
+    textShadowColor: 'rgba(251,191,36,0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  rankBannerDivider: {
+    width: 1.5,
+    height: 36,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  rankBannerContent: {
+    flex: 1,
+  },
+  rankBannerMessage: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+    lineHeight: 18,
+    flexShrink: 1,
+  },
+
+  podiumRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginHorizontal: 16,
+    paddingBottom: 16,
+    height: 240,
+  },
+  podiumCol: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  podiumAvatarContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  crownContainer: {
+    position: 'absolute',
+    top: -16,
+    zIndex: 10,
+  },
+  podiumAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  podiumAvatarFirst: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 3,
+  },
+  podiumAvatarInitials: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  podiumAvatarPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  podiumAvatarPlaceholderText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontWeight: 'bold',
+  },
+  podiumBadge: {
+    position: 'absolute',
+    bottom: -6,
+    right: -4,
+    fontSize: 14,
+  },
+  podiumName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+    marginTop: 4,
+    textAlign: 'center',
+    width: 80,
+  },
+  podiumNamePlaceholder: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.4)',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  podiumScoreBadge: {
     backgroundColor: '#fff',
-    borderRadius: 99,
-    paddingVertical: 15,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  podiumScoreBadgeGold: {
+    backgroundColor: '#FFFBEB',
+  },
+  podiumScoreBadgePlaceholder: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 4,
+  },
+  podiumScoreText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#1848c8',
+  },
+  podiumScoreTextPlaceholder: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.3)',
+  },
+  podiumBlock: {
+    width: '90%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  podiumBlockGold: {
+    height: 110,
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
+  },
+  podiumBlockSilver: {
+    height: 85,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  podiumBlockBronze: {
+    height: 65,
+    backgroundColor: 'rgba(255, 255, 255, 0.11)',
+  },
+  podiumBlockNumber: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#fff',
+  },
+  leaderboardListCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 30,
+    minHeight: 200,
+  },
+  leaderboardListTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f3172',
+    marginBottom: 16,
+  },
+  leaderboardListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  leaderboardListItemMe: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    marginHorizontal: -12,
+  },
+  leaderboardListItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  listRankCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  listRankText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  listAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  listAvatarText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  listNameContainer: {
+    flex: 1,
+  },
+  listName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  listNameMe: {
+    fontWeight: '800',
+    color: '#1848c8',
+  },
+  listAttempts: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  listScoreText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#3B82F6',
+  },
+  listScoreTextMe: {
+    color: '#1848c8',
+  },
+
+  // ── Parallax results: sheet + scroll hint ──
+  scrollHintContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 12,
+    paddingBottom: 16,
+    marginBottom: 0,
+  },
+  scrollHintPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     elevation: 2,
   },
-  navPrevText: { fontSize: 15, fontWeight: '700', color: '#0f3172' },
-  navNextBtn: {
+  scrollHintText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1848c8',
+    letterSpacing: 0.3,
+  },
+  leaderboardSheet: {
+    backgroundColor: '#1848c8',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    marginTop: -8,
+    paddingBottom: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 20,
+    overflow: 'hidden',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+
+  // ── Leaderboard actions (smaller buttons) ──
+  leaderboardActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  smallBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#2563EB',
-    borderRadius: 99,
-    paddingVertical: 15,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 7,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  navNextText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  smallPrimaryBtn: {
+    backgroundColor: '#1848c8',
+    shadowColor: '#1848c8',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  smallGhostBtn: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: 'rgba(15,30,80,0.08)',
+  },
+  smallBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f3172',
+  },
 
-  // Exit Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalContent: {
+  // ── Student Detail Modal ──
+  studentDetailModal: {
+    width: '85%',
+    maxWidth: 340,
     backgroundColor: '#fff',
     borderRadius: 28,
-    padding: 28,
-    width: '100%',
-    maxWidth: 360,
+    padding: 24,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 30,
-    elevation: 20,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 48,
+    elevation: 24,
   },
-  modalEmoji: { fontSize: 42, marginBottom: 10 },
-  modalTitle: { fontSize: 22, fontWeight: '900', color: '#0f3172', marginBottom: 8 },
-  modalDescription: {
-    fontSize: 14,
-    color: '#6B7280',
+  studentDetailClose: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    padding: 4,
+  },
+  studentDetailAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    marginBottom: 12,
+    borderWidth: 3,
+    borderColor: '#E5E7EB',
+  },
+  studentDetailAvatarMe: {
+    backgroundColor: '#1848c8',
+    borderColor: '#1848c8',
+  },
+  studentDetailAvatarText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  studentDetailName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0f3172',
+    marginBottom: 2,
+  },
+  studentDetailUsername: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginBottom: 16,
+  },
+  studentDetailDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 16,
+  },
+  studentDetailStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginBottom: 16,
+  },
+  studentDetailStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  studentDetailStatLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  studentDetailStatValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#0f3172',
+  },
+  studentDetailStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#F3F4F6',
+  },
+  studentDetailNote: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 12,
+    width: '100%',
+    marginBottom: 16,
+  },
+  studentDetailNoteText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#4B5563',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 21,
+    lineHeight: 18,
   },
-  modalButtons: { flexDirection: 'row', gap: 12, width: '100%' },
-  modalContinueBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    backgroundColor: '#2563EB',
-    borderRadius: 99,
-    alignItems: 'center',
+  studentDetailBtn: {
+    backgroundColor: '#1848c8',
+    borderRadius: 40,
+    paddingVertical: 12,
+    paddingHorizontal: 48,
+    shadowColor: '#1848c8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  modalContinueBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  modalExitBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(220,38,38,0.10)',
-    borderRadius: 99,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(220,38,38,0.20)',
+  studentDetailBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
   },
-  modalExitBtnText: { fontSize: 14, fontWeight: '800', color: '#DC2626' },
 });

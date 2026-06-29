@@ -354,4 +354,34 @@ export const api = {
             throw error;
         }
     },
+    getLessonLeaderboard: async (lessonId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) throw new Error('No token found');
+
+            console.log(`🏆 Fetching leaderboard for lesson ${lessonId}...`);
+
+            const response = await fetch(`${API_URL}/student/lesson/${lessonId}/leaderboard`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🏆 Leaderboard response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to fetch leaderboard');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching leaderboard:', error);
+            throw error;
+        }
+    },
+
 };
