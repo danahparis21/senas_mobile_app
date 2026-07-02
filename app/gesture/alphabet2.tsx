@@ -32,11 +32,11 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const { width, height } = Dimensions.get('window');
 
 // Alphabet Part 1: A-M
-const ALPHABET_PART1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+const ALPHABET_PART2 = ['N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
 // Senya's encouragement messages (without emojis)
 const SENYA_MESSAGES = {
-    welcome: "Let's learn A–M together!",
+    welcome: "Let's learn N-Z together!",
     correct: [
         "Amazing! Keep going!",
         "Perfect! You're on fire!",
@@ -105,7 +105,7 @@ export default function WebViewCameraScreen() {
 
     // Get current target letter (first incomplete)
     const getCurrentTarget = () => {
-        for (const letter of ALPHABET_PART1) {
+        for (const letter of ALPHABET_PART2) {
             if (!completedLetters.has(letter)) return letter;
         }
         return null;
@@ -114,7 +114,7 @@ export default function WebViewCameraScreen() {
     // Initialize letter tracking
     useEffect(() => {
         const initial: Record<string, LetterAttempt> = {};
-        ALPHABET_PART1.forEach(letter => {
+        ALPHABET_PART2.forEach(letter => {
             initial[letter] = {
                 letter,
                 attempts: 0,
@@ -133,7 +133,7 @@ export default function WebViewCameraScreen() {
         if (target) {
             setCurrentTarget(target);
             // Auto-scroll to the current target letter
-            const targetIndex = ALPHABET_PART1.indexOf(target);
+            const targetIndex = ALPHABET_PART2.indexOf(target);
             if (targetIndex >= 0 && scrollViewRef.current) {
                 // Calculate scroll position to center the target
                 const slotWidth = 50; // width of each slot (44 + 6 margin)
@@ -145,7 +145,7 @@ export default function WebViewCameraScreen() {
                     });
                 }, 100);
             }
-        } else if (completedLetters.size === ALPHABET_PART1.length) {
+        } else if (completedLetters.size === ALPHABET_PART2.length) {
             setIsModuleComplete(true);
             setSenyaMessage(SENYA_MESSAGES.complete);
             setEndTime(Date.now());
@@ -210,7 +210,7 @@ export default function WebViewCameraScreen() {
             }
 
             // Update letter attempts
-            if (ALPHABET_PART1.includes(letter)) {
+            if (ALPHABET_PART2.includes(letter)) {
                 setLetterAttempts(prev => {
                     const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
                     return {
@@ -225,7 +225,7 @@ export default function WebViewCameraScreen() {
             }
 
             // Gamification logic
-            if (ALPHABET_PART1.includes(letter)) {
+            if (ALPHABET_PART2.includes(letter)) {
                 const target = getCurrentTarget();
 
                 if (letter === target) {
@@ -257,7 +257,7 @@ export default function WebViewCameraScreen() {
                         // Show cute popup - shorter and cleaner
                         showCutePopup(
                             `${letter} ✓`,
-                            `${completedLetters.size + 1}/${ALPHABET_PART1.length}`
+                            `${completedLetters.size + 1}/${ALPHABET_PART2.length}`
                         );
                     }
                 } else if (completedLetters.has(letter)) {
@@ -321,7 +321,7 @@ export default function WebViewCameraScreen() {
             setLastProcessedLetter('');
             setLetterStableCount(0);
 
-            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length) {
+            if (!isModuleComplete && completedLetters.size < ALPHABET_PART2.length) {
                 const target = getCurrentTarget();
                 if (target) {
                     setSenyaMessage(`Show me ${target}!`);
@@ -361,7 +361,7 @@ export default function WebViewCameraScreen() {
             .map(l => l.letter);
 
         // Calculate accuracy based on successful completions vs total attempts
-        const totalLetters = ALPHABET_PART1.length;
+        const totalLetters = ALPHABET_PART2.length;
         const completedCount = completedLetters.size;
 
         const accuracy = Math.round((completedCount / totalLetters) * 100);
@@ -465,7 +465,7 @@ export default function WebViewCameraScreen() {
                 <Pressable onPress={() => router.back()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={24} color="#0f3172" />
                 </Pressable>
-                <Text style={styles.headerTitle}>Alphabet Part 1</Text>
+                <Text style={styles.headerTitle}>Alphabet Part 2</Text>
                 <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                     <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
                         {isConnected ? '🟢 Live' : '⏳ Loading'}
@@ -486,13 +486,13 @@ export default function WebViewCameraScreen() {
             {/* Progress */}
             <View style={styles.progressHeader}>
                 <Text style={styles.progressText}>
-                    Progress: {completedLetters.size}/{ALPHABET_PART1.length}
+                    Progress: {completedLetters.size}/{ALPHABET_PART2.length}
                 </Text>
                 <View style={styles.progressBar}>
                     <View
                         style={[
                             styles.progressFill,
-                            { width: `${(completedLetters.size / ALPHABET_PART1.length) * 100}%` }
+                            { width: `${(completedLetters.size / ALPHABET_PART2.length) * 100}%` }
                         ]}
                     />
                 </View>
@@ -562,7 +562,7 @@ export default function WebViewCameraScreen() {
                 contentContainerStyle={styles.letterGridContent}
                 scrollEventThrottle={16}
             >
-                {ALPHABET_PART1.map((letter) => {
+                {ALPHABET_PART2.map((letter) => {
                     const isCompleted = completedLetters.has(letter);
                     const isActive = letter === currentTarget && !isCompleted;
                     return (

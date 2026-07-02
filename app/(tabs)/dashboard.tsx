@@ -1,3 +1,4 @@
+// app/(tabs)/dashboard.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -18,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 
 const { width: screenWidth } = Dimensions.get('window');
+
 // Types
 interface Lesson {
   lesson_id: number;
@@ -36,12 +38,6 @@ interface Lesson {
     quiz_score: number | null;
   } | null;
 }
-const lessons = [
-  { title: "FSL Alphabet", icon: require('../../assets/images/img/alphabet.png'), progress: 65, color: "#2563EB", tag: "In Progress" },
-  { title: "Greetings", icon: require('../../assets/images/img/greet.png'), progress: 65, color: "#2563EB", tag: "In Progress" },
-  { title: "Numbers 1–10", icon: require('../../assets/images/img/numbers.png'), progress: 30, color: "#2563EB", tag: "In Progress" },
-  { title: "Classroom Words", icon: null, progress: 0, color: "#6B7280", tag: "Locked" },
-];
 
 const quickActions = [
   { label: "Multiple Choice", icon: require('../../assets/images/img/multiple_choice.png'), color: "#2563EB", screen: "/quiz/mc" },
@@ -57,14 +53,38 @@ function getGreeting(): string {
   return "Good evening!";
 }
 
+// Map lesson type to icon - using only existing assets
+const getLessonIcon = (lessonType: string): any => {
+  const iconMap: Record<string, any> = {
+    'alphabet': require('../../assets/images/img/alphabet.png'),
+    'greetings': require('../../assets/images/img/greetings.png'),
+    'greet': require('../../assets/images/img/greet.png'),
+    'numbers': require('../../assets/images/img/numbers.png'),
+    'classroom': require('../../assets/images/img/classroom.png'),
+    'conversation': require('../../assets/images/img/conversation.png'),
+    'gesture': require('../../assets/images/img/camera.png'),
+    'lesson': require('../../assets/images/img/lesson.png'),
+    'badge': require('../../assets/images/img/badges.png'),
+  };
+  return iconMap[lessonType?.toLowerCase()] || null;
+};
+
+// Get status tag
+const getStatusTag = (status: string, progress: any): string => {
+  if (status === 'completed' || progress?.lesson_completed) return 'Completed';
+  if (status === 'in_progress' || (progress && progress.current_step > 0)) return 'In Progress';
+  return 'Pending';
+};
+
 export default function Dashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(true);
   const [studentName, setStudentName] = useState<string>('Student');
   const [studentLevel, setStudentLevel] = useState<string>('Beginner');
-  const [xp, setXp] = useState<number>(340);
-  const [xpMax, setXpMax] = useState<number>(500);
-  const [streak, setStreak] = useState<number>(5);
+  const [xp, setXp] = useState<number>(0);
+  const [xpMax, setXpMax] = useState<number>(100);
+  const [streak, setStreak] = useState<number>(0);
+  const [level, setLevel] = useState<number>(1);
   const [teacherLessons, setTeacherLessons] = useState<Lesson[]>([]);
   const [loadingLessons, setLoadingLessons] = useState<boolean>(true);
   const flatListRef = useRef<FlatList>(null);
@@ -85,16 +105,25 @@ export default function Dashboard() {
         setStudentName(fullName || 'Student');
         setStudentLevel(student?.fsl_mastery_level || 'Beginner');
 
-        // Set XP data from the student object
-        if (student?.total_xp !== undefined) {
+        if (student?.total_xp !== undefined && student?.total_xp !== null) {
           setXp(student.total_xp);
         }
-        if (student?.level) {
-          // You could set level here if you want
-        }
-        if (student?.streak_days) {
+        if (student?.streak_days !== undefined && student?.streak_days !== null) {
           setStreak(student.streak_days);
         }
+        if (student?.level !== undefined && student?.level !== null) {
+          setLevel(student.level);
+        }
+
+        const levelXpMap: Record<number, number> = {
+          1: 100,
+          2: 250,
+          3: 500,
+          4: 800,
+          5: 1200,
+        };
+        const maxXp = levelXpMap[student?.level || 1] || 100;
+        setXpMax(maxXp);
       }
     } catch (error) {
       console.error('Error fetching student data:', error);
@@ -106,15 +135,38 @@ export default function Dashboard() {
   const fetchTeacherLessons = async (): Promise<void> => {
     try {
       setLoadingLessons(true);
-      const response = await api.getStudentLessons();
-      if (response.success && response.lessons) {
-        setTeacherLessons(response.lessons);
+      const response = await api.getAllLessons();
 
-        // Update XP from the response
+      console.log('📚 Dashboard - All lessons response:', JSON.stringify(response, null, 2));
+
+      if (response.success) {
+        const allLessons = response.lessons || [];
+        setTeacherLessons(allLessons);
+
         if (response.student) {
-          setXp(response.student.total_xp || 0);
-          setStreak(response.student.streak_days || 0);
-          // You could also update level here if you have a state for it
+          if (response.student.total_xp !== undefined && response.student.total_xp !== null) {
+            setXp(response.student.total_xp);
+          }
+          if (response.student.streak_days !== undefined && response.student.streak_days !== null) {
+            setStreak(response.student.streak_days);
+          }
+          if (response.student.level !== undefined && response.student.level !== null) {
+            setLevel(response.student.level);
+          }
+
+          const levelXpMap: Record<number, number> = {
+            1: 100,
+            2: 250,
+            3: 500,
+            4: 800,
+            5: 1200,
+          };
+          const maxXp = levelXpMap[response.student.level || 1] || 100;
+          setXpMax(maxXp);
+
+          if (response.student.fsl_mastery_level) {
+            setStudentLevel(response.student.fsl_mastery_level);
+          }
         }
       }
     } catch (error) {
@@ -142,12 +194,12 @@ export default function Dashboard() {
 
   const renderTeacherLesson = ({ item }: { item: Lesson }) => {
     const progress = item.progress;
-    const progressPercent = progress
+    const progressPercent = progress && item.total_steps > 0
       ? Math.round((progress.current_step / item.total_steps) * 100)
       : 0;
 
     const statusColor = getLessonStatusColor(item.status);
-    const isCompleted = item.status === 'completed';
+    const isCompleted = item.status === 'completed' || progress?.lesson_completed;
     const isPerfect = progress?.quiz_score === 100;
 
     return (
@@ -155,9 +207,7 @@ export default function Dashboard() {
         style={styles.teacherLessonCard}
         onPress={() => router.push(`/lesson/${item.lesson_id}`)}
       >
-        {/* Main Content Area */}
         <View style={styles.tlMainContent}>
-          {/* Left Column: Lesson Icon Box */}
           <View style={styles.tlIconBox}>
             <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -165,13 +215,12 @@ export default function Dashboard() {
             </Svg>
           </View>
 
-          {/* Right Column: Title and Subtitle */}
           <View style={styles.tlTextContent}>
             <View style={styles.tlHeaderRow}>
               <View style={styles.tlBadgeRow}>
                 <View style={[styles.tlDifficultyTag, { backgroundColor: '#F1F5F9' }]}>
                   <Text style={styles.tlDifficultyText}>
-                    {item.difficulty.toUpperCase()}
+                    {item.difficulty ? item.difficulty.toUpperCase() : 'LESSON'}
                   </Text>
                 </View>
                 {item.has_quiz && (
@@ -180,7 +229,6 @@ export default function Dashboard() {
                   </View>
                 )}
               </View>
-              {/* Score / Status Badge on Top Right */}
               {progress?.quiz_completed && progress?.quiz_score !== null ? (
                 <View style={[styles.tlMiniScoreBadge, { backgroundColor: isPerfect ? '#FEF3C7' : '#D1FAE5' }]}>
                   <Text style={[styles.tlMiniScoreText, { color: isPerfect ? '#D97706' : '#059669' }]}>
@@ -189,7 +237,7 @@ export default function Dashboard() {
                 </View>
               ) : (
                 <Text style={styles.tlDateText}>
-                  {new Date(item.assigned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {item.assigned_at ? new Date(item.assigned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Not assigned'}
                 </Text>
               )}
             </View>
@@ -200,23 +248,21 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Progress Bar Area */}
         <View style={styles.tlProgressSection}>
           <View style={styles.tlProgressTrack}>
             <View
               style={[
                 styles.tlProgressFill,
-                { width: `${progressPercent}%` as any, backgroundColor: statusColor },
+                { width: `${Math.min(progressPercent, 100)}%`, backgroundColor: statusColor },
               ]}
             />
           </View>
           <View style={styles.tlProgressInfoRow}>
-            <Text style={styles.tlProgressInfoText}>{progressPercent}% completed</Text>
-            <Text style={styles.tlProgressInfoText}>{item.total_steps} steps</Text>
+            <Text style={styles.tlProgressInfoText}>{Math.min(progressPercent, 100)}% completed</Text>
+            <Text style={styles.tlProgressInfoText}>{item.total_steps || 0} steps</Text>
           </View>
         </View>
 
-        {/* Action Buttons Area */}
         <View style={styles.tlButtonSection}>
           <Pressable
             style={[styles.tlCardActionBtn, { backgroundColor: statusColor }]}
@@ -243,7 +289,7 @@ export default function Dashboard() {
     );
   };
 
-  const xpPct = Math.min((xp / xpMax) * 100, 100);
+  const xpPct = xpMax > 0 ? Math.min((xp / xpMax) * 100, 100) : 0;
 
   if (loading) {
     return (
@@ -253,6 +299,40 @@ export default function Dashboard() {
       </SafeAreaView>
     );
   }
+
+  const getLevelDisplay = (levelNum: number): string => {
+    const levelNames: Record<number, string> = {
+      1: 'Novice Signer',
+      2: 'Beginner Signer',
+      3: 'Intermediate Signer',
+      4: 'Advanced Signer',
+      5: 'Expert Signer',
+    };
+    return levelNames[levelNum] || 'Novice Signer';
+  };
+
+  /// Get lessons for "Continue Learning" - show in-progress and pending lessons
+  const continueLearningLessons = teacherLessons
+    .filter(lesson => {
+      const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
+      return !isCompleted;
+    })
+    .slice(0, 3);
+
+  // Also get completed lessons as fallback
+  const completedLessons = teacherLessons
+    .filter(lesson => lesson.status === 'completed' || lesson.progress?.lesson_completed)
+    .slice(0, 3);
+
+  // Use continueLearning if available, otherwise show completed
+  const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
+  const sectionTitle = continueLearningLessons.length > 0 ? 'Continue Learning' : 'Completed Lessons';
+
+  // Debug logging
+  console.log('📚 Teacher Lessons total:', teacherLessons.length);
+  console.log('📚 Continue Learning:', continueLearningLessons.length);
+  console.log('📚 Completed Lessons:', completedLessons.length);
+  console.log('📚 Display Lessons:', displayLessons.length);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -304,16 +384,16 @@ export default function Dashboard() {
                 <View style={styles.levelHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <View style={styles.levelTag}>
-                      <Text style={styles.levelTagText}>LEVEL 1</Text>
+                      <Text style={styles.levelTagText}>LEVEL {level}</Text>
                     </View>
-                    <Text style={styles.levelTitle}>Novice Signer</Text>
+                    <Text style={styles.levelTitle}>{getLevelDisplay(level)}</Text>
                   </View>
                   <Text style={styles.xpPctText}>{Math.round(xpPct)}%</Text>
                 </View>
                 <View style={styles.progressTrack}>
                   <View style={[styles.progressFill, { width: `${xpPct}%` }]} />
                 </View>
-                <Text style={styles.xpStatusText}>{xp} / {xpMax} XP · {xpMax - xp} XP to Intermediate</Text>
+                <Text style={styles.xpStatusText}>{xp} / {xpMax} XP · {Math.max(0, xpMax - xp)} XP to next level</Text>
               </View>
             </View>
           </View>
@@ -328,10 +408,10 @@ export default function Dashboard() {
                   <Path d="M12 6v6l4 2" />
                   <Circle cx="12" cy="12" r="10" />
                 </Svg>
-                <Text style={styles.sectionTitle}>📚 Uploaded by Teacher</Text>
+                <Text style={styles.sectionTitle}>📚 Your Lessons</Text>
               </View>
               {teacherLessons.length > 2 && (
-                <Pressable onPress={() => router.push('/teacher-lessons')}>
+                <Pressable onPress={() => router.push('/lessons')}>
                   <Text style={styles.seeAllText}>See All →</Text>
                 </Pressable>
               )}
@@ -341,7 +421,7 @@ export default function Dashboard() {
               ref={flatListRef}
               data={teacherLessons.slice(0, 5)}
               renderItem={renderTeacherLesson}
-              keyExtractor={(item) => item.lesson_id.toString()}
+              keyExtractor={(item) => item.lesson_id?.toString() || Math.random().toString()}
               horizontal
               showsHorizontalScrollIndicator={false}
               snapToInterval={screenWidth * 0.78 + 14}
@@ -356,7 +436,6 @@ export default function Dashboard() {
             />
           </View>
         )}
-
         {/* Daily Challenge */}
         <View style={styles.section}>
           <Pressable style={styles.dailyCard} onPress={() => router.push('/assessment')}>
@@ -375,14 +454,14 @@ export default function Dashboard() {
             </View>
             <View style={styles.dailyContent}>
               <View style={styles.dailyTextContent}>
-                <Text style={styles.dailyTitle}>Practice 5 Alphabet Signs</Text>
-                <Text style={styles.dailyDesc}>Sign A through E and earn your daily streak bonus.</Text>
+                <Text style={styles.dailyTitle}>Practice Your Signs</Text>
+                <Text style={styles.dailyDesc}>Complete a lesson today to earn your daily streak bonus.</Text>
                 <View style={styles.dailyDots}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <View key={n} style={[styles.dailyDot, { backgroundColor: n <= 2 ? '#fbbf24' : 'rgba(255,255,255,0.2)' }]} />
                   ))}
                 </View>
-                <Text style={styles.dailyStatusText}>2 of 5 completed</Text>
+                <Text style={styles.dailyStatusText}>Practice daily to build your streak!</Text>
               </View>
               <View style={styles.dailyActionBox}>
                 <View style={styles.dailyStartBtn}>
@@ -396,45 +475,86 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
-        {/* Continue Learning */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Continue Learning</Text>
-            <Pressable onPress={() => router.push('/lessons')}>
-              <Text style={styles.seeAllText}>See All →</Text>
-            </Pressable>
-          </View>
+        {/* Continue Learning Section - RESTORED with dynamic data */}
+        {displayLessons.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{sectionTitle}</Text>
+              <Pressable onPress={() => router.push('/lessons')}>
+                <Text style={styles.seeAllText}>See All →</Text>
+              </Pressable>
+            </View>
 
-          <View style={styles.lessonsList}>
-            {lessons.map((l, i) => {
-              const isLocked = l.tag === "Locked";
-              const isCompleted = l.tag === "Completed";
-              return (
-                <Pressable key={i} style={[styles.lessonCard, isLocked && { opacity: 0.5 }]} disabled={isLocked} onPress={() => router.push('/lessons')}>
-                  <View style={[styles.lessonIconBox, { backgroundColor: isLocked ? 'rgba(15,49,114,0.06)' : 'rgba(37,99,235,0.10)' }]}>
-                    {isCompleted ?
-                      <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5"><Polyline points="20 6 9 17 4 12" /></Svg> :
-                      isLocked ?
-                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"><Rect x="3" y="11" width="18" height="11" rx="2" /><Path d="M7 11V7a5 5 0 0 1 10 0v4" /></Svg> :
-                        l.icon ? <Image source={l.icon} style={styles.lessonIcon} contentFit="contain" /> : null}
-                  </View>
-                  <View style={styles.lessonInfo}>
-                    <View style={styles.lessonRow}>
-                      <Text style={styles.lessonTitle} numberOfLines={1}>{l.title}</Text>
-                      <View style={[styles.lessonTag, { backgroundColor: isCompleted ? 'rgba(37,99,235,0.12)' : isLocked ? 'rgba(15,49,114,0.07)' : 'rgba(251,191,36,0.18)' }]}>
-                        <Text style={[styles.lessonTagText, { color: isCompleted ? '#1848c8' : isLocked ? '#6B7280' : '#92400E' }]}>{l.tag}</Text>
+            <View style={styles.lessonsList}>
+              {displayLessons.map((lesson) => {
+                const progress = lesson.progress;
+                const progressPercent = progress && lesson.total_steps > 0
+                  ? Math.round((progress.current_step / lesson.total_steps) * 100)
+                  : 0;
+                const statusTag = getStatusTag(lesson.status, progress);
+                const isLocked = statusTag === 'Pending' && progressPercent === 0;
+                const isCompleted = statusTag === 'Completed';
+                const icon = getLessonIcon(lesson.lesson_type);
+
+                return (
+                  <Pressable
+                    key={lesson.lesson_id}
+                    style={[styles.lessonCard, isLocked && { opacity: 0.5 }]}
+                    disabled={isLocked}
+                    onPress={() => router.push(`/lesson/${lesson.lesson_id}`)}
+                  >
+                    <View style={[styles.lessonIconBox, { backgroundColor: isLocked ? 'rgba(15,49,114,0.06)' : 'rgba(37,99,235,0.10)' }]}>
+                      {isCompleted ? (
+                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5">
+                          <Polyline points="20 6 9 17 4 12" />
+                        </Svg>
+                      ) : isLocked ? (
+                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2">
+                          <Rect x="3" y="11" width="18" height="11" rx="2" />
+                          <Path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </Svg>
+                      ) : icon ? (
+                        <Image source={icon} style={styles.lessonIcon} contentFit="contain" />
+                      ) : (
+                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2">
+                          <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                          <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                        </Svg>
+                      )}
+                    </View>
+                    <View style={styles.lessonInfo}>
+                      <View style={styles.lessonRow}>
+                        <Text style={styles.lessonTitle} numberOfLines={1}>{lesson.title}</Text>
+                        <View style={[styles.lessonTag, {
+                          backgroundColor: isCompleted ? 'rgba(37,99,235,0.12)' :
+                            isLocked ? 'rgba(15,49,114,0.07)' :
+                              'rgba(251,191,36,0.18)'
+                        }]}>
+                          <Text style={[styles.lessonTagText, {
+                            color: isCompleted ? '#1848c8' :
+                              isLocked ? '#6B7280' :
+                                '#92400E'
+                          }]}>
+                            {statusTag}
+                          </Text>
+                        </View>
                       </View>
+                      <View style={styles.lessonProgressTrack}>
+                        <View style={[styles.lessonProgressFill, {
+                          width: `${Math.min(progressPercent, 100)}%`,
+                          backgroundColor: isCompleted ? '#2563EB' : '#f59e0b'
+                        }]} />
+                      </View>
+                      <Text style={styles.lessonProgressText}>{Math.min(progressPercent, 100)}% complete</Text>
                     </View>
-                    <View style={styles.lessonProgressTrack}>
-                      <View style={[styles.lessonProgressFill, { width: `${l.progress}%`, backgroundColor: isCompleted ? '#2563EB' : '#f59e0b' }]} />
-                    </View>
-                    <Text style={styles.lessonProgressText}>{l.progress}% complete</Text>
-                  </View>
-                </Pressable>
-              );
-            })}
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
+
+
 
         {/* Quick Practice */}
         <View style={styles.section}>
@@ -511,8 +631,11 @@ const styles = StyleSheet.create({
   dailyStartText: { color: '#78350f', fontWeight: '800', fontSize: 14 },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172', marginBottom: 10 },
+  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172' },
   seeAllText: { color: '#2563EB', fontSize: 13, fontWeight: '700', paddingVertical: 4 },
+
+  // Continue Learning styles
   lessonsList: { gap: 10 },
   lessonCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
   lessonIconBox: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -533,11 +656,6 @@ const styles = StyleSheet.create({
   quickText: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
 
   // Teacher Lesson Cards
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   teacherLessonsCarousel: {
     paddingRight: 16,
     gap: 12,
@@ -690,10 +808,4 @@ const styles = StyleSheet.create({
     color: '#9AA1B0',
     fontWeight: '600',
   },
-
-  // Legacy (kept to avoid errors)
-  teacherLessonScoreText: { fontSize: 11, fontWeight: '600', color: '#2E7D32' },
-  teacherLessonScore: { marginTop: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-  teacherLessonScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  teacherLessonScoreBadge: { fontSize: 10, fontWeight: '600' },
 });

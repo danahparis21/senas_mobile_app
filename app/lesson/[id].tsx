@@ -369,6 +369,56 @@ export default function LessonViewer() {
   const [questionRevealed, setQuestionRevealed] = useState<boolean>(false);
   const [currentScore, setCurrentScore] = useState<number>(0);
 
+  const senyaBounceAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = bounce
+  const senyaShakeAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = shake
+
+  const animateSenyaCorrect = () => {
+    senyaBounceAnim.setValue(0);
+    Animated.spring(senyaBounceAnim, {
+      toValue: 1,
+      friction: 5,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const animateSenyaIncorrect = () => {
+    // Reset and shake - gentler, more playful
+    senyaShakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(senyaShakeAnim, {
+        toValue: 1,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(senyaShakeAnim, {
+        toValue: -0.8,
+        duration: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(senyaShakeAnim, {
+        toValue: 0.6,
+        duration: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(senyaShakeAnim, {
+        toValue: -0.4,
+        duration: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(senyaShakeAnim, {
+        toValue: 0.2,
+        duration: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(senyaShakeAnim, {
+        toValue: 0,
+        duration: 30,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   const fetchAttemptHistory = async () => {
     try {
       const response = await api.getAttempts(id);
@@ -420,9 +470,23 @@ export default function LessonViewer() {
 
   useEffect(() => {
     if (quizSubmitted && quizResult) {
+      // Reset animation values BEFORE starting new animation
+      resultsFadeAnim.setValue(0);
+      resultsScaleAnim.setValue(0.85);
+
+      // Start the animation
       Animated.parallel([
-        Animated.timing(resultsFadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.spring(resultsScaleAnim, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+        Animated.timing(resultsFadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true
+        }),
+        Animated.spring(resultsScaleAnim, {
+          toValue: 1,
+          friction: 6,
+          tension: 80,
+          useNativeDriver: true
+        }),
       ]).start();
 
       if (quizResult.percentage >= 60 && !confettiFired) {
@@ -435,6 +499,7 @@ export default function LessonViewer() {
       fetchLeaderboard();
     }
   }, [quizSubmitted, quizResult]);
+
 
   const updateProgress = async (step: number, completed: boolean = false): Promise<void> => {
     try {
@@ -458,13 +523,30 @@ export default function LessonViewer() {
     router.dismiss();
   };
 
-  // ─── Quiz Handlers ────────────────────────────────────────────────────────
   const handleOptionSelect = (optionIndex: number) => {
     if (questionRevealed) return;
     setSelectedOption(optionIndex);
     setQuestionRevealed(true);
+
     const questions = lesson?.quiz?.questions || [];
-    if (optionIndex === questions[currentQuestionIndex]?.options.findIndex(o => o.is_correct)) {
+    const currentQ = questions[currentQuestionIndex];
+    const isCorrect = optionIndex === currentQ?.options.findIndex(o => o.is_correct);
+
+    // Trigger Senya animation based on correctness
+    if (isCorrect) {
+      animateSenyaCorrect();
+    } else {
+      animateSenyaIncorrect();
+    }
+
+    // Store the selected option ID
+    const selectedOptionId = currentQ?.options[optionIndex]?.option_id;
+    setQuizAnswers(prev => ({
+      ...prev,
+      [currentQ.question_id]: selectedOptionId
+    }));
+
+    if (isCorrect) {
       setCurrentScore(s => s + 1);
     }
   };
@@ -487,11 +569,17 @@ export default function LessonViewer() {
     const totalPoints = questions.length;
     const percentage = Math.round((score / totalPoints) * 100);
 
+    // Build answers with actual selected options
     const answers: QuizAnswer[] = questions.map((q, index) => {
+      // Find the selected option for this question
+      const selectedOptionId = quizAnswers[index] ?? null;
+      const isCorrect = selectedOptionId !== null &&
+        q.options[selectedOptionId]?.is_correct === true;
+
       return {
         question_id: q.question_id,
-        selected_option_id: null,
-        is_correct: false,
+        selected_option_id: selectedOptionId,
+        is_correct: isCorrect,
       };
     });
 
@@ -664,7 +752,7 @@ export default function LessonViewer() {
         </View>
 
         <View style={[s.glassCard, s.questionCard]}>
-          <Text style={s.questionEmoji}>❓</Text>
+          <Text style={s.questionEmojiSmall}>❓</Text>
           <Text style={s.questionText}>{currentQuestion.question_text}</Text>
           {currentQuestion.media_url && (
             <Image source={{ uri: currentQuestion.media_url }} style={s.questionMedia} contentFit="contain" />
@@ -701,7 +789,37 @@ export default function LessonViewer() {
         })}
 
         <View style={s.feedbackRow}>
-          <Image source={require('../../assets/images/img/senya_teaching.png')} style={s.senyaFeedback} contentFit="contain" />
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  scale: senyaBounceAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.2, 1],
+                  }),
+                },
+                {
+                  translateY: senyaBounceAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, -20, 0],
+                  }),
+                },
+                {
+                  rotateZ: senyaShakeAnim.interpolate({
+                    inputRange: [-1, -0.5, 0, 0.5, 1],
+                    outputRange: ['-6deg', '-3deg', '0deg', '3deg', '6deg'],
+                  }),
+                },
+              ],
+            }}
+          >
+
+            <Image
+              source={require('../../assets/images/img/senya_teaching.png')}
+              style={s.senyaFeedback}
+              contentFit="contain"
+            />
+          </Animated.View>
           <View style={[s.feedbackBubble, questionRevealed && isCorrect ? s.feedbackCorrect : questionRevealed && !isCorrect ? s.feedbackWrong : {}]}>
             {questionRevealed && isCorrect && <CheckCircleIcon />}
             {questionRevealed && !isCorrect && <XCircleIcon />}
@@ -1082,6 +1200,11 @@ export default function LessonViewer() {
           {/* Action buttons at the bottom of Leaderboard - smaller */}
           <View style={s.leaderboardActions}>
             <Pressable style={[s.smallBtn, s.smallGhostBtn]} onPress={() => {
+              // FIRST: Reset animation values to initial state
+              resultsFadeAnim.setValue(0);
+              resultsScaleAnim.setValue(0.85);
+
+              // THEN: Reset all state
               setQuizSubmitted(false);
               setCurrentQuestionIndex(0);
               setSelectedOption(null);
@@ -1089,16 +1212,29 @@ export default function LessonViewer() {
               setCurrentScore(0);
               setQuizResult(null);
               setConfettiFired(false);
-              resultsFadeAnim.setValue(0);
-              resultsScaleAnim.setValue(0.85);
               setCurrentSlide(0);
+
               // Scroll back to top
               resultsScrollRef.current?.scrollTo?.({ y: 0, animated: true });
             }}>
               <RefreshIcon size={14} color="#0f3172" />
               <Text style={s.smallBtnText}>Try Again</Text>
             </Pressable>
-            <Pressable style={[s.smallBtn, s.smallPrimaryBtn]} onPress={() => router.push('/(tabs)/dashboard')}>
+
+            <Pressable style={[s.smallBtn, s.smallPrimaryBtn]} onPress={() => {
+              setQuizSubmitted(false);
+              setCurrentQuestionIndex(0);
+              setSelectedOption(null);
+              setQuestionRevealed(false);
+              setCurrentScore(0);
+              setQuizResult(null);
+              setConfettiFired(false);
+
+              resultsFadeAnim.setValue(0);
+              resultsScaleAnim.setValue(0.85);
+              setCurrentSlide(0);
+              router.push('/(tabs)/dashboard');
+            }}>
               <HomeIcon size={14} color="#fff" />
               <Text style={[s.smallBtnText, { color: '#fff' }]}>Dashboard</Text>
             </Pressable>
@@ -1172,20 +1308,23 @@ export default function LessonViewer() {
     );
   };
 
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: '#eaf5fd' }]}>
-      {/* Confetti */}
+      {/* Confetti - NOW AT THE VERY TOP WITH HIGHEST Z-INDEX */}
       {passed && (
-        <ConfettiCannon
-          ref={confettiRef}
-          count={160}
-          origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
-          autoStart={false}
-          fadeOut
-          explosionSpeed={500}
-          fallSpeed={2800}
-          colors={['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF6FC8', '#845EC2']}
-        />
+        <View style={s.confettiWrapper}>
+          <ConfettiCannon
+            ref={confettiRef}
+            count={160}
+            origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
+            autoStart={false}
+            fadeOut
+            explosionSpeed={500}
+            fallSpeed={2800}
+            colors={['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF6FC8', '#845EC2']}
+          />
+        </View>
       )}
 
       <ExitModal
@@ -1221,7 +1360,22 @@ export default function LessonViewer() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1 },
+  questionEmojiSmall: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
 
+  // ── Confetti Wrapper ──
+  confettiWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    pointerEvents: 'none', // Allow touch events to pass through
+    elevation: 9999, // For Android
+  },
   // Loading
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eaf5fd' },
   loadingInner: { alignItems: 'center', gap: 12 },

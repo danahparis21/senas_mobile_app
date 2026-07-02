@@ -192,6 +192,36 @@ const defaultLessonsData = [
   },
 ];
 
+// ── MODULE/LESSON DATA STRUCTURE ──────────────────────────────────────
+interface Lesson {
+  id: number;
+  lesson_id?: number;
+  title: string;
+  description?: string;
+  difficulty?: string;
+  status?: string;
+  total_steps?: number;
+  has_quiz?: boolean;
+  module_id?: number;
+  // Display properties
+  category: string;
+  desc: string;
+  color: string;
+  iconBg: string;
+  duration: string;
+  xp: number;
+  done: boolean;
+  active: boolean;
+  locked: boolean;
+}
+
+interface Module {
+  module_id: number;
+  title: string;
+  description: string;
+  lessons: Lesson[];
+}
+
 export default function Lessons() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -201,9 +231,15 @@ export default function Lessons() {
   const [streak, setStreak] = useState<number>(12);
   const [xp, setXp] = useState<number>(150);
 
-  // Teacher lessons state
-  const [teacherLessons, setTeacherLessons] = useState<any[]>([]);
-  const [loadingTeacher, setLoadingTeacher] = useState<boolean>(false);
+  // Teacher modules state
+  const [modules, setModules] = useState<Module[]>([]);
+  const [loadingModules, setLoadingModules] = useState<boolean>(false);
+
+  // Current module index for tab navigation
+  const [currentModuleIndex, setCurrentModuleIndex] = useState<number>(0);
+
+  // Prevent rapid clicking
+  const [isNavigating, setIsNavigating] = useState<boolean>(false);
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -320,73 +356,112 @@ export default function Lessons() {
     return () => bob.stop();
   }, [bobAnim]);
 
-  // Load Teacher lessons from API
-  const loadLessonsData = async () => {
+  // Load Teacher modules and lessons from API
+  const loadModulesData = async () => {
     try {
-      setLoadingTeacher(true);
+      setLoadingModules(true);
       const response = await api.getStudentLessons();
-      if (response.success && response.lessons) {
-        setTeacherLessons(response.lessons);
+
+      if (response.success && response.modules) {
+        // Transform the modules data
+        const transformedModules: Module[] = response.modules.map((module: any) => {
+          const lessons = module.lessons || [];
+          const transformedLessons: Lesson[] = lessons.map((lesson: any, index: number) => {
+            const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
+            const isDone = lesson.status === 'completed';
+            const isActive = lesson.status === 'in_progress';
+            const isLocked = lesson.status === 'pending';
+
+            return {
+              id: lesson.lesson_id || lesson.id,
+              lesson_id: lesson.lesson_id || lesson.id,
+              title: lesson.title,
+              description: lesson.description,
+              difficulty: lesson.difficulty,
+              status: lesson.status,
+              total_steps: lesson.total_steps,
+              has_quiz: lesson.has_quiz,
+              module_id: lesson.module_id,
+              category: lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson",
+              desc: lesson.description || "Complete the contents and quiz assigned by your teacher.",
+              color: color,
+              iconBg: color + '18',
+              duration: lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min",
+              xp: lesson.has_quiz ? 30 : 20,
+              done: isDone,
+              active: isActive,
+              locked: isLocked,
+            };
+          });
+
+          return {
+            module_id: module.module_id,
+            title: module.title,
+            description: module.description || '',
+            lessons: transformedLessons,
+          };
+        });
+
+        setModules(transformedModules);
+
         if (response.student) {
           setStreak(response.student.streak_days || 0);
           setXp(response.student.total_xp || 0);
         }
       }
     } catch (error) {
-      console.error('Error fetching teacher lessons:', error);
+      console.error('Error fetching modules and lessons:', error);
     } finally {
-      setLoadingTeacher(false);
+      setLoadingModules(false);
     }
   };
 
   useEffect(() => {
-    loadLessonsData();
+    loadModulesData();
   }, []);
 
-  // Compute lesson node lists
-  const getLessonsList = () => {
+  // Compute current lessons based on active tab
+  const getCurrentLessons = (): Lesson[] => {
     if (activeTab === 0) {
       return defaultLessonsData;
     }
 
-    if (!teacherLessons || teacherLessons.length === 0) return [];
+    // Teacher's Modules
+    if (modules.length === 0 || currentModuleIndex >= modules.length) {
+      return [];
+    }
 
-    const hasInProgress = teacherLessons.some(l => l.status === 'in_progress');
-    const firstPendingIndex = teacherLessons.findIndex(l => l.status === 'pending');
-
-    return teacherLessons.map((item, index) => {
-      const isDone = item.status === 'completed';
-      let isActive = item.status === 'in_progress';
-      let isLocked = item.status === 'pending';
-
-      if (!hasInProgress && index === firstPendingIndex) {
-        isActive = true;
-        isLocked = false;
-      }
-      if (teacherLessons.every(l => l.status === 'pending') && index === 0) {
-        isActive = true;
-        isLocked = false;
-      }
-
-      const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
-      return {
-        id: item.lesson_id,
-        category: item.difficulty ? item.difficulty.charAt(0).toUpperCase() + item.difficulty.slice(1) : "Lesson",
-        title: item.title,
-        desc: item.description || "Complete the contents and quiz assigned by your teacher.",
-        color,
-        iconBg: color + '18',
-        duration: item.total_steps ? `${item.total_steps * 2} min` : "5 min",
-        xp: item.has_quiz ? 30 : 20,
-        done: isDone,
-        active: isActive,
-        locked: isLocked,
-      };
-    });
+    const currentModule = modules[currentModuleIndex];
+    return currentModule.lessons || [];
   };
 
-  const currentLessons = getLessonsList();
+  const currentLessons = getCurrentLessons();
   const totalNodes = currentLessons.length;
+
+  // Get module name for display
+  const getModuleDisplayName = (): string => {
+    if (activeTab === 0) {
+      return "Unit 1: Basics";
+    }
+
+    if (modules.length === 0 || currentModuleIndex >= modules.length) {
+      return "No Module";
+    }
+
+    return modules[currentModuleIndex].title;
+  };
+
+  const getModuleDescription = (): string => {
+    if (activeTab === 0) {
+      return "Master the alphabet and essential greetings";
+    }
+
+    if (modules.length === 0 || currentModuleIndex >= modules.length) {
+      return "No lessons available";
+    }
+
+    return modules[currentModuleIndex].description || "Complete the lessons in this module";
+  };
 
   // Find index of active node
   const getActivePathIndex = () => {
@@ -406,25 +481,66 @@ export default function Lessons() {
   const backgroundPathD = generateSPath(points);
   const progressPathD = generateSPath(points.slice(0, activePathIndex + 1));
 
-  // Switch tabs
+  // Switch between Unit 1 and Teacher Modules
   const switchTab = (targetTab: number) => {
-    if (targetTab === activeTab) return;
+    if (targetTab === activeTab || isNavigating) return;
+    setIsNavigating(true);
     setExpandedId(null);
-    Animated.timing(tabFadeAnim, {
-      toValue: 0,
-      duration: 160,
-      useNativeDriver: true,
-    }).start(() => {
-      setActiveTab(targetTab);
-      if (targetTab === 1) {
-        loadLessonsData();
-      }
+
+    // Immediately update the state, then animate
+    setActiveTab(targetTab);
+    if (targetTab === 1) {
+      setCurrentModuleIndex(0);
+    }
+
+    // Simple fade animation
+    Animated.sequence([
+      Animated.timing(tabFadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
       Animated.timing(tabFadeAnim, {
         toValue: 1,
-        duration: 240,
+        duration: 150,
         useNativeDriver: true,
-      }).start();
+      }),
+    ]).start(() => {
+      setIsNavigating(false);
     });
+  };
+
+  // Navigate between modules (using left/right arrows in banner)
+  const navigateModule = (direction: 'prev' | 'next') => {
+    if (modules.length === 0 || isNavigating) return;
+
+    const newIndex = direction === 'prev'
+      ? Math.max(0, currentModuleIndex - 1)
+      : Math.min(modules.length - 1, currentModuleIndex + 1);
+
+    if (newIndex !== currentModuleIndex) {
+      setIsNavigating(true);
+      setExpandedId(null);
+
+      // Immediately update the state, then animate
+      setCurrentModuleIndex(newIndex);
+
+      // Simple fade animation
+      Animated.sequence([
+        Animated.timing(tabFadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tabFadeAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setIsNavigating(false);
+      });
+    }
   };
 
   const getProgressPercentage = () => {
@@ -534,13 +650,23 @@ export default function Lessons() {
           </View>
         </View>
 
-        {/* Unit Banner */}
+        {/* Unit/Module Banner */}
         <View style={styles.unitBanner}>
           <View style={styles.bannerRow}>
+            {/* Left Arrow - Navigate to previous module or Unit 1 */}
             <Pressable
-              style={[styles.arrowButton, activeTab === 0 && styles.arrowButtonDisabled]}
-              onPress={() => activeTab === 1 && switchTab(0)}
-              disabled={activeTab === 0}
+              style={[styles.arrowButton, (activeTab === 0 || isNavigating) && styles.arrowButtonDisabled]}
+              onPress={() => {
+                if (isNavigating) return;
+                if (activeTab === 0) return;
+                if (currentModuleIndex > 0) {
+                  navigateModule('prev');
+                } else {
+                  // If at first module, go back to Unit 1
+                  switchTab(0);
+                }
+              }}
+              disabled={activeTab === 0 || isNavigating}
             >
               <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === 0 ? "#94A3B8" : "#fff"} strokeWidth="3">
                 <Path d="M15 18l-6-6 6-6" />
@@ -548,22 +674,46 @@ export default function Lessons() {
             </Pressable>
 
             <View style={styles.bannerTitleContainer}>
-              <Text style={styles.unitTitle}>
-                {activeTab === 0 ? "Unit 1: Basics" : "Teacher's Lessons"}
-              </Text>
-              <Text style={styles.unitDesc}>
-                {activeTab === 0
-                  ? "Master the alphabet and essential greetings"
-                  : "Assigned lessons from your instructor"}
-              </Text>
+              <Text style={styles.unitTitle}>{getModuleDisplayName()}</Text>
+              <Text style={styles.unitDesc}>{getModuleDescription()}</Text>
+
+              {/* Module navigation dots */}
+              {activeTab === 1 && modules.length > 1 && (
+                <View style={styles.moduleDotsContainer}>
+                  {modules.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.moduleDot,
+                        currentModuleIndex === index && styles.moduleDotActive
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
 
+
+            {/* Right Arrow - Navigate to next module or Unit 1 */}
             <Pressable
-              style={[styles.arrowButton, activeTab === 1 && styles.arrowButtonDisabled]}
-              onPress={() => activeTab === 0 && switchTab(1)}
-              disabled={activeTab === 1}
+              style={[
+                styles.arrowButton,
+                ((activeTab === 1 && currentModuleIndex === modules.length - 1) || isNavigating) && styles.arrowButtonDisabled
+              ]}
+              onPress={() => {
+                if (isNavigating) return;
+                if (activeTab === 0) {
+                  // Go to first module
+                  switchTab(1);
+                } else if (currentModuleIndex < modules.length - 1) {
+                  navigateModule('next');
+                }
+              }}
+              disabled={(activeTab === 1 && currentModuleIndex === modules.length - 1) || isNavigating}
             >
-              <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTab === 1 ? "#94A3B8" : "#fff"} strokeWidth="3">
+              <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={
+                (activeTab === 1 && currentModuleIndex === modules.length - 1) ? "#94A3B8" : "#fff"
+              } strokeWidth="3">
                 <Path d="M9 18l6-6-6-6" />
               </Svg>
             </Pressable>
@@ -586,23 +736,29 @@ export default function Lessons() {
 
         {/* Main Scroll Content */}
         <Animated.View style={[styles.mapContainer, { opacity: tabFadeAnim }]}>
-          {activeTab === 1 && loadingTeacher ? (
+          {activeTab === 1 && loadingModules ? (
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.loaderText}>Loading lessons...</Text>
+              <Text style={styles.loaderText}>Loading modules...</Text>
             </View>
           ) : totalNodes === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIllustrationBox}>
                 <BookIcon size={64} color="#93C5FD" />
               </View>
-              <Text style={styles.emptyTitle}>No Lessons Yet!</Text>
-              <Text style={styles.emptySubText}>
-                Your teacher hasn't uploaded any lessons yet. Check back later!
+              <Text style={styles.emptyTitle}>
+                {activeTab === 0 ? "No Lessons Yet!" : "No Lessons in this Module"}
               </Text>
-              <Pressable style={styles.emptyRefreshBtn} onPress={loadLessonsData}>
-                <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
-              </Pressable>
+              <Text style={styles.emptySubText}>
+                {activeTab === 0
+                  ? "Your teacher hasn't uploaded any lessons yet. Check back later!"
+                  : "This module doesn't have any lessons assigned yet."}
+              </Text>
+              {activeTab === 1 && (
+                <Pressable style={styles.emptyRefreshBtn} onPress={loadModulesData}>
+                  <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
+                </Pressable>
+              )}
             </View>
           ) : (
             <ScrollView
@@ -653,10 +809,11 @@ export default function Lessons() {
                   style={[
                     styles.mascotContainer,
                     {
-                      left: (cycle => {
+                      left: (() => {
+                        const cycle = [0.5, 0.76, 0.5, 0.24];
                         const xPct = cycle[activePathIndex % cycle.length];
                         return xPct > 0.5 ? activePos.x - 95 : activePos.x + 50;
-                      })([0.5, 0.76, 0.5, 0.24]),
+                      })(),
                       top: activePos.y - 75,
                       transform: [{ translateY: bobY }],
                     },
@@ -959,6 +1116,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     shadowOpacity: 0,
     elevation: 0,
+  },
+
+  // Module Dots
+  moduleDotsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  moduleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
+  },
+  moduleDotActive: {
+    backgroundColor: '#2563EB',
+    width: 16,
   },
 
   progressSection: {

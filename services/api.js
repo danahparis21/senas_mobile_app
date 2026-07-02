@@ -198,6 +198,40 @@ export const api = {
         }
     },
 
+    // NEW: Get all lessons as flat list for dashboard
+    getAllLessons: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📚 Fetching all lessons for dashboard...');
+
+            const response = await fetch(`${API_URL}/student/all-lessons`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('✅ Get all lessons response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch lessons');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching all lessons:', error);
+            throw error;
+        }
+    },
+
     getLessonById: async (lessonId) => {
         try {
             const token = await AsyncStorage.getItem('userToken');

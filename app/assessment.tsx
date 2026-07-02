@@ -136,6 +136,7 @@ export default function Assessment() {
           options: goalOptions,
           key: 'learning_goal',
           emoji: '🎯',
+          senyaMessage: "What sparks your curiosity? ✨",
         },
         {
           title: "How much time can you practice daily?",
@@ -143,6 +144,7 @@ export default function Assessment() {
           options: timeOptions,
           key: 'practice_time',
           emoji: '⏰',
+          senyaMessage: "Consistency is key! 🏆",
         },
       ];
     } else {
@@ -153,6 +155,7 @@ export default function Assessment() {
           options: familiarityOptions,
           key: 'fsl_level',
           emoji: '🤔',
+          senyaMessage: "Let's find your perfect level! 🌟",
         },
         {
           title: "What do you mainly want to learn?",
@@ -160,6 +163,7 @@ export default function Assessment() {
           options: goalOptions,
           key: 'learning_goal',
           emoji: '🎯',
+          senyaMessage: "What sparks your curiosity? ✨",
         },
         {
           title: "How much time can you practice daily?",
@@ -167,6 +171,7 @@ export default function Assessment() {
           options: timeOptions,
           key: 'practice_time',
           emoji: '⏰',
+          senyaMessage: "Consistency is key! 🏆",
         },
       ];
     }
@@ -472,9 +477,7 @@ export default function Assessment() {
           />
           <View style={styles.speechBubble}>
             <Text style={styles.speechText}>
-              {step === 0 ? "Let's find your perfect level! 🌟" :
-                step === 1 ? "What sparks your curiosity? ✨" :
-                  "Consistency is key! 🏆"}
+              {currentQuestion.senyaMessage || "Let's learn together! 🌟"}
             </Text>
           </View>
         </View>
@@ -532,15 +535,37 @@ export default function Assessment() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F6FF' },
+  container: {
+    flex: 1,
+    backgroundColor: '#F0F6FF',
+  },
 
   // ─── Loading ────────────────────────────────────────────────────────────
-  loadingContainer: { flex: 1, backgroundColor: '#F0F6FF', alignItems: 'center', justifyContent: 'center' },
-  loadingText: { marginTop: 16, fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#F0F6FF',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500'
+  },
 
   // ─── Header ─────────────────────────────────────────────────────────────
-  header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
-  headerTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16
+  },
   backBtn: {
     width: 40,
     height: 40,
@@ -551,21 +576,64 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  progressContainer: { flex: 1 },
-  progressTextRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  progressTextLeft: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  progressPct: { fontSize: 12, fontWeight: '700', color: '#3B82F6' },
-  progressBarTrack: { height: 4, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 99, overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: '#3B82F6', borderRadius: 99 },
-  title: { fontSize: 22, fontWeight: '800', color: '#0f3172', lineHeight: 28, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  progressContainer: {
+    flex: 1
+  },
+  progressTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  progressTextLeft: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280'
+  },
+  progressPct: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3B82F6'
+  },
+  progressBarTrack: {
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    borderRadius: 99,
+    overflow: 'hidden'
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 99
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f3172',
+    lineHeight: 28,
+    marginBottom: 4
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500'
+  },
 
   // ─── Scroll Content ─────────────────────────────────────────────────────
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 20 },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20
+  },
 
   // ─── Senya Mascot ──────────────────────────────────────────────────────
-  senyaContainer: { alignItems: 'center', paddingVertical: 8 },
-  senyaMascot: { width: 70, height: 70 },
+  senyaContainer: {
+    alignItems: 'center',
+    paddingVertical: 8
+  },
+  senyaMascot: {
+    width: 70,
+    height: 70
+  },
   speechBubble: {
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 14,
@@ -581,10 +649,17 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 1,
   },
-  speechText: { fontSize: 13, fontWeight: '600', color: '#0f3172' },
+  speechText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f3172'
+  },
 
   // ─── Options ────────────────────────────────────────────────────────────
-  optionsContainer: { gap: 10, marginTop: 4 },
+  optionsContainer: {
+    gap: 10,
+    marginTop: 4
+  },
   optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -618,10 +693,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionIcon: { width: 30, height: 30 },
-  optionTextContainer: { flex: 1 },
-  optionText: { fontSize: 14, fontWeight: '600', color: '#1A1A2E' },
-  optionTextSelected: { color: '#1E4F8A' },
+  optionIcon: {
+    width: 30,
+    height: 30
+  },
+  optionTextContainer: {
+    flex: 1
+  },
+  optionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A2E'
+  },
+  optionTextSelected: {
+    color: '#1E4F8A'
+  },
   checkIconWrapper: {
     width: 28,
     height: 28,
@@ -637,7 +723,11 @@ const styles = StyleSheet.create({
   },
 
   // ─── Footer ─────────────────────────────────────────────────────────────
-  footer: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 8 },
+  footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 8
+  },
   nextBtn: {
     width: '100%',
     padding: 15,
@@ -650,12 +740,26 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
-  nextBtnDisabled: { backgroundColor: 'rgba(59,130,246,0.4)', shadowOpacity: 0 },
-  nextBtnText: { color: 'white', fontSize: 15, fontWeight: '700' },
+  nextBtnDisabled: {
+    backgroundColor: 'rgba(59,130,246,0.4)',
+    shadowOpacity: 0
+  },
+  nextBtnText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700'
+  },
 
   // ─── Skip Assessment ────────────────────────────────────────────────────
-  skipAssessmentBtn: { marginTop: 10, padding: 8 },
-  skipAssessmentText: { color: '#6B7280', fontSize: 13, fontWeight: '500' },
+  skipAssessmentBtn: {
+    marginTop: 10,
+    padding: 8
+  },
+  skipAssessmentText: {
+    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '500'
+  },
 
   // ─── Assigned Level Screen ─────────────────────────────────────────────
   assignedContainer: {
@@ -663,7 +767,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
   assignedCard: {
     backgroundColor: '#fff',
@@ -679,7 +784,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 24,
     elevation: 6,
-    marginHorizontal: 0,
   },
   assignedIconWrapper: {
     width: 72,
@@ -688,23 +792,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    backgroundColor: 'rgba(16,185,129,0.12)',
   },
-  assignedEmoji: { fontSize: 32 },
-  assignedTitle: { fontSize: 20, fontWeight: '700', color: '#0f3172', marginBottom: 12 },
+  assignedEmoji: {
+    fontSize: 32
+  },
+  assignedTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f3172',
+    marginBottom: 12
+  },
   levelBadge: {
     paddingVertical: 8,
     paddingHorizontal: 32,
     borderRadius: 28,
     marginBottom: 16,
-    backgroundColor: '#10B981',
     shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 4,
   },
-  levelBadgeText: { color: 'white', fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
+  levelBadgeText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.5
+  },
   assignedSubtitle: {
     fontSize: 14,
     color: '#4B5563',
@@ -712,20 +826,28 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 24,
   },
-  highlightText: { fontWeight: '700' },
-  assignedActions: { width: '100%', gap: 10 },
+  highlightText: {
+    fontWeight: '700'
+  },
+  assignedActions: {
+    width: '100%',
+    gap: 10
+  },
   startLearningBtn: {
     paddingVertical: 14,
     borderRadius: 60,
     alignItems: 'center',
-    backgroundColor: '#10B981',
     shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 4,
   },
-  startLearningText: { color: 'white', fontSize: 15, fontWeight: '700' },
+  startLearningText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700'
+  },
   takeAssessmentBtn: {
     paddingVertical: 12,
     borderRadius: 60,
@@ -734,14 +856,21 @@ const styles = StyleSheet.create({
     borderColor: '#3B82F6',
     backgroundColor: 'transparent',
   },
-  takeAssessmentText: { color: '#3B82F6', fontSize: 14, fontWeight: '600' },
+  takeAssessmentText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '600'
+  },
   assignedSenyaContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 16,
     gap: 8,
   },
-  assignedSenya: { width: 44, height: 44 },
+  assignedSenya: {
+    width: 44,
+    height: 44
+  },
   assignedSpeechBubble: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 10,
@@ -751,7 +880,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.04)',
   },
-  assignedSpeechText: { fontSize: 12, fontWeight: '600', color: '#0f3172' },
+  assignedSpeechText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f3172'
+  },
 
   // ─── Completion Screen ──────────────────────────────────────────────────
   completionContainer: {
@@ -759,7 +892,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0F6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
   completionCard: {
     backgroundColor: '#fff',
@@ -775,7 +909,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 24,
     elevation: 6,
-    marginHorizontal: 0,
   },
   completionIconWrapper: {
     width: 64,
@@ -784,14 +917,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
-    backgroundColor: '#10B981',
     shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 14,
     elevation: 5,
   },
-  completionTitle: { fontSize: 22, fontWeight: '800', color: '#0f3172', marginBottom: 4 },
+  completionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f3172',
+    marginBottom: 4
+  },
   completionSubtitle: {
     fontSize: 14,
     color: '#6B7280',
@@ -807,18 +944,40 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     gap: 10,
   },
-  summaryItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  summaryDivider: { height: 1, backgroundColor: 'rgba(0,0,0,0.04)' },
-  summaryLabel: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
-  summaryLevelBadge: { paddingHorizontal: 12, paddingVertical: 2, borderRadius: 10 },
-  summaryValue: { fontSize: 14, color: '#0f3172', fontWeight: '700' },
+  summaryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.04)'
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500'
+  },
+  summaryLevelBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    borderRadius: 10
+  },
+  summaryValue: {
+    fontSize: 14,
+    color: '#0f3172',
+    fontWeight: '700'
+  },
   completionSenyaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 18,
     gap: 10,
   },
-  completionSenya: { width: 48, height: 48 },
+  completionSenya: {
+    width: 48,
+    height: 48
+  },
   completionSpeechBubble: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 12,
@@ -828,18 +987,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.04)',
   },
-  completionSpeechText: { fontSize: 13, fontWeight: '600', color: '#0f3172' },
+  completionSpeechText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f3172'
+  },
   startBtn: {
     width: '100%',
     paddingVertical: 14,
     borderRadius: 60,
     alignItems: 'center',
-    backgroundColor: '#10B981',
     shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 4,
   },
-  startBtnText: { color: 'white', fontSize: 15, fontWeight: '700' },
+  startBtnText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '700'
+  },
 });
