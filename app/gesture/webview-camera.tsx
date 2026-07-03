@@ -82,6 +82,7 @@ export default function WebViewCameraScreen() {
     const [consecutiveWrong, setConsecutiveWrong] = useState(0);
     const [isModuleComplete, setIsModuleComplete] = useState(false);
     const [showResults, setShowResults] = useState(false);
+    const [starRating, setStarRating] = useState(0);
 
     // Letter tracking for results
     const [letterAttempts, setLetterAttempts] = useState<Record<string, LetterAttempt>>({});
@@ -102,6 +103,15 @@ export default function WebViewCameraScreen() {
 
     // Auto-scroll ref
     const [letterWidth, setLetterWidth] = useState(50); // Approximate width of each letter slot + margin
+
+    // Senya message cooldown - prevents rapid flashing of messages
+    const senyaMsgCooldownRef = useRef<number>(0);
+    const SENYA_COOLDOWN_MS = 3000; // 3 seconds between non-critical messages
+
+    // Star animations for results modal
+    const starAnim1 = useRef(new Animated.Value(0)).current;
+    const starAnim2 = useRef(new Animated.Value(0)).current;
+    const starAnim3 = useRef(new Animated.Value(0)).current;
 
     // Get current target letter (first incomplete)
     const getCurrentTarget = () => {
@@ -135,8 +145,7 @@ export default function WebViewCameraScreen() {
             // Auto-scroll to the current target letter
             const targetIndex = ALPHABET_PART1.indexOf(target);
             if (targetIndex >= 0 && scrollViewRef.current) {
-                // Calculate scroll position to center the target
-                const slotWidth = 50; // width of each slot (44 + 6 margin)
+                const slotWidth = 54; // width of each slot + margin
                 const scrollX = targetIndex * slotWidth - (width - 100) / 2;
                 setTimeout(() => {
                     scrollViewRef.current?.scrollTo({
@@ -148,12 +157,27 @@ export default function WebViewCameraScreen() {
         } else if (completedLetters.size === ALPHABET_PART1.length) {
             setIsModuleComplete(true);
             setSenyaMessage(SENYA_MESSAGES.complete);
-            setEndTime(Date.now());
+            const endNow = Date.now();
+            setEndTime(endNow);
+            const elapsed = Math.round((endNow - startTime) / 1000);
+            setStarRating(elapsed < 30 ? 3 : elapsed < 60 ? 2 : 1);
             setTimeout(() => {
                 setShowResults(true);
             }, 1500);
         }
     }, [completedLetters]);
+
+    // Animate stars when results are shown
+    useEffect(() => {
+        if (showResults) {
+            starAnim1.setValue(0);
+            starAnim2.setValue(0);
+            starAnim3.setValue(0);
+            setTimeout(() => Animated.spring(starAnim1, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 300);
+            setTimeout(() => Animated.spring(starAnim2, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 550);
+            setTimeout(() => Animated.spring(starAnim3, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 800);
+        }
+    }, [showResults]);
 
     // Get random message from array
     const getRandomMessage = (messages: string[]) => {
@@ -250,67 +274,74 @@ export default function WebViewCameraScreen() {
                             };
                         });
 
-                        // Senya celebration
+                        // Senya celebration - always show for correct (bypasses cooldown)
                         const msg = getRandomMessage(SENYA_MESSAGES.correct);
                         setSenyaMessage(msg);
+                        senyaMsgCooldownRef.current = Date.now();
 
-                        // Show cute popup - shorter and cleaner
                         showCutePopup(
                             `${letter} ✓`,
                             `${completedLetters.size + 1}/${ALPHABET_PART1.length}`
                         );
                     }
                 } else if (completedLetters.has(letter)) {
-                    // Already completed - only show message if there's still a target
-                    const target = getCurrentTarget();
-                    if (target) {
-                        setSenyaMessage(`You got ${letter}! Try ${target}`);
-                    } else {
-                        // All letters are completed!
-                        setSenyaMessage(SENYA_MESSAGES.complete);
+                    // Already completed - throttled message
+                    const now = Date.now();
+                    if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
+                        senyaMsgCooldownRef.current = now;
+                        if (target) {
+                            setSenyaMessage(`You got ${letter}! Try ${target}`);
+                        } else {
+                            setSenyaMessage(SENYA_MESSAGES.complete);
+                        }
                     }
                     setConsecutiveWrong(0);
                 } else {
-                    // Wrong letter - only count if not a transition and not the same wrong letter repeated
-                    // Only count as a mistake if we've been stable on this wrong letter
+                    // Wrong letter - only count if stable
                     if (letterStableCount >= 2) {
                         const newWrong = consecutiveWrong + 1;
                         setConsecutiveWrong(newWrong);
                         setTotalWrongAttempts(prev => prev + 1);
 
-                        // Update wrong attempts
-                        setLetterAttempts(prev => {
-                            const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                            return {
-                                ...prev,
-                                [letter]: {
-                                    ...current,
-                                    wrongAttempts: current.wrongAttempts + 1,
-                                }
-                            };
-                        });
+                        // FIXED: Attribute wrong attempts to TARGET letter (what user is trying to do)
+                        // This ensures Senya's Notes correctly shows which letters you struggled WITH
+                        if (target) {
+                            setLetterAttempts(prev => {
+                                const current = prev[target] || { letter: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                                return {
+                                    ...prev,
+                                    [target]: {
+                                        ...current,
+                                        wrongAttempts: current.wrongAttempts + 1,
+                                    }
+                                };
+                            });
+                        }
 
-                        // Only show struggle messages after multiple wrong attempts
-                        const target = getCurrentTarget();
-                        if (newWrong >= 4) {
-                            const msg = getRandomMessage(SENYA_MESSAGES.struggle);
-                            setSenyaMessage(msg);
-                            setConsecutiveWrong(0);
-                            showCutePopup(
-                                `💡 ${target}`,
-                                'Keep your hand steady'
-                            );
-                        } else if (newWrong === 2) {
-                            setSenyaMessage(`Try making ${target} shape`);
-                        } else if (newWrong === 3) {
-                            setSenyaMessage(`Focus on ${target}!`);
+                        // Throttled struggle messages - max one message per cooldown period
+                        const now = Date.now();
+                        if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
+                            senyaMsgCooldownRef.current = now;
+                            if (newWrong >= 4) {
+                                const msg = getRandomMessage(SENYA_MESSAGES.struggle);
+                                setSenyaMessage(msg);
+                                setConsecutiveWrong(0);
+                                showCutePopup(
+                                    `💡 ${target}`,
+                                    'Keep your hand steady'
+                                );
+                            } else if (newWrong >= 2) {
+                                setSenyaMessage(`Try making ${target} shape!`);
+                            }
                         }
                     }
                 }
             } else {
-                // Letter not in A-M
+                // Letter not in A-M - throttled message
                 const target = getCurrentTarget();
-                if (target && !isModuleComplete) {
+                const now = Date.now();
+                if (target && !isModuleComplete && now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
+                    senyaMsgCooldownRef.current = now;
                     setSenyaMessage(`We're learning ${target}`);
                 }
             }
@@ -321,7 +352,10 @@ export default function WebViewCameraScreen() {
             setLastProcessedLetter('');
             setLetterStableCount(0);
 
-            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length) {
+            // Longer cooldown for no-hand message (5s) to avoid nagging
+            const now = Date.now();
+            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length && now - senyaMsgCooldownRef.current >= 5000) {
+                senyaMsgCooldownRef.current = now;
                 const target = getCurrentTarget();
                 if (target) {
                     setSenyaMessage(`Show me ${target}!`);
@@ -343,51 +377,35 @@ export default function WebViewCameraScreen() {
         }
     };
 
-    // Calculate results - FIXED: accuracy should reflect actual performance
+    // Calculate results
     const getResults = () => {
         const timeToUse = endTime || Date.now();
-        const totalTime = Math.round((timeToUse - startTime) / 1000);
-        const minutes = Math.floor(totalTime / 60);
-        const seconds = totalTime % 60;
+        const totalSecs = Math.round((timeToUse - startTime) / 1000);
+        const minutes = Math.floor(totalSecs / 60);
+        const seconds = totalSecs % 60;
+        const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
-        // Find struggling letters (more than 4 wrong attempts)
+        // Find struggling letters - correctly attributed to target letter
+        // Sorted by most wrong attempts so the worst offenders appear first
         const strugglingLetters = Object.values(letterAttempts)
-            .filter(l => l.wrongAttempts > 4)
-            .map(l => l.letter);
+            .filter(l => l.wrongAttempts >= 2)
+            .sort((a, b) => b.wrongAttempts - a.wrongAttempts)
+            .map(l => l.letter)
+            .slice(0, 3);
 
-        // Find easy letters (first try success)
+        // Find easy letters (completed with zero wrong attempts)
         const easyLetters = Object.values(letterAttempts)
-            .filter(l => l.attempts === 1 && l.successCount === 1)
+            .filter(l => l.successCount > 0 && l.wrongAttempts === 0)
             .map(l => l.letter);
 
-        // Calculate accuracy based on successful completions vs total attempts
-        const totalLetters = ALPHABET_PART1.length;
         const completedCount = completedLetters.size;
 
-        const accuracy = Math.round((completedCount / totalLetters) * 100);
-
-        // Find fastest letter (by time to first success)
-        let fastestLetter = '';
-        let fastestTime = Infinity;
-        Object.values(letterAttempts).forEach(l => {
-            if (l.firstSuccess && l.attempts > 0) {
-                const timePerAttempt = (l.attempts / (l.successCount || 1));
-                if (timePerAttempt < fastestTime) {
-                    fastestTime = timePerAttempt;
-                    fastestLetter = l.letter;
-                }
-            }
-        });
-
         return {
-            accuracy,
-            totalTime: `${minutes}m ${seconds}s`,
+            totalTime: timeDisplay,
             strugglingLetters,
             easyLetters,
-            fastestLetter,
             totalCorrect: completedCount,
             totalWrong: totalWrongAttempts,
-            totalAttempts: completedCount + totalWrongAttempts,
         };
     };
 
@@ -582,10 +600,13 @@ export default function WebViewCameraScreen() {
                                 {letter}
                             </Text>
                             {isCompleted && (
-                                <Text style={styles.letterStatus}>✓</Text>
+                                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                             )}
                             {isActive && (
-                                <Text style={styles.letterStatus}>★</Text>
+                                <Ionicons name="star" size={13} color="#FFD700" />
+                            )}
+                            {!isCompleted && !isActive && (
+                                <View style={styles.letterStatusDot} />
                             )}
                         </View>
                     );
@@ -653,81 +674,140 @@ export default function WebViewCameraScreen() {
                 onRequestClose={() => setShowResults(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Image
-                            source={require('../../assets/images/img/senya_teaching.png')}
-                            style={styles.modalSenya}
-                            resizeMode="contain"
-                        />
+                    <View style={styles.modalCard}>
+                        {/* Close button */}
+                        <TouchableOpacity
+                            style={styles.modalClose}
+                            onPress={() => setShowResults(false)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons name="close" size={20} color="#0f3172" />
+                        </TouchableOpacity>
 
-                        <Text style={styles.modalTitle}>🎉 Congratulations!</Text>
-                        <Text style={styles.modalSubtitle}>You mastered all 13 letters!</Text>
+                        {/* Trophy badge */}
+                        <View style={styles.trophyBadge}>
+                            <Ionicons name="trophy" size={32} color="#FFD700" />
+                        </View>
 
+                        <Text style={styles.modalTitle}>You Did It!</Text>
+                        <Text style={styles.modalSubtitle}>
+                            All {ALPHABET_PART1.length} letters mastered
+                        </Text>
+
+                        {/* Animated star rating */}
+                        <View style={styles.starsRow}>
+                            {([starAnim1, starAnim2, starAnim3] as Animated.Value[]).map((anim, i) => {
+                                const isEarned = starRating > i;
+                                return (
+                                    <Animated.View
+                                        key={i}
+                                        style={[
+                                            styles.starWrapper,
+                                            i === 1 && styles.starWrapperCenter,
+                                            { transform: [{ scale: anim }], opacity: anim },
+                                        ]}
+                                    >
+                                        <Ionicons
+                                            name={isEarned ? 'star' : 'star-outline'}
+                                            size={i === 1 ? 40 : 32}
+                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
+                                        />
+                                    </Animated.View>
+                                );
+                            })}
+                        </View>
+                        <View style={styles.starLabelPill}>
+                            <Ionicons
+                                name={starRating === 3 ? 'flash' : starRating === 2 ? 'thumbs-up' : 'leaf'}
+                                size={14}
+                                color="#0f3172"
+                                style={{ marginRight: 6 }}
+                            />
+                            <Text style={styles.starLabel}>
+                                {starRating === 3 ? 'Lightning Fast!' : starRating === 2 ? 'Great Job!' : 'Keep Practicing!'}
+                            </Text>
+                        </View>
+
+                        {/* Stats */}
                         {(() => {
                             const results = getResults();
                             return (
-                                <View style={styles.resultsGrid}>
-                                    <View style={styles.resultItem}>
-                                        <Text style={styles.resultValue}>{results.accuracy}%</Text>
-                                        <Text style={styles.resultGridLabel}>Accuracy</Text>
+                                <>
+                                    <View style={styles.resultsGrid}>
+                                        <View style={styles.resultItem}>
+                                            <View style={styles.resultIconWrap}>
+                                                <Ionicons name="timer-outline" size={20} color="#0f3172" />
+                                            </View>
+                                            <Text style={styles.resultValue}>{results.totalTime}</Text>
+                                            <Text style={styles.resultGridLabel}>Time</Text>
+                                        </View>
+                                        <View style={styles.resultItemDivider} />
+                                        <View style={styles.resultItem}>
+                                            <View style={styles.resultIconWrap}>
+                                                <Ionicons name="hand-left-outline" size={20} color="#0f3172" />
+                                            </View>
+                                            <Text style={styles.resultValue}>
+                                                {results.totalCorrect}/{ALPHABET_PART1.length}
+                                            </Text>
+                                            <Text style={styles.resultGridLabel}>Gestures</Text>
+                                        </View>
                                     </View>
-                                    <View style={styles.resultItem}>
-                                        <Text style={styles.resultValue}>{results.totalTime}</Text>
-                                        <Text style={styles.resultGridLabel}>Time Taken</Text>
+
+                                    {/* Notes */}
+                                    <View style={styles.senyaFeedback}>
+                                        <View style={styles.feedbackHeader}>
+                                            <Ionicons name="document-text-outline" size={16} color="#0f3172" />
+                                            <Text style={styles.feedbackTitle}>Senya's Notes</Text>
+                                        </View>
+                                        {(() => {
+                                            const items: { icon: any; color: string; text: string }[] = [];
+
+                                            if (starRating === 3) {
+                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
+                                            } else if (starRating === 2) {
+                                                items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
+                                            } else {
+                                                items.push({ icon: 'refresh', color: '#4b7bbb', text: 'Keep practicing! Your hands will get faster.' });
+                                            }
+
+                                            if (results.strugglingLetters.length > 0) {
+                                                items.push({
+                                                    icon: 'alert-circle-outline',
+                                                    color: '#E11D48',
+                                                    text: `Need more help with: ${results.strugglingLetters.join(', ')}`,
+                                                });
+                                            }
+
+                                            if (results.easyLetters.length > 0) {
+                                                items.push({
+                                                    icon: 'checkmark-circle',
+                                                    color: '#10B981',
+                                                    text: `You nailed: ${results.easyLetters.join(', ')}`,
+                                                });
+                                            }
+
+                                            return items.map((it, i) => (
+                                                <View key={i} style={styles.feedbackRow}>
+                                                    <Ionicons name={it.icon} size={14} color={it.color} style={{ marginTop: 2, marginRight: 8 }} />
+                                                    <Text style={styles.feedbackText}>{it.text}</Text>
+                                                </View>
+                                            ));
+                                        })()}
                                     </View>
-                                    <View style={styles.resultItem}>
-                                        <Text style={styles.resultValue}>{results.totalCorrect}</Text>
-                                        <Text style={styles.resultGridLabel}>Correct</Text>
-                                    </View>
-                                    <View style={styles.resultItem}>
-                                        <Text style={styles.resultValue}>{results.totalWrong}</Text>
-                                        <Text style={styles.resultGridLabel}>Mistakes</Text>
-                                    </View>
-                                </View>
+                                </>
                             );
                         })()}
 
-                        {/* Senya's intuitive feedback */}
-                        <View style={styles.senyaFeedback}>
-                            <Text style={styles.feedbackTitle}>Senya's Notes 📝</Text>
-                            {(() => {
-                                const results = getResults();
-                                let feedback = [];
-
-                                if (results.accuracy >= 90) {
-                                    feedback.push("🌟 You're a natural at sign language!");
-                                } else if (results.accuracy >= 70) {
-                                    feedback.push("💪 Great effort! Keep practicing to improve!");
-                                } else {
-                                    feedback.push("🧐 Keep practicing! You'll get better with time!");
-                                }
-
-                                if (results.strugglingLetters.length > 0) {
-                                    feedback.push(`📌 Focus on: ${results.strugglingLetters.join(', ')}`);
-                                }
-
-                                if (results.easyLetters.length > 0) {
-                                    feedback.push(`⭐ You nailed: ${results.easyLetters.join(', ')}`);
-                                }
-
-                                if (results.fastestLetter) {
-                                    feedback.push(`⚡ Fastest: ${results.fastestLetter}`);
-                                }
-
-                                return feedback.map((text, i) => (
-                                    <Text key={i} style={styles.feedbackText}>• {text}</Text>
-                                ));
-                            })()}
-                        </View>
-
                         <TouchableOpacity
                             style={styles.continueButton}
+                            activeOpacity={0.85}
                             onPress={() => {
                                 setShowResults(false);
                                 router.back();
                             }}
                         >
-                            <Text style={styles.continueButtonText}>Continue to Next Module →</Text>
+                            <Text style={styles.continueButtonText}>Continue</Text>
+                            <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -938,9 +1018,9 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     letterGridScroll: {
-        maxHeight: 80,
+        maxHeight: 88,
         marginHorizontal: 12,
-        marginVertical: 4,
+        marginVertical: 6,
     },
     letterGridContent: {
         paddingHorizontal: 4,
@@ -948,39 +1028,55 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     letterSlot: {
-        width: 44,
-        height: 58,
-        borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.6)',
+        width: 48,
+        height: 64,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.78)',
         borderWidth: 2,
-        borderColor: 'rgba(15, 49, 114, 0.1)',
+        borderColor: 'rgba(15, 49, 114, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 6,
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.07,
+        shadowRadius: 4,
+        elevation: 2,
     },
     letterCompleted: {
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-        borderColor: 'rgba(16, 185, 129, 0.4)',
+        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+        borderColor: '#10B981',
+        shadowColor: '#10B981',
+        shadowOpacity: 0.2,
     },
     letterActive: {
         borderColor: '#FFD700',
-        backgroundColor: 'rgba(255, 215, 0, 0.1)',
-        transform: [{ scale: 1.05 }],
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        transform: [{ scale: 1.1 }],
+        shadowColor: '#FFD700',
+        shadowOpacity: 0.55,
+        shadowRadius: 10,
+        elevation: 8,
     },
     letterChar: {
         fontSize: 20,
         fontWeight: '800',
-        color: 'rgba(15, 49, 114, 0.4)',
+        color: 'rgba(15, 49, 114, 0.35)',
     },
     letterCharCompleted: {
         color: '#10B981',
+        fontSize: 18,
     },
     letterCharActive: {
-        color: '#FFD700',
+        color: '#92650A',
+        fontSize: 22,
     },
-    letterStatus: {
-        fontSize: 10,
-        marginTop: 1,
+    letterStatusDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: 'rgba(15,49,114,0.15)',
+        marginTop: 3,
     },
     resultBar: {
         flexDirection: 'row',
@@ -1037,7 +1133,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         minWidth: 32,
     },
-    // Cute Popup - Smaller rounded rectangle
+    // Popup
     popupContainer: {
         position: 'absolute',
         top: '35%',
@@ -1079,103 +1175,192 @@ const styles = StyleSheet.create({
         marginTop: 1,
         textAlign: 'center',
     },
-    // Results Modal Styles
+    // Results Modal
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(10, 22, 40, 0.8)',
+        backgroundColor: 'rgba(10, 22, 40, 0.7)',
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        paddingHorizontal: 24,
     },
-    modalContent: {
-        backgroundColor: 'white',
-        borderRadius: 30,
-        padding: 24,
+    modalCard: {
+        backgroundColor: '#fff',
+        borderRadius: 24,
+        paddingTop: 28,
+        paddingBottom: 20,
+        paddingHorizontal: 20,
         width: '100%',
-        maxWidth: 400,
-        maxHeight: '90%',
+        maxWidth: 340,
         alignItems: 'center',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.3,
-        shadowRadius: 30,
-        elevation: 20,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 16,
     },
-    modalSenya: {
-        width: 70,
-        height: 70,
-        marginBottom: 8,
+    modalClose: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2,
+    },
+    trophyBadge: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        borderWidth: 2,
+        borderColor: 'rgba(255, 201, 60, 0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 12,
     },
     modalTitle: {
-        fontSize: 26,
+        fontSize: 22,
         fontWeight: '800',
         color: '#0f3172',
         textAlign: 'center',
     },
     modalSubtitle: {
-        fontSize: 16,
+        fontSize: 13,
         color: '#4b7bbb',
-        marginBottom: 16,
+        marginTop: 4,
         textAlign: 'center',
+    },
+    starsRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        marginTop: 14,
+        gap: 6,
+    },
+    starWrapper: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    starWrapperCenter: {
+        marginBottom: 6,
+    },
+    starLabelPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        paddingVertical: 5,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        marginTop: 10,
+        marginBottom: 14,
+    },
+    starLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#0f3172',
     },
     resultsGrid: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
+        alignItems: 'center',
         justifyContent: 'center',
-        gap: 12,
-        marginBottom: 16,
+        backgroundColor: '#f7faff',
+        borderRadius: 16,
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        marginBottom: 12,
         width: '100%',
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.08)',
     },
     resultItem: {
-        backgroundColor: 'rgba(15, 49, 114, 0.05)',
-        borderRadius: 12,
-        padding: 12,
-        minWidth: 70,
-        alignItems: 'center',
         flex: 1,
+        alignItems: 'center',
+    },
+    resultIconWrap: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: 'rgba(15, 49, 114, 0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 6,
+    },
+    resultItemDivider: {
+        width: 1,
+        height: 44,
+        backgroundColor: 'rgba(15,49,114,0.1)',
+        marginHorizontal: 4,
     },
     resultValue: {
-        fontSize: 22,
+        fontSize: 18,
         fontWeight: '800',
         color: '#0f3172',
     },
     resultGridLabel: {
-        fontSize: 11,
+        fontSize: 10,
         color: '#4b7bbb',
-        fontWeight: '500',
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginTop: 2,
+    },
+    modalSenya: {
+        width: 80,
+        height: 80,
+        marginBottom: 12,
     },
     senyaFeedback: {
-        backgroundColor: 'rgba(255, 215, 0, 0.08)',
-        borderRadius: 16,
-        padding: 16,
+        backgroundColor: '#fbfcff',
+        borderRadius: 14,
+        padding: 12,
         width: '100%',
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255, 215, 0, 0.2)',
+        borderColor: 'rgba(15,49,114,0.08)',
     },
-    feedbackTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#0f3172',
+    feedbackHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         marginBottom: 8,
     },
-    feedbackText: {
+    feedbackTitle: {
         fontSize: 13,
-        color: '#4b7bbb',
-        lineHeight: 20,
-        marginBottom: 2,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    feedbackRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 4,
+    },
+    feedbackText: {
+        flex: 1,
+        fontSize: 12,
+        color: '#334155',
+        lineHeight: 18,
     },
     continueButton: {
         backgroundColor: '#0f3172',
-        paddingVertical: 14,
-        paddingHorizontal: 32,
-        borderRadius: 60,
+        paddingVertical: 13,
+        paddingHorizontal: 24,
+        borderRadius: 999,
         width: '100%',
         alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 6,
     },
     continueButtonText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '700',
     },
 });
