@@ -1,3 +1,4 @@
+// app/lesson/[id].tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, Pressable,
@@ -7,6 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Polyline, Line, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import ConfettiCannon from 'react-native-confetti-cannon';
+import { Audio } from 'expo-av';
 import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -24,6 +26,11 @@ const SLIDE_COLORS = [
   '#4F46E5', // Indigo
   '#0D9488', // Teal
 ];
+
+// ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
+const CORRECT_SOUND = require('../../assets/music/correct.mp3');
+const WRONG_SOUND = require('../../assets/music/wrong.mp3');
+const QUIZ_RESULT_SOUND = require('../../assets/music/quiz-result.mp3');
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Option {
@@ -354,6 +361,12 @@ export default function LessonViewer() {
   const parallelScrollY = useRef(new Animated.Value(0)).current;
   const resultsScrollRef = useRef<any>(null);
 
+  // ── Audio state ──
+  const [correctSound, setCorrectSound] = useState<Audio.Sound | null>(null);
+  const [wrongSound, setWrongSound] = useState<Audio.Sound | null>(null);
+  const [resultSound, setResultSound] = useState<Audio.Sound | null>(null);
+  const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
+
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userRank, setUserRank] = useState<number | null>(null);
@@ -371,6 +384,106 @@ export default function LessonViewer() {
 
   const senyaBounceAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = bounce
   const senyaShakeAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = shake
+
+  // ── Play correct answer sound ──
+  async function playCorrectSound() {
+    try {
+      if (isSoundPlaying) return;
+      setIsSoundPlaying(true);
+
+      if (correctSound) {
+        await correctSound.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        CORRECT_SOUND,
+        {
+          shouldPlay: true,
+          isLooping: false,
+          volume: 0.9, // Louder for correct answers (90%)
+        }
+      );
+
+      setCorrectSound(sound);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          setCorrectSound(null);
+          setIsSoundPlaying(false);
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to play correct sound:', error);
+      setIsSoundPlaying(false);
+    }
+  }
+
+  // ── Play wrong answer sound ──
+  async function playWrongSound() {
+    try {
+      if (isSoundPlaying) return;
+      setIsSoundPlaying(true);
+
+      if (wrongSound) {
+        await wrongSound.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        WRONG_SOUND,
+        {
+          shouldPlay: true,
+          isLooping: false,
+          volume: 0.6, // Lower for wrong answers (60%)
+        }
+      );
+
+      setWrongSound(sound);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          setWrongSound(null);
+          setIsSoundPlaying(false);
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to play wrong sound:', error);
+      setIsSoundPlaying(false);
+    }
+  }
+
+  // ── Play quiz result sound ──
+  async function playResultSound() {
+    try {
+      if (resultSound) {
+        await resultSound.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        QUIZ_RESULT_SOUND,
+        {
+          shouldPlay: true,
+          isLooping: false,
+          volume: 0.8,
+        }
+      );
+
+      setResultSound(sound);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          setResultSound(null);
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to play result sound:', error);
+    }
+  }
 
   const animateSenyaCorrect = () => {
     senyaBounceAnim.setValue(0);
@@ -466,10 +579,26 @@ export default function LessonViewer() {
     fetchLesson();
     fetchAttemptHistory();
     fetchLeaderboard();
-  }, [id]);
+
+    // ── Cleanup sounds on unmount ──
+    return () => {
+      if (correctSound) {
+        correctSound.unloadAsync();
+      }
+      if (wrongSound) {
+        wrongSound.unloadAsync();
+      }
+      if (resultSound) {
+        resultSound.unloadAsync();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (quizSubmitted && quizResult) {
+      // ── Play result sound ──
+      playResultSound();
+
       // Reset animation values BEFORE starting new animation
       resultsFadeAnim.setValue(0);
       resultsScaleAnim.setValue(0.85);
@@ -523,7 +652,7 @@ export default function LessonViewer() {
     router.dismiss();
   };
 
-  const handleOptionSelect = (optionIndex: number) => {
+  const handleOptionSelect = async (optionIndex: number) => {
     if (questionRevealed) return;
     setSelectedOption(optionIndex);
     setQuestionRevealed(true);
@@ -532,10 +661,12 @@ export default function LessonViewer() {
     const currentQ = questions[currentQuestionIndex];
     const isCorrect = optionIndex === currentQ?.options.findIndex(o => o.is_correct);
 
-    // Trigger Senya animation based on correctness
+    // ── Play the appropriate sound ──
     if (isCorrect) {
+      await playCorrectSound();
       animateSenyaCorrect();
     } else {
+      await playWrongSound();
       animateSenyaIncorrect();
     }
 
@@ -826,8 +957,8 @@ export default function LessonViewer() {
             <Text style={[s.feedbackText, questionRevealed && isCorrect ? { color: '#065f46' } : questionRevealed ? { color: '#991b1b' } : {}]}>
               {questionRevealed
                 ? (isCorrect
-                  ? (currentQuestion.options.find(o => o.is_correct)?.option_text || 'Correct!')
-                  : (currentQuestion.options.find(o => o.is_correct)?.option_text || 'Incorrect!'))
+                  ? (currentQuestion.options.find(o => o.is_correct)?.option_text || 'Correct! 🎉')
+                  : (currentQuestion.options.find(o => o.is_correct)?.option_text || 'Incorrect! 😅'))
                 : 'Read carefully and pick the best answer!'}
             </Text>
           </View>

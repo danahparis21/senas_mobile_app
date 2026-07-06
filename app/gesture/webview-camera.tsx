@@ -23,6 +23,7 @@ import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
 import * as WebBrowser from 'expo-web-browser';
+import { Audio } from 'expo-av';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -30,6 +31,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const { width, height } = Dimensions.get('window');
+
+// ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
+const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
+const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
 
 // Alphabet Part 1: A-M
 const ALPHABET_PART1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
@@ -75,6 +80,11 @@ export default function WebViewCameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
 
+    // ── Audio state ──
+    const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
+    const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
+    const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
+
     // Gamification state
     const [completedLetters, setCompletedLetters] = useState<Set<string>>(new Set());
     const [currentTarget, setCurrentTarget] = useState('A');
@@ -113,6 +123,77 @@ export default function WebViewCameraScreen() {
     const starAnim2 = useRef(new Animated.Value(0)).current;
     const starAnim3 = useRef(new Animated.Value(0)).current;
 
+    // ── Play correct gesture sound ──
+    async function playGestureSound() {
+        try {
+            // Don't play if a sound is already playing
+            if (isSoundPlaying) return;
+
+            setIsSoundPlaying(true);
+
+            // Unload any existing sound
+            if (gestureSound) {
+                await gestureSound.unloadAsync();
+            }
+
+            const { sound } = await Audio.Sound.createAsync(
+                CORRECT_GESTURE_SOUND,
+                {
+                    shouldPlay: true,
+                    isLooping: false,
+                    volume: 0.8, // 80% volume for pleasant feedback
+                }
+            );
+
+            setGestureSound(sound);
+
+            // Auto-cleanup after playback
+            sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                    sound.unloadAsync();
+                    setGestureSound(null);
+                    setIsSoundPlaying(false);
+                }
+            });
+
+        } catch (error) {
+            console.error('Failed to play gesture sound:', error);
+            setIsSoundPlaying(false);
+        }
+    }
+
+    // ── Play completion sound ──
+    async function playCompleteSound() {
+        try {
+            // Unload any existing sound
+            if (completeSound) {
+                await completeSound.unloadAsync();
+            }
+
+            const { sound } = await Audio.Sound.createAsync(
+                GESTURE_COMPLETE_SOUND,
+                {
+                    shouldPlay: true,
+                    isLooping: false,
+                    volume: 1.0, // Full volume for celebration!
+                }
+            );
+
+            setCompleteSound(sound);
+
+            // Auto-cleanup after playback
+            sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                    sound.unloadAsync();
+                    setCompleteSound(null);
+                }
+            });
+
+        } catch (error) {
+            console.error('Failed to play complete sound:', error);
+        }
+    }
+
     // Get current target letter (first incomplete)
     const getCurrentTarget = () => {
         for (const letter of ALPHABET_PART1) {
@@ -135,6 +216,16 @@ export default function WebViewCameraScreen() {
         setLetterAttempts(initial);
         setStartTime(Date.now());
         setEndTime(null);
+
+        // ── Cleanup sounds on unmount ──
+        return () => {
+            if (gestureSound) {
+                gestureSound.unloadAsync();
+            }
+            if (completeSound) {
+                completeSound.unloadAsync();
+            }
+        };
     }, []);
 
     // Auto-scroll to current target when it changes
@@ -161,6 +252,10 @@ export default function WebViewCameraScreen() {
             setEndTime(endNow);
             const elapsed = Math.round((endNow - startTime) / 1000);
             setStarRating(elapsed < 30 ? 3 : elapsed < 60 ? 2 : 1);
+
+            // ── Play completion sound when all letters are done ──
+            playCompleteSound();
+
             setTimeout(() => {
                 setShowResults(true);
             }, 1500);
@@ -209,7 +304,7 @@ export default function WebViewCameraScreen() {
     };
 
     // Handle detection result from WebView
-    const handleDetection = (data: any) => {
+    const handleDetection = async (data: any) => {
         const { letter, confidence: conf } = data;
 
         if (letter && letter !== '✋' && letter.length === 1) {
@@ -255,6 +350,9 @@ export default function WebViewCameraScreen() {
                 if (letter === target) {
                     // CORRECT!
                     if (!completedLetters.has(letter)) {
+                        // ── Play the gesture sound on correct detection ──
+                        await playGestureSound();
+
                         const newCompleted = new Set(completedLetters);
                         newCompleted.add(letter);
                         setCompletedLetters(newCompleted);
