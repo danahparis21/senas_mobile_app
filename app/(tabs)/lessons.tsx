@@ -607,6 +607,8 @@ export default function Lessons() {
 
   const activePos = points[activePathIndex];
 
+
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
@@ -974,9 +976,24 @@ export default function Lessons() {
                   <Text style={styles.cardInfoBadgeText}>⏱️ {selectedLesson.duration}</Text>
                 </View>
                 <View style={[styles.cardInfoBadge, { backgroundColor: '#EEF2FF' }]}>
-                  <Text style={[styles.cardInfoBadgeText, { color: '#4338CA' }]}>⚡ +{selectedLesson.xp} XP</Text>
+                  <Text style={[styles.cardInfoBadgeText, { color: '#4338CA' }]}>
+                    ⚡ Up to +{selectedLesson.xp} XP
+                  </Text>
                 </View>
               </View>
+
+              {/* Attempt History Button - Only show if lesson has a quiz */}
+              {selectedLesson.has_quiz && (
+                <Pressable
+                  style={styles.attemptHistoryBtn}
+                  onPress={() => {
+                    setExpandedId(null);
+                    router.push(`/lesson/history/${selectedLesson.id}` as any);
+                  }}
+                >
+                  <Text style={styles.attemptHistoryBtnText}>📊 Attempt History</Text>
+                </Pressable>
+              )}
 
               <Pressable
                 onPress={() => {
@@ -1461,5 +1478,20 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 14,
     letterSpacing: 0.5,
+  },
+  attemptHistoryBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  attemptHistoryBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
   },
 });

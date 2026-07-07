@@ -870,7 +870,7 @@ export default function LessonViewer() {
         <View style={s.glassCard}>
           <View style={s.progressHeader}>
             <Text style={s.progressLabel}>Question {currentQuestionIndex + 1} of {totalQuestions}</Text>
-            <View style={s.xpBadge}><Text style={s.xpText}>⚡ {currentScore * 10} XP</Text></View>
+
           </View>
           <View style={s.progressDots}>
             {lesson.quiz.questions.map((_, i) => (
@@ -1353,6 +1353,35 @@ export default function LessonViewer() {
             </Pressable>
 
             <Pressable style={[s.smallBtn, s.smallPrimaryBtn]} onPress={() => {
+              // Get the current XP data from quizResult
+              const xpEarned = quizResult?.xpEarned ?? 0;
+              const totalXp = quizResult?.totalXp ?? 0;
+              const currentLevel = quizResult?.level ?? 1;
+              const streakDays = quizResult?.streakDays ?? 0;
+
+              // Calculate previous XP
+              const previousXp = totalXp - xpEarned;
+
+              // Get level name and next level XP
+              const levelNameMap: Record<number, string> = {
+                1: 'Novice Signer', 2: 'Beginner Signer', 3: 'Emerging Signer',
+                4: 'Intermediate Signer', 5: 'Advanced Beginner', 6: 'Competent Signer',
+                7: 'Proficient Signer', 8: 'Advanced Signer', 9: 'Expert Signer', 10: 'Master Signer',
+              };
+
+              const getNextLevelXp = (level: number): number => {
+                const thresholds: Record<number, number> = {
+                  1: 0, 2: 100, 3: 250, 4: 500, 5: 800,
+                  6: 1200, 7: 1700, 8: 2300, 9: 3000, 10: 4000,
+                };
+                const nextLevel = level + 1;
+                return thresholds[nextLevel] || 4000 + ((level - 9) * 1000);
+              };
+
+              const levelName = levelNameMap[currentLevel] || 'Novice Signer';
+              const nextLevelXp = getNextLevelXp(currentLevel);
+
+              // Reset quiz state
               setQuizSubmitted(false);
               setCurrentQuestionIndex(0);
               setSelectedOption(null);
@@ -1360,14 +1389,54 @@ export default function LessonViewer() {
               setCurrentScore(0);
               setQuizResult(null);
               setConfettiFired(false);
-
               resultsFadeAnim.setValue(0);
               resultsScaleAnim.setValue(0.85);
               setCurrentSlide(0);
-              router.push('/(tabs)/dashboard');
+
+              // ─── SIMPLIFIED NAVIGATION: Always show streak page ────────────────────
+
+              console.log('🔍 Navigation Debug:', {
+                xpEarned,
+                totalXp,
+                currentLevel,
+                streakDays,
+                previousXp,
+              });
+
+              // Always go to XP Progress first if XP earned, otherwise go directly to Streak
+              if (xpEarned > 0) {
+                console.log('➡️ XP Earned -> XP Progress -> Streak');
+                router.push({
+                  pathname: '/lesson/xp-progress',
+                  params: {
+                    xpEarned: String(xpEarned),
+                    totalXp: String(totalXp),
+                    level: String(currentLevel),
+                    levelName: levelName,
+                    previousXp: String(previousXp),
+                    nextLevelXp: String(nextLevelXp),
+                    // 🔥 ALWAYS show streak after XP Progress
+                    showStreak: 'true',
+                    streakDays: String(streakDays),
+                  },
+                });
+              } else {
+                // No XP earned - go directly to Streak page
+                console.log('➡️ No XP -> Streak page');
+                router.push({
+                  pathname: '/lesson/streak',
+                  params: {
+                    streakDays: String(streakDays),
+                    xpEarned: String(xpEarned),
+                    totalXp: String(totalXp),
+                    level: String(currentLevel),
+                    levelName: levelName,
+                  },
+                });
+              }
             }}>
               <HomeIcon size={14} color="#fff" />
-              <Text style={[s.smallBtnText, { color: '#fff' }]}>Dashboard</Text>
+              <Text style={[s.smallBtnText, { color: '#fff' }]}>Continue</Text>
             </Pressable>
           </View>
         </View>
@@ -1411,12 +1480,10 @@ export default function LessonViewer() {
             { useNativeDriver: false }
           )}
         >
-          {/* Top bar */}
+          {/* Top bar - NO EXIT BUTTON on results page */}
           <View style={[s.topBar, { paddingHorizontal: 16, paddingTop: 8 }]}>
             <Text style={s.logoText}>SEÑAS</Text>
-            <Pressable style={s.exitBtn} onPress={() => setShowExitModal(true)}>
-              <Text style={s.exitBtnText}>✕ Exit</Text>
-            </Pressable>
+            {/* Exit button removed - users can use the Dashboard button below */}
           </View>
 
           {/* Score layer — parallax drift + fade */}

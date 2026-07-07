@@ -21,6 +21,7 @@ import { api } from '../../services/api';
 const { width: screenWidth } = Dimensions.get('window');
 
 // Types
+// Types
 interface Lesson {
   lesson_id: number;
   title: string;
@@ -31,6 +32,8 @@ interface Lesson {
   assigned_at: string;
   has_quiz: boolean;
   total_steps: number;
+  is_locked?: boolean; // 🔥 Add this optional property
+  score?: number | null; // 🔥 Add this too for score tracking
   progress: {
     current_step: number;
     lesson_completed: boolean;
@@ -88,6 +91,7 @@ export default function Dashboard() {
   const [teacherLessons, setTeacherLessons] = useState<Lesson[]>([]);
   const [loadingLessons, setLoadingLessons] = useState<boolean>(true);
   const flatListRef = useRef<FlatList>(null);
+  const [levelName, setLevelName] = useState<string>('Novice Signer');
 
   useEffect(() => {
     fetchStudentData();
@@ -113,6 +117,10 @@ export default function Dashboard() {
         }
         if (student?.level !== undefined && student?.level !== null) {
           setLevel(student.level);
+        }
+        // ✅ ADD THIS - Get level name from stored data if available
+        if (student?.level_name) {
+          setLevelName(student.level_name);
         }
 
         const levelXpMap: Record<number, number> = {
@@ -152,6 +160,10 @@ export default function Dashboard() {
           }
           if (response.student.level !== undefined && response.student.level !== null) {
             setLevel(response.student.level);
+          }
+          // ✅ ADD THIS - Get the level name from the API
+          if (response.student.level_name) {
+            setLevelName(response.student.level_name);
           }
 
           const levelXpMap: Record<number, number> = {
@@ -300,33 +312,73 @@ export default function Dashboard() {
     );
   }
 
-  const getLevelDisplay = (levelNum: number): string => {
-    const levelNames: Record<number, string> = {
-      1: 'Novice Signer',
-      2: 'Beginner Signer',
-      3: 'Intermediate Signer',
-      4: 'Advanced Signer',
-      5: 'Expert Signer',
-    };
-    return levelNames[levelNum] || 'Novice Signer';
-  };
+  // const getLevelDisplay = (levelNum: number): string => {
+  //   const levelNames: Record<number, string> = {
+  //     1: 'Novice Signer',
+  //     2: 'Beginner Signer',
+  //     3: 'Intermediate Signer',
+  //     4: 'Advanced Signer',
+  //     5: 'Expert Signer',
+  //   };
+  //   return levelNames[levelNum] || 'Novice Signer';
+  // };
 
-  /// Get lessons for "Continue Learning" - show in-progress and pending lessons
-  const continueLearningLessons = teacherLessons
+
+  // Get the next recommended lesson (first unlocked, not-completed lesson)
+  const nextRecommendedLesson = teacherLessons
     .filter(lesson => {
+      const isLocked = lesson.is_locked === true || lesson.status === 'locked';
       const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
-      return !isCompleted;
+      return !isLocked && !isCompleted;
     })
-    .slice(0, 3);
 
-  // Also get completed lessons as fallback
+
+  const carouselLessons = teacherLessons
+    .filter(lesson => {
+      const isLocked = lesson.is_locked === true || lesson.status === 'locked';
+      if (isLocked) return false;
+
+      // Show if not completed
+      const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
+      if (!isCompleted) return true;
+
+      // Show if completed but not perfect (score < 100)
+      const score = lesson.score ?? lesson.progress?.quiz_score ?? 0;
+      return score < 100;
+    })
+    .sort((a, b) => {
+      // Sort: Not completed first, then completed but not perfect
+      const aCompleted = a.status === 'completed' || a.progress?.lesson_completed;
+      const bCompleted = b.status === 'completed' || b.progress?.lesson_completed;
+
+      if (!aCompleted && bCompleted) return -1;
+      if (aCompleted && !bCompleted) return 1;
+      return 0;
+    });
+  // Get completed lessons for "Continue Learning"
   const completedLessons = teacherLessons
     .filter(lesson => lesson.status === 'completed' || lesson.progress?.lesson_completed)
     .slice(0, 3);
 
-  // Use continueLearning if available, otherwise show completed
-  const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
+  // Use completed lessons for Continue Learning
+  const continueLearningLessons = completedLessons;
   const sectionTitle = continueLearningLessons.length > 0 ? 'Continue Learning' : 'Completed Lessons';
+
+  // Debug logging
+  console.log('📚 Teacher Lessons total:', teacherLessons.length);
+  console.log('📚 Next Recommended Lesson:', nextRecommendedLesson.length);
+  console.log('📚 Continue Learning (completed):', continueLearningLessons.length);
+  console.log('📚 Carousel Lessons:', carouselLessons.length);
+
+  // Get unlocked lessons (not completed, not locked)
+  const unlockedLessons = teacherLessons.filter(lesson => {
+    const isLocked = lesson.is_locked === true || lesson.status === 'locked';
+    const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
+    return !isLocked && !isCompleted;
+  });
+
+  // Show continue learning if available, otherwise show completed
+  const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
 
   // Debug logging
   console.log('📚 Teacher Lessons total:', teacherLessons.length);
@@ -386,7 +438,7 @@ export default function Dashboard() {
                     <View style={styles.levelTag}>
                       <Text style={styles.levelTagText}>LEVEL {level}</Text>
                     </View>
-                    <Text style={styles.levelTitle}>{getLevelDisplay(level)}</Text>
+                    <Text style={styles.levelTitle}>{levelName}</Text>
                   </View>
                   <Text style={styles.xpPctText}>{Math.round(xpPct)}%</Text>
                 </View>
@@ -399,8 +451,8 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Uploaded by Teacher Section */}
-        {!loadingLessons && teacherLessons.length > 0 && (
+        {/* Uploaded by Teacher Section - Show Next Recommended Lesson */}
+        {!loadingLessons && carouselLessons.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionHeaderLeft}>
@@ -408,18 +460,16 @@ export default function Dashboard() {
                   <Path d="M12 6v6l4 2" />
                   <Circle cx="12" cy="12" r="10" />
                 </Svg>
-                <Text style={styles.sectionTitle}>📚 Your Lessons</Text>
+                <Text style={styles.sectionTitle}> Your Lessons</Text>
               </View>
-              {teacherLessons.length > 2 && (
-                <Pressable onPress={() => router.push('/lessons')}>
-                  <Text style={styles.seeAllText}>See All →</Text>
-                </Pressable>
-              )}
+              <Pressable onPress={() => router.push('/lessons')}>
+                <Text style={styles.seeAllText}>See All →</Text>
+              </Pressable>
             </View>
 
             <FlatList
               ref={flatListRef}
-              data={teacherLessons.slice(0, 5)}
+              data={carouselLessons}
               renderItem={renderTeacherLesson}
               keyExtractor={(item) => item.lesson_id?.toString() || Math.random().toString()}
               horizontal
@@ -430,12 +480,13 @@ export default function Dashboard() {
               contentContainerStyle={styles.teacherLessonsCarousel}
               ListEmptyComponent={
                 <View style={styles.emptyLessons}>
-                  <Text style={styles.emptyLessonsText}>No lessons uploaded yet</Text>
+                  <Text style={styles.emptyLessonsText}>No lessons available</Text>
                 </View>
               }
             />
           </View>
         )}
+
         {/* Daily Challenge */}
         <View style={styles.section}>
           <Pressable style={styles.dailyCard} onPress={() => router.push('/assessment')}>
