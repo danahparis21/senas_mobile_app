@@ -356,21 +356,51 @@ export default function Lessons() {
     return () => bob.stop();
   }, [bobAnim]);
 
-  // Load Teacher modules and lessons from API
   const loadModulesData = async () => {
     try {
       setLoadingModules(true);
       const response = await api.getStudentLessons();
 
       if (response.success && response.modules) {
-        // Transform the modules data
         const transformedModules: Module[] = response.modules.map((module: any) => {
           const lessons = module.lessons || [];
+
           const transformedLessons: Lesson[] = lessons.map((lesson: any, index: number) => {
             const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
-            const isDone = lesson.status === 'completed';
-            const isActive = lesson.status === 'in_progress';
-            const isLocked = lesson.status === 'pending';
+
+            // Check if this is the first lesson in the module
+            const isFirstLesson = index === 0;
+
+            // Check if previous lesson is completed with passing score
+            let isNextLesson = false;
+            if (index > 0) {
+              const prevLesson = lessons[index - 1];
+              if (prevLesson && prevLesson.status === 'completed' && (prevLesson.score || 0) >= 60) {
+                isNextLesson = true;
+              }
+            }
+
+            // 🔥 Logic for locking:
+            // 1. First lesson is ALWAYS unlocked
+            // 2. If this is the next lesson after a completed one, it's UNLOCKED (even if failed - to retry)
+            // 3. Other lessons: lock if status is failed or is_locked is true
+            // 4. Completed lessons are always unlocked (show checkmark)
+            let isLocked = false;
+
+            if (isFirstLesson) {
+              isLocked = false; // First lesson always unlocked
+            } else if (lesson.status === 'completed' && (lesson.score || 0) >= 60) {
+              isLocked = false; // Completed lessons are unlocked
+            } else if (isNextLesson) {
+              isLocked = false; // Next lesson after a completed one is unlocked (to retry)
+            } else {
+              isLocked = (lesson.is_locked === true || lesson.status === 'failed');
+            }
+
+            const isDone = lesson.status === 'completed' && (lesson.score || 0) >= 60;
+            const isActive = lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed'));
+
+            console.log(`📚 Lesson ${lesson.lesson_id}: "${lesson.title}" - status: ${lesson.status}, is_locked: ${lesson.is_locked}, isFirstLesson: ${isFirstLesson}, isNextLesson: ${isNextLesson}, final: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
 
             return {
               id: lesson.lesson_id || lesson.id,
@@ -415,7 +445,6 @@ export default function Lessons() {
       setLoadingModules(false);
     }
   };
-
   useEffect(() => {
     loadModulesData();
   }, []);
