@@ -24,6 +24,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
 import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '../../services/api';
+
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -303,7 +306,13 @@ export default function WebViewCameraScreen() {
         }, 1200);
     };
 
-    // Handle detection result from WebView
+    const savedLettersRef = useRef<Set<string>>(new Set());
+
+    const lastAttemptLetterRef = useRef<string>('');
+    const lastAttemptTimeRef = useRef<number>(0);
+    const MIN_ATTEMPT_INTERVAL = 1000; // 1 second minimum between attempts
+
+    // Update the handleDetection function - only save when a letter is completed
     const handleDetection = async (data: any) => {
         const { letter, confidence: conf } = data;
 
@@ -319,28 +328,40 @@ export default function WebViewCameraScreen() {
             } else {
                 setLastProcessedLetter(letter);
                 setLetterStableCount(0);
-                // Don't process on first detection of a new letter (avoid transitions)
                 return;
             }
 
-            // Only process after 2 stable detections
-            if (letterStableCount < 1) {
+            // Only process after 3 stable detections (more accurate)
+            if (letterStableCount < 2) {
                 return;
             }
 
-            // Update letter attempts
-            if (ALPHABET_PART1.includes(letter)) {
-                setLetterAttempts(prev => {
-                    const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                    return {
-                        ...prev,
-                        [letter]: {
-                            ...current,
-                            attempts: current.attempts + 1,
-                            lastAttempt: Date.now(),
-                        }
-                    };
-                });
+            // ─── COUNT THIS AS AN ATTEMPT ONLY IF: ───
+            // 1. It's a different letter OR
+            // 2. It's been more than 1 second since the last attempt
+            const now = Date.now();
+            const isNewLetter = letter !== lastAttemptLetterRef.current;
+            const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
+
+            if (isNewLetter || isTimeForNewAttempt) {
+                // This is a meaningful attempt
+                lastAttemptLetterRef.current = letter;
+                lastAttemptTimeRef.current = now;
+
+                // Update letter attempts (only for meaningful attempts)
+                if (ALPHABET_PART1.includes(letter)) {
+                    setLetterAttempts(prev => {
+                        const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                        return {
+                            ...prev,
+                            [letter]: {
+                                ...current,
+                                attempts: current.attempts + 1,
+                                lastAttempt: Date.now(),
+                            }
+                        };
+                    });
+                }
             }
 
             // Gamification logic
@@ -372,7 +393,13 @@ export default function WebViewCameraScreen() {
                             };
                         });
 
-                        // Senya celebration - always show for correct (bypasses cooldown)
+                        // ─── SAVE TO BACKEND FOR THIS LETTER ──────────────
+                        if (!savedLettersRef.current.has(letter)) {
+                            savedLettersRef.current.add(letter);
+                            await saveSingleLetterPerformance(letter);
+                        }
+
+                        // Senya celebration
                         const msg = getRandomMessage(SENYA_MESSAGES.correct);
                         setSenyaMessage(msg);
                         senyaMsgCooldownRef.current = Date.now();
@@ -395,14 +422,12 @@ export default function WebViewCameraScreen() {
                     }
                     setConsecutiveWrong(0);
                 } else {
-                    // Wrong letter - only count if stable
-                    if (letterStableCount >= 2) {
+                    // Wrong letter - only count if stable AND it's a new attempt
+                    if (letterStableCount >= 2 && (isNewLetter || isTimeForNewAttempt)) {
                         const newWrong = consecutiveWrong + 1;
                         setConsecutiveWrong(newWrong);
                         setTotalWrongAttempts(prev => prev + 1);
 
-                        // FIXED: Attribute wrong attempts to TARGET letter (what user is trying to do)
-                        // This ensures Senya's Notes correctly shows which letters you struggled WITH
                         if (target) {
                             setLetterAttempts(prev => {
                                 const current = prev[target] || { letter: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
@@ -416,7 +441,7 @@ export default function WebViewCameraScreen() {
                             });
                         }
 
-                        // Throttled struggle messages - max one message per cooldown period
+                        // Throttled struggle messages
                         const now = Date.now();
                         if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                             senyaMsgCooldownRef.current = now;
@@ -444,13 +469,13 @@ export default function WebViewCameraScreen() {
                 }
             }
         } else {
-            // No hand detected
+            // No hand detected - reset attempt tracking
             setDetectedLetter('✋');
             setConfidence(0);
             setLastProcessedLetter('');
             setLetterStableCount(0);
+            // Don't reset lastAttemptLetterRef here - keep it for context
 
-            // Longer cooldown for no-hand message (5s) to avoid nagging
             const now = Date.now();
             if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length && now - senyaMsgCooldownRef.current >= 5000) {
                 senyaMsgCooldownRef.current = now;
@@ -462,10 +487,139 @@ export default function WebViewCameraScreen() {
         }
     };
 
+    // ─── SAVE SINGLE LETTER PERFORMANCE ──────────────────────────────
+    const saveSingleLetterPerformance = async (letter: string) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
+            }
+
+            // Get the data for just this letter
+            const data = letterAttempts[letter] || {
+                letter,
+                attempts: 0,
+                wrongAttempts: 0,
+                successCount: 0
+            };
+
+            // Only save if there were attempts
+            if (data.attempts === 0) {
+                return null;
+            }
+
+            const letterPerformance = [{
+                letter: letter,
+                attempts: data.attempts || 0,
+                wrong_attempts: data.wrongAttempts || 0,
+                success_count: data.successCount || 0,
+                consecutive_wrong: 0,
+            }];
+
+            console.log(`📤 Saving performance for letter ${letter}...`);
+
+            const result = await api.saveGesturePerformance(
+                'alphabet_part1',
+                letterPerformance,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log(`✅ Letter ${letter} saved!`);
+                return result;
+            } else {
+                console.error(`❌ Failed to save letter ${letter}:`, result);
+                return null;
+            }
+        } catch (error) {
+            console.error(`❌ Error saving letter ${letter}:`, error);
+            return null;
+        }
+    };
+
+    // ─── SAVE ALL ON COMPLETION ──────────────────────────────────────
+    const saveAllPerformance = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return null;
+
+            const letterPerformances = ALPHABET_PART1.map(letter => {
+                const data = letterAttempts[letter] || {
+                    letter,
+                    attempts: 0,
+                    wrongAttempts: 0,
+                    successCount: 0
+                };
+                return {
+                    letter: letter,
+                    attempts: data.attempts || 0,
+                    wrong_attempts: data.wrongAttempts || 0,
+                    success_count: data.successCount || 0,
+                    consecutive_wrong: 0,
+                };
+            });
+
+            const totalAttempts = letterPerformances.reduce((sum, l) => sum + l.attempts, 0);
+            if (totalAttempts === 0) return null;
+
+            console.log(`📤 Saving final performance...`);
+
+            const result = await api.saveGesturePerformance(
+                'alphabet_part1',
+                letterPerformances,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log('✅ Final performance saved!');
+                return result;
+            }
+            return null;
+        } catch (error) {
+            console.error('❌ Error saving final performance:', error);
+            return null;
+        }
+    };
+
+    // Update the useEffect for module completion
+    useEffect(() => {
+        if (isModuleComplete) {
+            // Save all performance data at the end
+            saveAllPerformance().then(result => {
+                if (result) {
+                    console.log('📊 All performance data saved');
+                }
+            });
+        }
+    }, [isModuleComplete]);
+
+    // Update the handleContinue function
+    const handleContinue = async () => {
+        // Save any remaining letters that might not have been saved
+        const unsavedLetters = ALPHABET_PART1.filter(
+            letter => completedLetters.has(letter) && !savedLettersRef.current.has(letter)
+        );
+
+        for (const letter of unsavedLetters) {
+            await saveSingleLetterPerformance(letter);
+        }
+
+        // Final save just in case
+        await saveAllPerformance();
+
+        setShowResults(false);
+        router.back();
+    };
+
+
     const handleMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            console.log('📨 Received from WebView:', data);
+            // Only log when we get a successful detection (not every frame)
+            if (data.letter && data.letter !== '✋' && data.confidence && data.confidence > 0.5) {
+                // console.log('📨 Received from WebView:', data); // Keep this commented or remove
+            }
 
             if (data.letter !== undefined) {
                 handleDetection(data);
@@ -506,6 +660,11 @@ export default function WebViewCameraScreen() {
             totalWrong: totalWrongAttempts,
         };
     };
+
+
+
+
+
 
     const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
 
@@ -899,10 +1058,7 @@ export default function WebViewCameraScreen() {
                         <TouchableOpacity
                             style={styles.continueButton}
                             activeOpacity={0.85}
-                            onPress={() => {
-                                setShowResults(false);
-                                router.back();
-                            }}
+                            onPress={handleContinue}  // Changed from inline to handleContinue
                         >
                             <Text style={styles.continueButtonText}>Continue</Text>
                             <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />

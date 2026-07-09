@@ -1,5 +1,5 @@
 // app/(tabs)/gesture.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,15 @@ import {
   FlatList,
   TouchableOpacity,
   Animated,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -24,25 +28,27 @@ const CARD_MARGIN = 10;
 const SNAP_INTERVAL = CARD_WIDTH + CARD_MARGIN * 2;
 const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH - CARD_MARGIN * 2) / 2;
 
-// Module data
-const modules = [
+// Default module data (will be replaced by API data)
+const DEFAULT_MODULES = [
   {
-    id: 'alphabet1',
+    id: 'alphabet_part1',
     title: 'Alphabet Part 1',
     subtitle: 'A-M',
     category: 'alphabet',
     color: ['#FF6B6B', '#FF8E8E'] as const,
     icon: 'book',
     description: 'Learn letters A through M',
-    progress: 60,
-    xp: 100,
+    progress: 0,
+    xp: 40,
     locked: false,
-    route: '/gesture/webview-camera',  // ✅ Updated!
+    route: '/gesture/webview-camera',
     image: require('../../assets/images/img/alphabet.png'),
     lessons: 13,
+    isCompleted: false,
+    display_name: 'Alphabet Part 1 (A-M)',
   },
   {
-    id: 'alphabet2',
+    id: 'alphabet_part2',
     title: 'Alphabet Part 2',
     subtitle: 'N-Z',
     category: 'alphabet',
@@ -50,11 +56,13 @@ const modules = [
     icon: 'ribbon',
     description: 'Learn letters N through Z',
     progress: 0,
-    xp: 120,
+    xp: 40,
     locked: false,
     route: '/gesture/alphabet2',
     image: require('../../assets/images/img/alphabet_star.png'),
     lessons: 13,
+    isCompleted: false,
+    display_name: 'Alphabet Part 2 (N-Z)',
   },
   {
     id: 'fingerspelling',
@@ -65,11 +73,13 @@ const modules = [
     icon: 'hand-left',
     description: 'Spell words using signs',
     progress: 0,
-    xp: 150,
+    xp: 40,
     locked: true,
     route: '/gesture/fingerspelling',
     image: require('../../assets/images/img/senya_magnify.png'),
     lessons: 10,
+    isCompleted: false,
+    display_name: 'Fingerspelling',
   },
   {
     id: 'greetings',
@@ -80,11 +90,13 @@ const modules = [
     icon: 'chatbubble-ellipses',
     description: 'Learn greetings and phrases',
     progress: 0,
-    xp: 200,
+    xp: 40,
     locked: true,
     route: '/gesture/greetings',
     image: require('../../assets/images/img/greetings.png'),
     lessons: 8,
+    isCompleted: false,
+    display_name: 'Basic Greetings',
   },
 ];
 
@@ -102,7 +114,7 @@ function ModuleCard({
   onPress,
   isActive,
 }: {
-  module: typeof modules[0];
+  module: any;
   onPress: () => void;
   isActive: boolean;
 }) {
@@ -139,6 +151,7 @@ function ModuleCard({
         onPress={onPress}
         activeOpacity={0.9}
         style={styles.cardTouchable}
+        disabled={module.locked}
       >
         <LinearGradient
           colors={module.color}
@@ -146,19 +159,23 @@ function ModuleCard({
           end={{ x: 1, y: 1 }}
           style={styles.cardGradient}
         >
-          {/* Main Visual Image container */}
           <View style={styles.cardImageContainer}>
             <Image
               source={module.image}
               style={styles.cardImage}
               contentFit="cover"
             />
-            {/* Top info badge floating over the image */}
             <View style={styles.cardFloatingHeader}>
               <View style={styles.cardIconBadge}>
                 <Ionicons name={module.icon as any} size={20} color="#FFF" />
               </View>
-              {module.progress > 0 && (
+              {module.isCompleted && (
+                <View style={[styles.cardProgressBadge, { backgroundColor: '#10B981' }]}>
+                  <Ionicons name="checkmark-circle" size={12} color="#FFF" />
+                  <Text style={styles.cardProgressBadgeText}>Complete!</Text>
+                </View>
+              )}
+              {!module.isCompleted && module.progress > 0 && (
                 <View style={styles.cardProgressBadge}>
                   <Text style={styles.cardProgressBadgeText}>{module.progress}% Done</Text>
                 </View>
@@ -166,7 +183,6 @@ function ModuleCard({
             </View>
           </View>
 
-          {/* Overlapping details card at the bottom */}
           <View style={styles.cardOverlayDetails}>
             <View style={styles.cardHeaderInfo}>
               <Ionicons name="book-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
@@ -179,7 +195,6 @@ function ModuleCard({
             <Text style={styles.cardMainTitle} numberOfLines={1}>{module.title}</Text>
             <Text style={styles.cardDescription} numberOfLines={1}>{module.description}</Text>
 
-            {/* Bottom row: progress track or play button */}
             <View style={styles.cardFooterRow}>
               {module.locked ? (
                 <View style={styles.lockedRow}>
@@ -192,7 +207,7 @@ function ModuleCard({
                     <View
                       style={[
                         styles.progressBarFill,
-                        { width: `${module.progress}%`, backgroundColor: module.color[0] }
+                        { width: `${Math.min(module.progress, 100)}%`, backgroundColor: module.color[0] }
                       ]}
                     />
                   </View>
@@ -200,15 +215,19 @@ function ModuleCard({
                 </View>
               )}
 
-              {!module.locked && (
+              {!module.locked && module.progress < 100 && (
                 <View style={[styles.playIndicatorButton, { backgroundColor: module.color[0] }]}>
                   <Ionicons name="play" size={14} color="#FFF" />
+                </View>
+              )}
+              {module.isCompleted && (
+                <View style={[styles.playIndicatorButton, { backgroundColor: '#10B981' }]}>
+                  <Ionicons name="checkmark" size={14} color="#FFF" />
                 </View>
               )}
             </View>
           </View>
 
-          {/* Lock Overlay if locked */}
           {module.locked && (
             <View style={styles.lockedCardOverlay}>
               <View style={styles.lockedIconCircle}>
@@ -244,9 +263,67 @@ export default function GestureMain() {
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [modules, setModules] = useState(DEFAULT_MODULES);
+  const [totalXp, setTotalXp] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  const handleModulePress = (module: typeof modules[0]) => {
+  // Fetch gesture progress from API
+  const fetchGestureProgress = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      const response = await api.getGestureProgress();
+      if (response && response.success) {
+        setTotalXp(response.student?.total_xp || 0);
+
+        // Map API data to module format
+        const updatedModules = DEFAULT_MODULES.map(defaultModule => {
+          const apiModule = response.modules?.find((m: any) => m.name === defaultModule.id);
+
+          if (apiModule) {
+            return {
+              ...defaultModule,
+              progress: apiModule.progress || 0,
+              isCompleted: apiModule.is_completed || false,
+              locked: apiModule.is_locked || false,
+              xp: apiModule.xp_available || defaultModule.xp,
+              description: apiModule.description || defaultModule.description,
+              display_name: apiModule.display_name || defaultModule.display_name,
+            };
+          }
+          return defaultModule;
+        });
+
+        setModules(updatedModules);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching gesture progress:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchGestureProgress();
+    }, [])
+  );
+
+  // Manual refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchGestureProgress();
+  };
+
+  const handleModulePress = (module: any) => {
     if (module.locked) {
       return;
     }
@@ -270,13 +347,35 @@ export default function GestureMain() {
     ? modules
     : modules.filter((m) => m.category === selectedCategory);
 
+  // Loading state
+  if (loading) {
+    return (
+      <LinearGradient
+        colors={['#EAF5FD', '#DDECFB', '#CBE0F8']}
+        style={styles.container}
+      >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0F3172" />
+            <Text style={styles.loadingText}>Loading your progress...</Text>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
   return (
     <LinearGradient
       colors={['#EAF5FD', '#DDECFB', '#CBE0F8']}
       style={styles.container}
     >
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
           {/* Header */}
           <View style={styles.header}>
             <View>
@@ -286,7 +385,7 @@ export default function GestureMain() {
             <View style={styles.headerRight}>
               <View style={styles.xpBadge}>
                 <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 4 }} />
-                <Text style={styles.xpBadgeText}>150 XP</Text>
+                <Text style={styles.xpBadgeText}>{totalXp} XP</Text>
               </View>
               <TouchableOpacity style={styles.settingsButton}>
                 <Ionicons name="options-outline" size={22} color="#0F3172" />
@@ -312,7 +411,7 @@ export default function GestureMain() {
                     ]}
                     onPress={() => {
                       setSelectedCategory(cat.id);
-                      setCurrentIndex(0); // Reset index on filter
+                      setCurrentIndex(0);
                     }}
                   >
                     <Ionicons
@@ -408,37 +507,38 @@ export default function GestureMain() {
           <View style={styles.quickAccess}>
             <Text style={styles.sectionTitle}>Quick Start</Text>
             <View style={styles.quickAccessGrid}>
-              <TouchableOpacity
-                style={styles.quickAccessItem}
-                onPress={() => router.push('/gesture/webview-camera')}
-              >
-                <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
-                  <Ionicons name="text-outline" size={24} color="#3B82F6" />
-                </View>
-                <Text style={styles.quickAccessText}>Alphabet</Text>
-              </TouchableOpacity>
+              {modules
+                .filter(m => !m.locked && m.category === 'alphabet')
+                .slice(0, 2)
+                .map((module) => (
+                  <TouchableOpacity
+                    key={module.id}
+                    style={styles.quickAccessItem}
+                    onPress={() => router.push(module.route as any)}
+                  >
+                    <View style={[styles.quickAccessIconContainer, { backgroundColor: `${module.color[0]}20` }]}>
+                      <Ionicons name={module.icon as any} size={24} color={module.color[0]} />
+                    </View>
+                    <Text style={styles.quickAccessText}>{module.title}</Text>
+                  </TouchableOpacity>
+                ))}
 
-              <TouchableOpacity
-                style={[styles.quickAccessItem, styles.quickAccessItemLocked]}
-                disabled
-              >
-                <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(156, 163, 175, 0.1)' }]}>
-                  <Ionicons name="hand-left-outline" size={24} color="#9CA3AF" />
-                </View>
-                <Text style={styles.quickAccessText}>Fingerspell</Text>
-                <Ionicons name="lock-closed" size={12} color="#9CA3AF" style={styles.quickAccessLock} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.quickAccessItem, styles.quickAccessItemLocked]}
-                disabled
-              >
-                <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(156, 163, 175, 0.1)' }]}>
-                  <Ionicons name="chatbubbles-outline" size={24} color="#9CA3AF" />
-                </View>
-                <Text style={styles.quickAccessText}>Greetings</Text>
-                <Ionicons name="lock-closed" size={12} color="#9CA3AF" style={styles.quickAccessLock} />
-              </TouchableOpacity>
+              {modules
+                .filter(m => m.locked)
+                .slice(0, 1)
+                .map((module) => (
+                  <TouchableOpacity
+                    key={module.id}
+                    style={[styles.quickAccessItem, styles.quickAccessItemLocked]}
+                    disabled
+                  >
+                    <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(156, 163, 175, 0.1)' }]}>
+                      <Ionicons name={module.icon as any} size={24} color="#9CA3AF" />
+                    </View>
+                    <Text style={styles.quickAccessText}>{module.title}</Text>
+                    <Ionicons name="lock-closed" size={12} color="#9CA3AF" style={styles.quickAccessLock} />
+                  </TouchableOpacity>
+                ))}
             </View>
           </View>
 
@@ -452,7 +552,9 @@ export default function GestureMain() {
             <View style={styles.tipContent}>
               <Text style={styles.tipTitle}>💡 Senya Says</Text>
               <Text style={styles.tipText}>
-                Complete Alphabet Part 1 to unlock more modules! Practice makes perfect! 🌟
+                {modules.some(m => m.isCompleted)
+                  ? "Great job! Keep practicing to master all gestures! 🌟"
+                  : "Complete Alphabet Part 1 to unlock more modules! Practice makes perfect! 🌟"}
               </Text>
             </View>
           </View>
@@ -468,6 +570,18 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#4B7BBB',
+    marginTop: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
@@ -682,6 +796,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -689,7 +806,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardProgressBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#FFF',
   },

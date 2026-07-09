@@ -418,4 +418,196 @@ export const api = {
         }
     },
 
+    /**
+ * Save student's gesture performance from practice sessions
+ */
+    saveGesturePerformance: async (moduleName, letterPerformances, sessionId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📤 Saving gesture performance for module: ${moduleName}...`);
+
+            const payload = {
+                module_name: moduleName,
+                letter_performances: letterPerformances,
+                session_id: sessionId || `session_${Date.now()}`,
+            };
+
+            const response = await fetch(`${API_URL}/student/gesture-performance`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await response.json();
+            console.log('✅ Gesture performance saved:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to save gesture performance');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error saving gesture performance:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get student's gesture performance for a specific module
+     */
+    getGesturePerformance: async (moduleName) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📊 Fetching gesture performance for module: ${moduleName}...`);
+
+            const response = await fetch(`${API_URL}/student/gesture-performance?module_name=${moduleName}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch gesture performance');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching gesture performance:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get struggling letters for recommendations
+     */
+    getStrugglingLetters: async (moduleName) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            const url = moduleName
+                ? `${API_URL}/student/struggling-letters?module_name=${moduleName}`
+                : `${API_URL}/student/struggling-letters`;
+
+            console.log(`📊 Fetching struggling letters...`);
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch struggling letters');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching struggling letters:', error);
+            throw error;
+        }
+    },
+
+    /**
+    * Get student's gesture module progress and XP for the dashboard
+    */
+    getGestureProgress: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📊 Fetching gesture progress...');
+
+            const response = await fetch(`${API_URL}/student/gesture-progress`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch gesture progress');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching gesture progress:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Award XP for completing a module
+     */
+    awardModuleXp: async (moduleName, xpEarned) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`⭐ Awarding ${xpEarned} XP for ${moduleName}...`);
+
+            const response = await fetch(`${API_URL}/student/award-module-xp`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    module_name: moduleName,
+                    xp_earned: xpEarned,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to award XP');
+            }
+
+            console.log('✅ XP awarded:', data);
+            return data;
+        } catch (error) {
+            console.error('❌ Error awarding XP:', error);
+            throw error;
+        }
+    },
+
+
+
 };
