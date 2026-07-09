@@ -20,8 +20,6 @@ import { api } from '../../services/api';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-// Types
-// Types
 interface Lesson {
   lesson_id: number;
   title: string;
@@ -32,8 +30,9 @@ interface Lesson {
   assigned_at: string;
   has_quiz: boolean;
   total_steps: number;
-  is_locked?: boolean; // 🔥 Add this optional property
-  score?: number | null; // 🔥 Add this too for score tracking
+  is_locked?: boolean;
+  is_next_lesson?: boolean; // 🔥 ADD THIS
+  score?: number | null;
   progress: {
     current_step: number;
     lesson_completed: boolean;
@@ -335,8 +334,12 @@ export default function Dashboard() {
 
   const carouselLessons = teacherLessons
     .filter(lesson => {
-      const isLocked = lesson.is_locked === true || lesson.status === 'locked';
-      if (isLocked) return false;
+      // 🔥 A lesson is LOCKED only if:
+      // 1. it's_locked is true
+      // 2. AND it's NOT the next lesson (is_next_lesson !== true)
+      const isActuallyLocked = lesson.is_locked === true && lesson.is_next_lesson !== true;
+
+      if (isActuallyLocked) return false;
 
       // Show if not completed
       const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
@@ -347,7 +350,6 @@ export default function Dashboard() {
       return score < 100;
     })
     .sort((a, b) => {
-      // Sort: Not completed first, then completed but not perfect
       const aCompleted = a.status === 'completed' || a.progress?.lesson_completed;
       const bCompleted = b.status === 'completed' || b.progress?.lesson_completed;
 
@@ -355,6 +357,7 @@ export default function Dashboard() {
       if (aCompleted && !bCompleted) return 1;
       return 0;
     });
+
   // Get completed lessons for "Continue Learning"
   const completedLessons = teacherLessons
     .filter(lesson => lesson.status === 'completed' || lesson.progress?.lesson_completed)

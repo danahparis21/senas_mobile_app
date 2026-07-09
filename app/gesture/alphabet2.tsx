@@ -607,7 +607,45 @@ export default function WebViewCameraScreen() {
         await saveAllPerformance();
 
         setShowResults(false);
-        router.back();
+
+        // ─── NAVIGATE TO XP PROGRESS OR STREAK ──────────────────────────────
+
+        // If we have XP data from the award, show XP Progress
+        if (xpResult && xpResult.xp_earned > 0) {
+            const level = xpResult.level || 1;
+            const totalXp = xpResult.total_xp || 0;
+            const xpEarned = xpResult.xp_earned || 0;
+            const previousXp = totalXp - xpEarned;
+            const levelName = getLevelName(level);
+            const nextLevelXp = getNextLevelXp(level);
+
+            console.log('🔍 Navigation Debug:', {
+                xpEarned,
+                totalXp,
+                level,
+                previousXp,
+                nextLevelXp,
+            });
+
+            // Navigate to XP Progress
+            router.push({
+                pathname: '/lesson/xp-progress',
+                params: {
+                    xpEarned: String(xpEarned),
+                    totalXp: String(totalXp),
+                    level: String(level),
+                    levelName: levelName,
+                    previousXp: String(previousXp),
+                    nextLevelXp: String(nextLevelXp),
+                    // Show streak after XP progress
+                    showStreak: 'true',
+                    streakDays: String(0), // You can fetch actual streak if needed
+                },
+            });
+        } else {
+            // No XP earned - go back to gesture screen
+            router.back();
+        }
     };
 
     // Calculate results
@@ -638,6 +676,85 @@ export default function WebViewCameraScreen() {
             totalWrong: totalWrongAttempts,
         };
     };
+
+
+
+    // app/gesture/alphabet2.tsx
+    const getLevelName = (level: number): string => {
+        const levelNames: Record<number, string> = {
+            1: 'Novice Signer',
+            2: 'Beginner Signer',
+            3: 'Emerging Signer',
+            4: 'Intermediate Signer',
+            5: 'Advanced Beginner',
+            6: 'Competent Signer',
+            7: 'Proficient Signer',
+            8: 'Advanced Signer',
+            9: 'Expert Signer',
+            10: 'Master Signer',
+        };
+        return levelNames[level] || 'Novice Signer';
+    };
+
+    const getNextLevelXp = (level: number): number => {
+        const thresholds: Record<number, number> = {
+            1: 0, 2: 100, 3: 250, 4: 500, 5: 800,
+            6: 1200, 7: 1700, 8: 2300, 9: 3000, 10: 4000,
+        };
+        const nextLevel = level + 1;
+        return thresholds[nextLevel] || 4000 + ((level - 9) * 1000);
+    };
+
+    // Update the awardModuleXp function to return the result
+    const awardModuleXp = async (starRating: number) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping XP award');
+                return null;
+            }
+
+            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
+
+            const result = await api.awardModuleXp('alphabet_part1', starRating);
+
+            if (result && result.success) {
+                console.log(`✅ ${result.xp_message}`);
+                return result;
+            }
+            return null;
+        } catch (error) {
+            console.error('❌ Error awarding XP:', error);
+            return null;
+        }
+    };
+
+    // Update the useEffect for module completion
+    useEffect(() => {
+        if (isModuleComplete) {
+            // Save all performance data at the end
+            saveAllPerformance().then(result => {
+                if (result) {
+                    console.log('📊 All performance data saved');
+                }
+            });
+
+            // Award XP based on star rating (after a short delay)
+            setTimeout(async () => {
+                const result = await awardModuleXp(starRating);
+                if (result) {
+                    console.log(`⭐ XP awarded: ${result.xp_earned} XP, Total: ${result.total_xp} XP`);
+                    // Store XP data for navigation
+                    setXpResult(result);
+                }
+            }, 2000);
+        }
+    }, [isModuleComplete]);
+
+    // Add state for XP result
+    const [xpResult, setXpResult] = useState<any>(null);
+
+
     const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
 
     // Inject CSS to hide detection box and other UI elements from the HTML

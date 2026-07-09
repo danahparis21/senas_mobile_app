@@ -608,6 +608,43 @@ export const api = {
         }
     },
 
+    /**
+     * Award XP for completing a gesture module
+     */
+    awardModuleXp: async (moduleName, starRating) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`⭐ Awarding XP for ${moduleName} with ${starRating} star(s)...`);
+
+            const response = await fetch(`${API_URL}/student/award-module-xp`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    module_name: moduleName,
+                    star_rating: starRating,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to award XP');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error awarding XP:', error);
+            throw error;
+        }
+    },
 
 
 };
