@@ -91,10 +91,10 @@ const DEFAULT_MODULES = [
     description: 'Learn greetings and phrases',
     progress: 0,
     xp: 40,
-    locked: true,
-    route: '/gesture/greetings',
+    locked: false,
+    route: '/gesture/webview-greetings', // ← UPDATE ROUTE
     image: require('../../assets/images/img/greetings.png'),
-    lessons: 8,
+    lessons: 5,
     isCompleted: false,
     display_name: 'Basic Greetings',
   },
