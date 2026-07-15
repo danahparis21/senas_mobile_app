@@ -19,6 +19,10 @@ export default function RootLayout() {
         <Stack.Screen name="gesture/alphabet1" options={{ headerShown: false }} />
         <Stack.Screen name="gesture/alphabet2" options={{ headerShown: false }} />
         <Stack.Screen name="gesture/webview-camera" options={{ headerShown: false }} />
+        <Stack.Screen name="gesture/webview-greetings" options={{ headerShown: false }} />
+        <Stack.Screen name="gesture/level2-gestures" options={{ headerShown: false }} />
+        <Stack.Screen name="gesture/level3-gestures" options={{ headerShown: false }} />
+
       </Stack>
 
     </>
