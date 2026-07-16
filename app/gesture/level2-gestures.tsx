@@ -135,70 +135,41 @@ export default function Level2GesturesScreen() {
     const [modelLoading, setModelLoading] = useState(true);
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
 
-
-    // ── Play gesture sound ──
     // ── Play gesture sound ──
     async function playGestureSound() {
         try {
-            // Don't play if a sound is already playing
-            if (isSoundPlaying) {
-                console.log('🔊 Sound already playing, skipping...');
-                return;
-            }
-
+            if (isSoundPlaying) return;
             setIsSoundPlaying(true);
 
-            // Unload any existing sound
             if (gestureSound) {
-                try {
-                    await gestureSound.unloadAsync();
-                } catch (e) {
-                    // Ignore unload errors
-                }
-                setGestureSound(null);
+                await gestureSound.unloadAsync();
             }
-
-            console.log('🔊 Playing correct gesture sound...');
 
             const { sound } = await Audio.Sound.createAsync(
                 CORRECT_GESTURE_SOUND,
                 {
                     shouldPlay: true,
                     isLooping: false,
-                    volume: 1.0,
+                    volume: 0.8,
                 }
             );
 
             setGestureSound(sound);
 
-            // Set up playback status listener
             sound.setOnPlaybackStatusUpdate((status) => {
-                // Check if the status is loaded
-                if (status.isLoaded) {
-                    if (status.didJustFinish) {
-                        console.log('🔊 Sound finished playing');
-                        sound.unloadAsync().catch(() => { });
-                        setGestureSound(null);
-                        setIsSoundPlaying(false);
-                    }
-                }
-                // Check for errors separately (status will be an error type)
-                if ('error' in status && status.error) {
-                    console.error('🔊 Sound error:', status.error);
-                    setIsSoundPlaying(false);
+                if (status.isLoaded && status.didJustFinish) {
+                    sound.unloadAsync();
                     setGestureSound(null);
+                    setIsSoundPlaying(false);
                 }
             });
-
-            // Start playback
-            await sound.playAsync();
 
         } catch (error) {
             console.error('Failed to play gesture sound:', error);
             setIsSoundPlaying(false);
-            setGestureSound(null);
         }
     }
+
     // ── Play completion sound ──
     async function playCompleteSound() {
         try {
@@ -344,24 +315,39 @@ export default function Level2GesturesScreen() {
         const conf = data.confidence || 0;
         const handCount = data.handCount || 0;
 
-        // 🔥 If the WebView says it's a match and we trust it, update progress
+        // 🔥 1. SINGLE SOURCE OF TRUTH: Process WebView Matches First
         if (data.isMatch && data.learned && Array.isArray(data.learned)) {
             const newCompleted: Set<string> = new Set(data.learned);
             if (newCompleted.size > completedGestures.size) {
-                console.log('🔄 Updating progress from WebView match:', data.learned);
-
-                // 🔥 PLAY SOUND HERE!
+                console.log('🔄 Learned:', data.learned[data.learned.length - 1]);
                 await playGestureSound();
-
                 setCompletedGestures(newCompleted);
-
-                const target = getCurrentTarget();
-                if (target) {
-                    setCurrentTarget(target);
-                }
 
                 const justCompleted = data.learned[data.learned.length - 1];
                 if (justCompleted) {
+                    setConsecutiveWrong(0);
+                    setTotalCorrectAttempts(prev => prev + 1);
+
+                    setGestureAttempts(prev => {
+                        const current = prev[justCompleted] || { gesture: justCompleted, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                        return {
+                            ...prev,
+                            [justCompleted]: {
+                                ...current,
+                                successCount: current.successCount + 1,
+                                firstSuccess: current.firstSuccess || Date.now(),
+                            }
+                        };
+                    });
+
+                    if (!savedGesturesRef.current.has(justCompleted)) {
+                        savedGesturesRef.current.add(justCompleted);
+                    }
+
+                    const msg = getRandomMessage(SENYA_MESSAGES.correct);
+                    setSenyaMessage(msg);
+                    senyaMsgCooldownRef.current = Date.now();
+
                     showCutePopup(
                         `✓ ${justCompleted}`,
                         `${data.learned.length}/${LEVEL2_GESTURES.length}`
@@ -371,16 +357,13 @@ export default function Level2GesturesScreen() {
             }
         }
 
-        // Rest of your existing handleDetection logic...
-        console.log('🔍 handleDetection called with:', { gesture, conf, handCount, data });
+        // 2. Process regular frames for tracking and struggle messages
         if (gesture && gesture !== '✋' && gesture !== '...' && LEVEL2_GESTURES.includes(gesture)) {
-            console.log('✅ Valid gesture detected in handleDetection:', gesture);
             setDetectedGesture(gesture);
             setConfidence(conf);
             setIsConnected(true);
             setShowBrowserButton(false);
 
-            // Check if this is a stable detection
             if (gesture === lastProcessedGesture) {
                 setGestureStableCount(prev => prev + 1);
             } else {
@@ -389,11 +372,7 @@ export default function Level2GesturesScreen() {
                 return;
             }
 
-            // Only process after 3 stable detections
-            if (gestureStableCount < 2) {
-                console.log('⏳ Not stable yet, count:', gestureStableCount);
-                return;
-            }
+            if (gestureStableCount < 2) return;
 
             const now = Date.now();
             const isNewGesture = gesture !== lastAttemptGestureRef.current;
@@ -405,75 +384,23 @@ export default function Level2GesturesScreen() {
 
                 setGestureAttempts(prev => {
                     const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                    return {
-                        ...prev,
-                        [gesture]: {
-                            ...current,
-                            attempts: current.attempts + 1,
-                            lastAttempt: Date.now(),
-                        }
-                    };
+                    return { ...prev, [gesture]: { ...current, attempts: current.attempts + 1, lastAttempt: Date.now() } };
                 });
             }
 
-            // Gamification logic
             const target = getCurrentTarget();
-            console.log('🎯 Current target:', target, 'Detected:', gesture);
 
             if (gesture === target) {
-                console.log('✅ MATCH! Gesture matches target!');
-                // CORRECT!
-                if (!completedGestures.has(gesture)) {
-                    console.log('🔊 Playing sound for:', gesture);
-                    await playGestureSound();
-
-                    const newCompleted = new Set(completedGestures);
-                    newCompleted.add(gesture);
-                    setCompletedGestures(newCompleted);
-                    setConsecutiveWrong(0);
-                    setTotalCorrectAttempts(prev => prev + 1);
-
-                    setGestureAttempts(prev => {
-                        const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                        return {
-                            ...prev,
-                            [gesture]: {
-                                ...current,
-                                successCount: current.successCount + 1,
-                                firstSuccess: current.firstSuccess || Date.now(),
-                            }
-                        };
-                    });
-
-                    if (!savedGesturesRef.current.has(gesture)) {
-                        savedGesturesRef.current.add(gesture);
-                    }
-
-                    const msg = getRandomMessage(SENYA_MESSAGES.correct);
-                    setSenyaMessage(msg);
-                    senyaMsgCooldownRef.current = Date.now();
-
-                    showCutePopup(
-                        `✓ ${gesture}`,
-                        `${completedGestures.size + 1}/${LEVEL2_GESTURES.length}`
-                    );
-                }
+                // Wait for WebView to confirm match
             } else if (completedGestures.has(gesture)) {
-                // Already completed
-                console.log('ℹ️ Already completed:', gesture);
-                const now = Date.now();
                 if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                     senyaMsgCooldownRef.current = now;
                     if (target) {
                         setSenyaMessage(`You got ${gesture}! Try ${target}`);
-                    } else {
-                        setSenyaMessage(SENYA_MESSAGES.complete);
                     }
                 }
                 setConsecutiveWrong(0);
             } else {
-                // Wrong gesture
-                console.log('❌ Wrong gesture:', gesture, 'Target:', target);
                 if (gestureStableCount >= 2 && (isNewGesture || isTimeForNewAttempt)) {
                     const newWrong = consecutiveWrong + 1;
                     setConsecutiveWrong(newWrong);
@@ -482,40 +409,23 @@ export default function Level2GesturesScreen() {
                     if (target) {
                         setGestureAttempts(prev => {
                             const current = prev[target] || { gesture: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                            return {
-                                ...prev,
-                                [target]: {
-                                    ...current,
-                                    wrongAttempts: current.wrongAttempts + 1,
-                                }
-                            };
+                            return { ...prev, [target]: { ...current, wrongAttempts: current.wrongAttempts + 1 } };
                         });
                     }
 
-                    const now = Date.now();
                     if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                         senyaMsgCooldownRef.current = now;
                         if (newWrong >= 4) {
-                            const msg = getRandomMessage(SENYA_MESSAGES.struggle);
-                            setSenyaMessage(msg);
+                            setSenyaMessage(getRandomMessage(SENYA_MESSAGES.struggle));
                             setConsecutiveWrong(0);
-                            if (target) {
-                                showCutePopup(
-                                    `💡 ${target}`,
-                                    'Keep your hands steady'
-                                );
-                            }
+                            if (target) showCutePopup(`💡 ${target}`, 'Keep your hands steady');
                         } else if (newWrong >= 2) {
-                            if (target) {
-                                setSenyaMessage(`Try making ${target} shape!`);
-                            }
+                            if (target) setSenyaMessage(`Try making ${target} shape!`);
                         }
                     }
                 }
             }
         } else {
-            // No gesture detected
-            console.log('ℹ️ No valid gesture detected, resetting');
             setDetectedGesture('✋');
             setConfidence(0);
             setLastProcessedGesture('');
@@ -525,9 +435,7 @@ export default function Level2GesturesScreen() {
             if (!isModuleComplete && completedGestures.size < LEVEL2_GESTURES.length && now - senyaMsgCooldownRef.current >= 5000) {
                 senyaMsgCooldownRef.current = now;
                 const target = getCurrentTarget();
-                if (target) {
-                    setSenyaMessage(`Show me ${target}!`);
-                }
+                if (target) setSenyaMessage(`Show me ${target}!`);
             }
         }
     };
@@ -570,9 +478,6 @@ export default function Level2GesturesScreen() {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return null;
-
-            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
-            // Use your XP API
             return { success: true, xp_earned: starRating * 15, total_xp: 200 };
         } catch (error) {
             console.error('❌ Error awarding XP:', error);
@@ -604,7 +509,34 @@ export default function Level2GesturesScreen() {
 
     const injectedJavaScript = `
     (function() {
-        console.log('🎮 Level 2 WebView loaded, waiting for models...');
+        // HIDE ALL WEBVIEW UI OVERLAYS - Only show camera feed
+        const hideUI = function() {
+            const elementsToHide = [
+                '#status-bar',
+                '#progress-tracker', 
+                '#overlay',
+                '.progress-bar',
+                '#level-badge',
+                '#match-indicator'
+            ];
+            
+            elementsToHide.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.pointerEvents = 'none';
+                }
+            });
+            
+            // Hide the greeting display overlay completely
+            const greetingDisplay = document.querySelector('#greeting-display');
+            if (greetingDisplay) {
+                greetingDisplay.style.display = 'none';
+            }
+        };
+        
+        // Run immediately and after DOM changes
+        hideUI();
         
         // Monitor model loading status
         const checkModelStatus = setInterval(function() {
@@ -612,7 +544,6 @@ export default function Level2GesturesScreen() {
             const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
             
             if (modelReady) {
-                console.log('✅ Model is ready!');
                 clearInterval(checkModelStatus);
                 if (window.ReactNativeWebView) {
                     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -623,11 +554,8 @@ export default function Level2GesturesScreen() {
             }
         }, 1000);
         
-        // Also check for TensorFlow
+        // Check for TensorFlow
         setTimeout(function() {
-            console.log('🔍 Checking TensorFlow:', typeof tf !== 'undefined');
-            console.log('🔍 Checking MediaPipe:', typeof Hands !== 'undefined');
-            
             if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'library_check',
@@ -636,8 +564,6 @@ export default function Level2GesturesScreen() {
                 }));
             }
         }, 2000);
-        
-        console.log('✅ Debug overlay added');
     })();
 `;
 
@@ -649,12 +575,9 @@ export default function Level2GesturesScreen() {
             Linking.openURL(LEVEL2_URL);
         }
     };
+
     const syncProgressFromWebView = async (learnedFromWebView: string[], progress: number) => {
         if (learnedFromWebView && learnedFromWebView.length > completedGestures.size) {
-            console.log('🔄 Syncing progress from WebView:', learnedFromWebView);
-
-
-
             const newCompleted: Set<string> = new Set(learnedFromWebView);
             setCompletedGestures(newCompleted);
 
@@ -663,7 +586,6 @@ export default function Level2GesturesScreen() {
                 setCurrentTarget(target);
             }
 
-            // Show popup for the completed gesture
             const justCompleted = learnedFromWebView[learnedFromWebView.length - 1];
             if (justCompleted) {
                 showCutePopup(
@@ -674,15 +596,12 @@ export default function Level2GesturesScreen() {
         }
     };
 
-
     const handleMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
 
             // Handle model status updates
             if (data.type === 'model_status') {
-                console.log(`📦 Model status: ${data.status} - ${data.message}`);
-                setModelLoading(true);
                 if (data.status === 'loaded') {
                     setModelLoading(false);
                     setLoading(false);
@@ -702,7 +621,6 @@ export default function Level2GesturesScreen() {
 
             // Handle model ready signal from HTML
             if (data.type === 'model_ready' || data.status === 'all_loaded') {
-                console.log('✅ Models are ready!');
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
@@ -711,20 +629,18 @@ export default function Level2GesturesScreen() {
 
             // Handle MediaPipe ready
             if (data.type === 'mediapipe_ready') {
-                console.log('✅ MediaPipe ready');
                 return;
             }
 
             // Handle test messages
             if (data.test) {
-                console.log('✅ Test message received');
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
                 return;
             }
 
-            // 🔥 SYNC PROGRESS FROM WEBVIEW
+            // Sync progress from WebView
             if (data.learned && Array.isArray(data.learned)) {
                 syncProgressFromWebView(data.learned, data.progress || 0);
             }
@@ -732,15 +648,9 @@ export default function Level2GesturesScreen() {
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
 
-            // Only log when we have a valid detection with confidence
-            if (detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                console.log('📨 Level 2 WebView data:', {
-                    gesture: detectedValue,
-                    confidence: Math.round(confidenceValue * 100),
-                    handCount: data.handCount,
-                    isMatch: data.isMatch,
-                    learned: data.learned
-                });
+            // 🔥 REDUCED LOGGING: Only log on matches
+            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                console.log(`✅ ${detectedValue} (${Math.round(confidenceValue * 100)}%)`);
             }
 
             if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
@@ -749,16 +659,12 @@ export default function Level2GesturesScreen() {
             }
 
             if (LEVEL2_GESTURES.includes(detectedValue)) {
-                console.log('🎯 Valid Sign:', detectedValue, `(${Math.round(confidenceValue * 100)}%)`);
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
                 setIsConnected(true);
                 setShowBrowserButton(false);
-
-                // Pass the data to handleDetection, including the WebView's progress
                 handleDetection({
                     ...data,
-                    // Ensure the gesture is passed correctly
                     gesture: detectedValue
                 });
             } else {
@@ -898,44 +804,45 @@ export default function Level2GesturesScreen() {
                 <Text style={styles.headerTitle}>Level 2 Gestures</Text>
 
                 <View style={styles.headerRight}>
-                    <Pressable
+                    {/* UI Toggle Button - COMMENTED OUT */}
+                    {/* <Pressable
                         onPress={() => {
                             webViewRef.current?.injectJavaScript(`
-                    (function() {
-                        const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
-                        const show = document.querySelector('#status-bar').style.display !== 'none';
-                        elements.forEach(sel => {
-                            const el = document.querySelector(sel);
-                            if (el) el.style.display = show ? 'none' : '';
-                        });
-                        console.log('UI toggled');
-                    })();
-                `);
+                                (function() {
+                                    const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
+                                    const show = document.querySelector('#status-bar').style.display !== 'none';
+                                    elements.forEach(sel => {
+                                        const el = document.querySelector(sel);
+                                        if (el) el.style.display = show ? 'none' : '';
+                                    });
+                                })();
+                            `);
                         }}
                         style={styles.testButton}
                     >
                         <Ionicons name="eye-outline" size={20} color="#0f3172" />
-                    </Pressable>
+                    </Pressable> */}
 
-                    <Pressable
+                    {/* Bug Button - COMMENTED OUT */}
+                    {/* <Pressable
                         onPress={() => {
                             webViewRef.current?.injectJavaScript(`
-                    (function() {
-                        if (window.ReactNativeWebView) {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({
-                                gesture: 'PLEASE',
-                                confidence: 0.95,
-                                handCount: 1,
-                                test: true
-                            }));
-                        }
-                    })();
-                `);
+                                (function() {
+                                    if (window.ReactNativeWebView) {
+                                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                                            gesture: 'PLEASE',
+                                            confidence: 0.95,
+                                            handCount: 1,
+                                            test: true
+                                        }));
+                                    }
+                                })();
+                            `);
                         }}
                         style={styles.testButton}
                     >
                         <Ionicons name="bug-outline" size={20} color="#0f3172" />
-                    </Pressable>
+                    </Pressable> */}
 
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
@@ -987,16 +894,14 @@ export default function Level2GesturesScreen() {
                     onLoadStart={() => {
                         setLoading(true);
                         setModelLoading(true);
-                        console.log('🔄 Level 2 WebView loading started...');
                     }}
                     onLoadProgress={({ nativeEvent }) => {
-                        console.log(`📊 Loading: ${Math.round(nativeEvent.progress * 100)}%`);
                         if (nativeEvent.progress >= 0.9 && modelLoading) {
-                            console.log('⏳ WebView loaded but waiting for models...');
+                            // Silently wait for models
                         }
                     }}
                     onLoadEnd={() => {
-                        console.log('✅ Level 2 WebView HTML loaded - waiting for models to initialize');
+                        // WebView HTML loaded - waiting for models to initialize
                     }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
@@ -1097,12 +1002,12 @@ export default function Level2GesturesScreen() {
                             <View
                                 style={[
                                     styles.confidenceFill,
-                                    { width: `${Math.round(confidence)}%` }
+                                    { width: `${confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%` }
                                 ]}
                             />
                         </View>
                         <Text style={styles.resultConfidence}>
-                            {Math.round(confidence)}%
+                            {confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%
                         </Text>
                     </View>
                 )}
@@ -1646,7 +1551,6 @@ const styles = StyleSheet.create({
         marginTop: 1,
         textAlign: 'center',
     },
-    // Results Modal
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(10, 22, 40, 0.7)',

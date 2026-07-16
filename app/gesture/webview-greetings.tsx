@@ -131,6 +131,7 @@ export default function WebViewGreetingsScreen() {
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
 
     const [showFullUI, setShowFullUI] = useState(false);
+
     // ── Play gesture sound ──
     async function playGestureSound() {
         try {
@@ -236,7 +237,7 @@ export default function WebViewGreetingsScreen() {
             setCurrentTarget(target);
             const targetIndex = GREETINGS_LIST.indexOf(target);
             if (targetIndex >= 0 && scrollViewRef.current) {
-                const slotWidth = 100; // wider for longer greeting names
+                const slotWidth = 100;
                 const scrollX = targetIndex * slotWidth - (width - 100) / 2;
                 setTimeout(() => {
                     scrollViewRef.current?.scrollTo({
@@ -379,7 +380,6 @@ export default function WebViewGreetingsScreen() {
 
                     if (!savedGreetingsRef.current.has(greeting)) {
                         savedGreetingsRef.current.add(greeting);
-                        // Save performance (optional - you can implement API call here)
                     }
 
                     const msg = getRandomMessage(SENYA_MESSAGES.correct);
@@ -430,12 +430,16 @@ export default function WebViewGreetingsScreen() {
                             const msg = getRandomMessage(SENYA_MESSAGES.struggle);
                             setSenyaMessage(msg);
                             setConsecutiveWrong(0);
-                            showCutePopup(
-                                `💡 ${target}`,
-                                'Keep your hands steady'
-                            );
+                            if (target) {
+                                showCutePopup(
+                                    `💡 ${target}`,
+                                    'Keep your hands steady'
+                                );
+                            }
                         } else if (newWrong >= 2) {
-                            setSenyaMessage(`Try making ${target} shape!`);
+                            if (target) {
+                                setSenyaMessage(`Try making ${target} shape!`);
+                            }
                         }
                     }
                 }
@@ -484,9 +488,6 @@ export default function WebViewGreetingsScreen() {
             if (totalAttempts === 0) return null;
 
             console.log('📤 Saving greeting performance...');
-            // Use your API to save performance
-            // const result = await api.saveGreetingPerformance(...);
-
             return { success: true };
         } catch (error) {
             console.error('❌ Error saving performance:', error);
@@ -499,10 +500,6 @@ export default function WebViewGreetingsScreen() {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return null;
-
-            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
-            // Use your XP API
-            // const result = await api.awardModuleXp('greetings_level1', starRating);
 
             return { success: true, xp_earned: starRating * 10, total_xp: 100 };
         } catch (error) {
@@ -529,13 +526,12 @@ export default function WebViewGreetingsScreen() {
             }, 2000);
         }
     }, [isModuleComplete]);
+
     const preloadModel = async () => {
         try {
-            console.log('📦 Pre-loading model...');
             const response = await fetch('https://swipe-drinking-coral.ngrok-free.dev/models/model.json');
             if (response.ok) {
-                console.log('✅ Model pre-loaded successfully');
-                // The model will be cached
+                // Model pre-loaded successfully
             }
         } catch (error) {
             console.error('❌ Pre-load failed:', error);
@@ -552,7 +548,32 @@ export default function WebViewGreetingsScreen() {
 
     const injectedJavaScript = `
     (function() {
-        console.log('🎮 WebView loaded, waiting for models...');
+        // HIDE ALL WEBVIEW UI OVERLAYS - Only show camera feed
+        const hideUI = function() {
+            const elementsToHide = [
+                '#status-bar',
+                '#progress-tracker', 
+                '#overlay',
+                '.progress-bar'
+            ];
+            
+            elementsToHide.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.pointerEvents = 'none';
+                }
+            });
+            
+            // Hide the greeting display overlay completely
+            const greetingDisplay = document.querySelector('#greeting-display');
+            if (greetingDisplay) {
+                greetingDisplay.style.display = 'none';
+            }
+        };
+        
+        // Run immediately and after DOM changes
+        hideUI();
         
         // Monitor model loading status
         const checkModelStatus = setInterval(function() {
@@ -560,7 +581,6 @@ export default function WebViewGreetingsScreen() {
             const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
             
             if (modelReady) {
-                console.log('✅ Model is ready!');
                 clearInterval(checkModelStatus);
                 if (window.ReactNativeWebView) {
                     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -571,11 +591,8 @@ export default function WebViewGreetingsScreen() {
             }
         }, 1000);
         
-        // Also check for TensorFlow
+        // Check for TensorFlow
         setTimeout(function() {
-            console.log('🔍 Checking TensorFlow:', typeof tf !== 'undefined');
-            console.log('🔍 Checking MediaPipe:', typeof Hands !== 'undefined');
-            
             if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'library_check',
@@ -584,8 +601,6 @@ export default function WebViewGreetingsScreen() {
                 }));
             }
         }, 2000);
-        
-        console.log('✅ Debug overlay added');
     })();
 `;
 
@@ -604,8 +619,6 @@ export default function WebViewGreetingsScreen() {
 
             // Handle model status updates
             if (data.type === 'model_status') {
-                console.log(`📦 Model status: ${data.status} - ${data.message}`);
-                setModelLoading(true);
                 if (data.status === 'loaded') {
                     setModelLoading(false);
                     setLoading(false);
@@ -625,7 +638,6 @@ export default function WebViewGreetingsScreen() {
 
             // Handle model ready signal from HTML
             if (data.type === 'model_ready' || data.status === 'all_loaded') {
-                console.log('✅ Models are ready!');
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
@@ -634,13 +646,11 @@ export default function WebViewGreetingsScreen() {
 
             // Handle MediaPipe ready
             if (data.type === 'mediapipe_ready') {
-                console.log('✅ MediaPipe ready');
                 return;
             }
 
             // Handle test messages
             if (data.test) {
-                console.log('✅ Test message received');
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
@@ -650,14 +660,9 @@ export default function WebViewGreetingsScreen() {
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
 
-            // Only log when we have a valid detection with confidence
-            if (detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                console.log('📨 WebView data:', {
-                    greeting: detectedValue,
-                    confidence: Math.round(confidenceValue * 100),
-                    handCount: data.handCount,
-                    isMatch: data.isMatch
-                });
+            // 🔥 REDUCED LOGGING: Only log on matches
+            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                console.log(`✅ ${detectedValue} (${Math.round(confidenceValue * 100)}%)`);
             }
 
             if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
@@ -666,7 +671,6 @@ export default function WebViewGreetingsScreen() {
             }
 
             if (GREETINGS_LIST.includes(detectedValue)) {
-                console.log('🎯 Valid Sign:', detectedValue, `(${Math.round(confidenceValue * 100)}%)`);
                 setDetectedGreeting(detectedValue);
                 setConfidence(confidenceValue);
                 setIsConnected(true);
@@ -681,6 +685,7 @@ export default function WebViewGreetingsScreen() {
             console.error('❌ Message error:', error);
         }
     };
+
     // ─── RESULTS ──────────────────────────────────────────────────────────
     const getResults = () => {
         const timeToUse = endTime || Date.now();
@@ -709,6 +714,7 @@ export default function WebViewGreetingsScreen() {
             totalWrong: totalWrongAttempts,
         };
     };
+
     const getLevelName = (level: number): string => {
         const levelNames: Record<number, string> = {
             1: 'Novice Signer',
@@ -793,12 +799,10 @@ export default function WebViewGreetingsScreen() {
         );
     }
 
-
     // ─── RENDER ────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={styles.container}>
             {/* Header */}
-
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -809,44 +813,45 @@ export default function WebViewGreetingsScreen() {
                 <Text style={styles.headerTitle}>Greetings Level 1</Text>
 
                 <View style={styles.headerRight}>
-                    <Pressable
+                    {/* UI Toggle Button - COMMENTED OUT */}
+                    {/* <Pressable
                         onPress={() => {
                             webViewRef.current?.injectJavaScript(`
-                    (function() {
-                        const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
-                        const show = document.querySelector('#status-bar').style.display !== 'none';
-                        elements.forEach(sel => {
-                            const el = document.querySelector(sel);
-                            if (el) el.style.display = show ? 'none' : '';
-                        });
-                        console.log('UI toggled');
-                    })();
-                `);
+                                (function() {
+                                    const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
+                                    const show = document.querySelector('#status-bar').style.display !== 'none';
+                                    elements.forEach(sel => {
+                                        const el = document.querySelector(sel);
+                                        if (el) el.style.display = show ? 'none' : '';
+                                    });
+                                })();
+                            `);
                         }}
                         style={styles.testButton}
                     >
                         <Ionicons name="eye-outline" size={20} color="#0f3172" />
-                    </Pressable>
+                    </Pressable> */}
 
-                    <Pressable
+                    {/* Bug Button - COMMENTED OUT */}
+                    {/* <Pressable
                         onPress={() => {
                             webViewRef.current?.injectJavaScript(`
-                    (function() {
-                        if (window.ReactNativeWebView) {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({
-                                greeting: 'HELLO',
-                                confidence: 0.95,
-                                handCount: 1,
-                                test: true
-                            }));
-                        }
-                    })();
-                `);
+                                (function() {
+                                    if (window.ReactNativeWebView) {
+                                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                                            greeting: 'HELLO',
+                                            confidence: 0.95,
+                                            handCount: 1,
+                                            test: true
+                                        }));
+                                    }
+                                })();
+                            `);
                         }}
                         style={styles.testButton}
                     >
                         <Ionicons name="bug-outline" size={20} color="#0f3172" />
-                    </Pressable>
+                    </Pressable> */}
 
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
@@ -898,18 +903,14 @@ export default function WebViewGreetingsScreen() {
                     onLoadStart={() => {
                         setLoading(true);
                         setModelLoading(true);
-                        console.log('🔄 WebView loading started...');
                     }}
                     onLoadProgress={({ nativeEvent }) => {
-                        console.log(`📊 Loading: ${Math.round(nativeEvent.progress * 100)}%`);
-                        // If we're stuck at 100% but still loading, check if models are ready
                         if (nativeEvent.progress >= 0.9 && modelLoading) {
-                            console.log('⏳ WebView loaded but waiting for models...');
+                            // Silently wait for models
                         }
                     }}
                     onLoadEnd={() => {
-                        console.log('✅ WebView HTML loaded - waiting for models to initialize');
-                        // Don't hide loading - wait for models
+                        // WebView HTML loaded - waiting for models to initialize
                     }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
@@ -927,7 +928,6 @@ export default function WebViewGreetingsScreen() {
                     allowsAirPlayForMediaPlayback={true}
                     javaScriptEnabled={true}
                     domStorageEnabled={true}
-                    // Important for loading models
                     cacheEnabled={true}
                     cacheMode="LOAD_DEFAULT"
                     userAgent={
@@ -1011,14 +1011,12 @@ export default function WebViewGreetingsScreen() {
                             <View
                                 style={[
                                     styles.confidenceFill,
-                                    // FIX: Use the actual state integer directly (e.g., 95%)
-                                    { width: `${Math.round(confidence)}%` }
+                                    { width: `${confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%` }
                                 ]}
                             />
                         </View>
                         <Text style={styles.resultConfidence}>
-                            {/* FIX: Displays 95% instead of 9500% */}
-                            {Math.round(confidence)}%
+                            {confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%
                         </Text>
                     </View>
                 )}
@@ -1562,7 +1560,6 @@ const styles = StyleSheet.create({
         marginTop: 1,
         textAlign: 'center',
     },
-    // Results Modal
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(10, 22, 40, 0.7)',

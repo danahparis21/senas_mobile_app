@@ -460,7 +460,6 @@ export default function Level3GesturesScreen() {
                             const msg = getRandomMessage(SENYA_MESSAGES.struggle);
                             setSenyaMessage(msg);
                             setConsecutiveWrong(0);
-                            // FIX: Check if target exists before using it
                             if (target) {
                                 const targetDigit = DIGIT_DISPLAY[target] || target;
                                 showCutePopup(
@@ -471,7 +470,6 @@ export default function Level3GesturesScreen() {
                                 showCutePopup('💡 Keep trying!', 'You got this!');
                             }
                         } else if (newWrong >= 2) {
-                            // FIX: Check if target exists before using it
                             if (target) {
                                 const targetDigit = DIGIT_DISPLAY[target] || target;
                                 setSenyaMessage(`Try making ${targetDigit} shape!`);
@@ -541,7 +539,6 @@ export default function Level3GesturesScreen() {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return null;
 
-            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
             // Level 3 gives more XP (20 per star)
             return { success: true, xp_earned: starRating * 20, total_xp: 300 };
         } catch (error) {
@@ -572,17 +569,46 @@ export default function Level3GesturesScreen() {
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
     const LEVEL3_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level3.html';
 
+    // Injected JavaScript to hide WebView UI overlays
     const injectedJavaScript = `
     (function() {
-        console.log('🎮 Level 3 WebView loaded, waiting for models...');
+        // HIDE ALL WEBVIEW UI OVERLAYS - Only show camera feed
+        const hideUI = function() {
+            const elementsToHide = [
+                '#status-bar',
+                '#progress-tracker', 
+                '#overlay',
+                '.progress-bar',
+                '#level-badge',
+                '#match-indicator'
+            ];
+            
+            elementsToHide.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.pointerEvents = 'none';
+                }
+            });
+            
+            // Hide the greeting display overlay completely
+            const greetingDisplay = document.querySelector('#greeting-display');
+            if (greetingDisplay) {
+                greetingDisplay.style.display = 'none';
+            }
+            
+            console.log('🎨 WebView UI hidden - only camera feed visible');
+        };
         
-        // Monitor model loading status
+        // Run immediately and after DOM changes
+        hideUI();
+        
+        // Monitor for model loading status (only essential logs)
         const checkModelStatus = setInterval(function() {
             const statusText = document.getElementById('status-text');
             const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
             
             if (modelReady) {
-                console.log('✅ Model is ready!');
                 clearInterval(checkModelStatus);
                 if (window.ReactNativeWebView) {
                     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -593,11 +619,8 @@ export default function Level3GesturesScreen() {
             }
         }, 1000);
         
-        // Also check for TensorFlow
+        // Check for TensorFlow
         setTimeout(function() {
-            console.log('🔍 Checking TensorFlow:', typeof tf !== 'undefined');
-            console.log('🔍 Checking MediaPipe:', typeof Hands !== 'undefined');
-            
             if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                     type: 'library_check',
@@ -606,8 +629,6 @@ export default function Level3GesturesScreen() {
                 }));
             }
         }, 2000);
-        
-        console.log('✅ Debug overlay added');
     })();
 `;
 
@@ -626,8 +647,6 @@ export default function Level3GesturesScreen() {
 
             // Handle model status updates
             if (data.type === 'model_status') {
-                console.log(`📦 Model status: ${data.status} - ${data.message}`);
-                setModelLoading(true);
                 if (data.status === 'loaded') {
                     setModelLoading(false);
                     setLoading(false);
@@ -647,7 +666,6 @@ export default function Level3GesturesScreen() {
 
             // Handle model ready signal from HTML
             if (data.type === 'model_ready' || data.status === 'all_loaded') {
-                console.log('✅ Models are ready!');
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
@@ -656,13 +674,11 @@ export default function Level3GesturesScreen() {
 
             // Handle MediaPipe ready
             if (data.type === 'mediapipe_ready') {
-                console.log('✅ MediaPipe ready');
                 return;
             }
 
             // Handle test messages
             if (data.test) {
-                console.log('✅ Test message received');
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
@@ -673,15 +689,9 @@ export default function Level3GesturesScreen() {
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
 
-            // Only log when we have a valid detection with confidence
-            if (detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                console.log('📨 Level 3 WebView data:', {
-                    gesture: detectedValue,
-                    digit: data.digit || '',
-                    confidence: Math.round(confidenceValue * 100),
-                    handCount: data.handCount,
-                    isMatch: data.isMatch
-                });
+            // 🔥 MINIMAL LOGGING: Only log when a new gesture is learned (match)
+            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                console.log(`🎯 Learned: ${detectedValue}`);
             }
 
             if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
@@ -690,7 +700,6 @@ export default function Level3GesturesScreen() {
             }
 
             if (LEVEL3_GESTURES.includes(detectedValue)) {
-                console.log('🎯 Valid Number:', detectedValue, `(${Math.round(confidenceValue * 100)}%)`);
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
                 setIsConnected(true);
@@ -833,45 +842,46 @@ export default function Level3GesturesScreen() {
                 <Text style={styles.headerTitle}>Numbers 1-10</Text>
 
                 <View style={styles.headerRight}>
-                    <Pressable
+                    {/* UI Toggle Button - COMMENTED OUT (not needed in app) */}
+                    {/* <Pressable
                         onPress={() => {
                             webViewRef.current?.injectJavaScript(`
-                    (function() {
-                        const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
-                        const show = document.querySelector('#status-bar').style.display !== 'none';
-                        elements.forEach(sel => {
-                            const el = document.querySelector(sel);
-                            if (el) el.style.display = show ? 'none' : '';
-                        });
-                        console.log('UI toggled');
-                    })();
-                `);
+                                (function() {
+                                    const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
+                                    const show = document.querySelector('#status-bar').style.display !== 'none';
+                                    elements.forEach(sel => {
+                                        const el = document.querySelector(sel);
+                                        if (el) el.style.display = show ? 'none' : '';
+                                    });
+                                })();
+                            `);
                         }}
                         style={styles.testButton}
                     >
                         <Ionicons name="eye-outline" size={20} color="#0f3172" />
-                    </Pressable>
+                    </Pressable> */}
 
-                    <Pressable
+                    {/* Bug Button - COMMENTED OUT (not needed in production) */}
+                    {/* <Pressable
                         onPress={() => {
                             webViewRef.current?.injectJavaScript(`
-                    (function() {
-                        if (window.ReactNativeWebView) {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({
-                                greeting: 'ONE',
-                                confidence: 0.95,
-                                handCount: 1,
-                                digit: '1',
-                                test: true
-                            }));
-                        }
-                    })();
-                `);
+                                (function() {
+                                    if (window.ReactNativeWebView) {
+                                        window.ReactNativeWebView.postMessage(JSON.stringify({
+                                            greeting: 'ONE',
+                                            confidence: 0.95,
+                                            handCount: 1,
+                                            digit: '1',
+                                            test: true
+                                        }));
+                                    }
+                                })();
+                            `);
                         }}
                         style={styles.testButton}
                     >
                         <Ionicons name="bug-outline" size={20} color="#0f3172" />
-                    </Pressable>
+                    </Pressable> */}
 
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
@@ -923,16 +933,14 @@ export default function Level3GesturesScreen() {
                     onLoadStart={() => {
                         setLoading(true);
                         setModelLoading(true);
-                        console.log('🔄 Level 3 WebView loading started...');
                     }}
                     onLoadProgress={({ nativeEvent }) => {
-                        console.log(`📊 Loading: ${Math.round(nativeEvent.progress * 100)}%`);
                         if (nativeEvent.progress >= 0.9 && modelLoading) {
-                            console.log('⏳ WebView loaded but waiting for models...');
+                            // Silently wait for models
                         }
                     }}
                     onLoadEnd={() => {
-                        console.log('✅ Level 3 WebView HTML loaded - waiting for models to initialize');
+                        // WebView HTML loaded - waiting for models to initialize
                     }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
@@ -1035,12 +1043,13 @@ export default function Level3GesturesScreen() {
                             <View
                                 style={[
                                     styles.confidenceFill,
-                                    { width: `${Math.round(confidence)}%` }
+                                    // Smart percentage check (handles both 0.95 and 95)
+                                    { width: `${confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%` }
                                 ]}
                             />
                         </View>
                         <Text style={styles.resultConfidence}>
-                            {Math.round(confidence)}%
+                            {confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%
                         </Text>
                     </View>
                 )}
