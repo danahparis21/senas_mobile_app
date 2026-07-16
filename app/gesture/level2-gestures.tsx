@@ -135,41 +135,70 @@ export default function Level2GesturesScreen() {
     const [modelLoading, setModelLoading] = useState(true);
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
 
+
+    // ── Play gesture sound ──
     // ── Play gesture sound ──
     async function playGestureSound() {
         try {
-            if (isSoundPlaying) return;
+            // Don't play if a sound is already playing
+            if (isSoundPlaying) {
+                console.log('🔊 Sound already playing, skipping...');
+                return;
+            }
+
             setIsSoundPlaying(true);
 
+            // Unload any existing sound
             if (gestureSound) {
-                await gestureSound.unloadAsync();
+                try {
+                    await gestureSound.unloadAsync();
+                } catch (e) {
+                    // Ignore unload errors
+                }
+                setGestureSound(null);
             }
+
+            console.log('🔊 Playing correct gesture sound...');
 
             const { sound } = await Audio.Sound.createAsync(
                 CORRECT_GESTURE_SOUND,
                 {
                     shouldPlay: true,
                     isLooping: false,
-                    volume: 0.8,
+                    volume: 1.0,
                 }
             );
 
             setGestureSound(sound);
 
+            // Set up playback status listener
             sound.setOnPlaybackStatusUpdate((status) => {
-                if (status.isLoaded && status.didJustFinish) {
-                    sound.unloadAsync();
-                    setGestureSound(null);
+                // Check if the status is loaded
+                if (status.isLoaded) {
+                    if (status.didJustFinish) {
+                        console.log('🔊 Sound finished playing');
+                        sound.unloadAsync().catch(() => { });
+                        setGestureSound(null);
+                        setIsSoundPlaying(false);
+                    }
+                }
+                // Check for errors separately (status will be an error type)
+                if ('error' in status && status.error) {
+                    console.error('🔊 Sound error:', status.error);
                     setIsSoundPlaying(false);
+                    setGestureSound(null);
                 }
             });
+
+            // Start playback
+            await sound.playAsync();
 
         } catch (error) {
             console.error('Failed to play gesture sound:', error);
             setIsSoundPlaying(false);
+            setGestureSound(null);
         }
     }
-
     // ── Play completion sound ──
     async function playCompleteSound() {
         try {
@@ -310,13 +339,44 @@ export default function Level2GesturesScreen() {
     const lastAttemptTimeRef = useRef<number>(0);
     const MIN_ATTEMPT_INTERVAL = 1000;
 
-    // Handle detection from WebView
     const handleDetection = async (data: any) => {
-        const { gesture, confidence: conf, handCount } = data;
+        const gesture = data.greeting || data.gesture || '';
+        const conf = data.confidence || 0;
+        const handCount = data.handCount || 0;
 
+        // 🔥 If the WebView says it's a match and we trust it, update progress
+        if (data.isMatch && data.learned && Array.isArray(data.learned)) {
+            const newCompleted: Set<string> = new Set(data.learned);
+            if (newCompleted.size > completedGestures.size) {
+                console.log('🔄 Updating progress from WebView match:', data.learned);
+
+                // 🔥 PLAY SOUND HERE!
+                await playGestureSound();
+
+                setCompletedGestures(newCompleted);
+
+                const target = getCurrentTarget();
+                if (target) {
+                    setCurrentTarget(target);
+                }
+
+                const justCompleted = data.learned[data.learned.length - 1];
+                if (justCompleted) {
+                    showCutePopup(
+                        `✓ ${justCompleted}`,
+                        `${data.learned.length}/${LEVEL2_GESTURES.length}`
+                    );
+                }
+                return;
+            }
+        }
+
+        // Rest of your existing handleDetection logic...
+        console.log('🔍 handleDetection called with:', { gesture, conf, handCount, data });
         if (gesture && gesture !== '✋' && gesture !== '...' && LEVEL2_GESTURES.includes(gesture)) {
+            console.log('✅ Valid gesture detected in handleDetection:', gesture);
             setDetectedGesture(gesture);
-            setConfidence(conf || 0);
+            setConfidence(conf);
             setIsConnected(true);
             setShowBrowserButton(false);
 
@@ -331,6 +391,7 @@ export default function Level2GesturesScreen() {
 
             // Only process after 3 stable detections
             if (gestureStableCount < 2) {
+                console.log('⏳ Not stable yet, count:', gestureStableCount);
                 return;
             }
 
@@ -357,10 +418,13 @@ export default function Level2GesturesScreen() {
 
             // Gamification logic
             const target = getCurrentTarget();
+            console.log('🎯 Current target:', target, 'Detected:', gesture);
 
             if (gesture === target) {
+                console.log('✅ MATCH! Gesture matches target!');
                 // CORRECT!
                 if (!completedGestures.has(gesture)) {
+                    console.log('🔊 Playing sound for:', gesture);
                     await playGestureSound();
 
                     const newCompleted = new Set(completedGestures);
@@ -396,6 +460,7 @@ export default function Level2GesturesScreen() {
                 }
             } else if (completedGestures.has(gesture)) {
                 // Already completed
+                console.log('ℹ️ Already completed:', gesture);
                 const now = Date.now();
                 if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                     senyaMsgCooldownRef.current = now;
@@ -408,6 +473,7 @@ export default function Level2GesturesScreen() {
                 setConsecutiveWrong(0);
             } else {
                 // Wrong gesture
+                console.log('❌ Wrong gesture:', gesture, 'Target:', target);
                 if (gestureStableCount >= 2 && (isNewGesture || isTimeForNewAttempt)) {
                     const newWrong = consecutiveWrong + 1;
                     setConsecutiveWrong(newWrong);
@@ -433,18 +499,23 @@ export default function Level2GesturesScreen() {
                             const msg = getRandomMessage(SENYA_MESSAGES.struggle);
                             setSenyaMessage(msg);
                             setConsecutiveWrong(0);
-                            showCutePopup(
-                                `💡 ${target}`,
-                                'Keep your hands steady'
-                            );
+                            if (target) {
+                                showCutePopup(
+                                    `💡 ${target}`,
+                                    'Keep your hands steady'
+                                );
+                            }
                         } else if (newWrong >= 2) {
-                            setSenyaMessage(`Try making ${target} shape!`);
+                            if (target) {
+                                setSenyaMessage(`Try making ${target} shape!`);
+                            }
                         }
                     }
                 }
             }
         } else {
             // No gesture detected
+            console.log('ℹ️ No valid gesture detected, resetting');
             setDetectedGesture('✋');
             setConfidence(0);
             setLastProcessedGesture('');
@@ -578,6 +649,31 @@ export default function Level2GesturesScreen() {
             Linking.openURL(LEVEL2_URL);
         }
     };
+    const syncProgressFromWebView = async (learnedFromWebView: string[], progress: number) => {
+        if (learnedFromWebView && learnedFromWebView.length > completedGestures.size) {
+            console.log('🔄 Syncing progress from WebView:', learnedFromWebView);
+
+
+
+            const newCompleted: Set<string> = new Set(learnedFromWebView);
+            setCompletedGestures(newCompleted);
+
+            const target = getCurrentTarget();
+            if (target) {
+                setCurrentTarget(target);
+            }
+
+            // Show popup for the completed gesture
+            const justCompleted = learnedFromWebView[learnedFromWebView.length - 1];
+            if (justCompleted) {
+                showCutePopup(
+                    `✓ ${justCompleted}`,
+                    `${learnedFromWebView.length}/${LEVEL2_GESTURES.length}`
+                );
+            }
+        }
+    };
+
 
     const handleMessage = (event: any) => {
         try {
@@ -628,7 +724,12 @@ export default function Level2GesturesScreen() {
                 return;
             }
 
-            const detectedValue = data.gesture || data.letter || '';
+            // 🔥 SYNC PROGRESS FROM WEBVIEW
+            if (data.learned && Array.isArray(data.learned)) {
+                syncProgressFromWebView(data.learned, data.progress || 0);
+            }
+
+            const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
 
             // Only log when we have a valid detection with confidence
@@ -637,7 +738,8 @@ export default function Level2GesturesScreen() {
                     gesture: detectedValue,
                     confidence: Math.round(confidenceValue * 100),
                     handCount: data.handCount,
-                    isMatch: data.isMatch
+                    isMatch: data.isMatch,
+                    learned: data.learned
                 });
             }
 
@@ -652,7 +754,13 @@ export default function Level2GesturesScreen() {
                 setConfidence(confidenceValue);
                 setIsConnected(true);
                 setShowBrowserButton(false);
-                handleDetection(data);
+
+                // Pass the data to handleDetection, including the WebView's progress
+                handleDetection({
+                    ...data,
+                    // Ensure the gesture is passed correctly
+                    gesture: detectedValue
+                });
             } else {
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
