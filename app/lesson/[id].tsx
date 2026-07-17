@@ -10,6 +10,7 @@ import Svg, { Path, Circle, Polyline, Line, Defs, LinearGradient, Stop, Rect } f
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { Audio } from 'expo-av';
 import { api } from '../../services/api';
+import GesturePractice from './GesturePractice';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -46,6 +47,11 @@ interface Question {
   media_url: string | null;
   points: number;
   options: Option[];
+  gesture_data?: {
+    module_id: string | number;  // Allow both string and number
+    gesture_ids: string[] | number[];  // Allow both string and number arrays
+  } | null;
+  drag_drop_pairs?: any;
 }
 interface Quiz {
   quiz_id: number;
@@ -382,6 +388,8 @@ export default function LessonViewer() {
   const [questionRevealed, setQuestionRevealed] = useState<boolean>(false);
   const [currentScore, setCurrentScore] = useState<number>(0);
 
+  const quizAnswersRef = useRef<Record<number, number>>({});
+  const currentScoreRef = useRef<number>(0);
   const senyaBounceAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = bounce
   const senyaShakeAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = shake
 
@@ -580,6 +588,10 @@ export default function LessonViewer() {
     fetchAttemptHistory();
     fetchLeaderboard();
 
+    // Reset refs when lesson changes
+    quizAnswersRef.current = {};
+    currentScoreRef.current = 0;
+
     // ── Cleanup sounds on unmount ──
     return () => {
       if (correctSound) {
@@ -672,13 +684,21 @@ export default function LessonViewer() {
 
     // Store the selected option ID
     const selectedOptionId = currentQ?.options[optionIndex]?.option_id;
-    setQuizAnswers(prev => ({
-      ...prev,
-      [currentQ.question_id]: selectedOptionId
-    }));
+    setQuizAnswers(prev => {
+      const newAnswers = {
+        ...prev,
+        [currentQ.question_id]: selectedOptionId
+      };
+      quizAnswersRef.current = newAnswers; // ✅ Update ref
+      return newAnswers;
+    });
 
     if (isCorrect) {
-      setCurrentScore(s => s + 1);
+      setCurrentScore(prev => {
+        const newScore = prev + 1;
+        currentScoreRef.current = newScore; // ✅ Update ref
+        return newScore;
+      });
     }
   };
 
@@ -689,23 +709,47 @@ export default function LessonViewer() {
       setSelectedOption(null);
       setQuestionRevealed(false);
     } else {
-      submitQuiz();
+      // All questions answered - submit quiz
+      // Use a delay to ensure all state updates are processed
+      console.log('📊 All questions answered, submitting quiz...');
+      console.log('📊 Current score:', currentScore);
+      console.log('📊 Quiz answers:', quizAnswers);
+
+      setTimeout(() => {
+        submitQuiz();
+      }, 300);
     }
   };
 
   const submitQuiz = async (): Promise<void> => {
     if (!lesson || !lesson.quiz) return;
-    const questions = lesson.quiz.questions;
-    const score = currentScore;
-    const totalPoints = questions.length;
-    const percentage = Math.round((score / totalPoints) * 100);
 
-    // Build answers with actual selected options
+    // Use REFS to get latest values (not state)
+    const questions = lesson.quiz.questions;
+    const latestQuizAnswers = quizAnswersRef.current;
+    const latestScore = currentScoreRef.current;
+
+    console.log('📊 Submitting with refs:', { latestQuizAnswers, latestScore });
+
+    // Calculate score from quizAnswers
+    let calculatedScore = 0;
     const answers: QuizAnswer[] = questions.map((q, index) => {
-      // Find the selected option for this question
-      const selectedOptionId = quizAnswers[index] ?? null;
-      const isCorrect = selectedOptionId !== null &&
-        q.options[selectedOptionId]?.is_correct === true;
+      const selectedOptionId = latestQuizAnswers[q.question_id] ?? null;
+
+      // Check if this is a gesture question
+      const isGestureQuestion = q.question_type === 'gesture';
+
+      let isCorrect = false;
+      if (isGestureQuestion) {
+        // For gesture questions: success = 1, failure = 0 or null
+        isCorrect = selectedOptionId === 1;
+      } else {
+        // For multiple choice: check if the selected option is correct
+        isCorrect = selectedOptionId !== null &&
+          q.options.some(o => o.option_id === selectedOptionId && o.is_correct === true);
+      }
+
+      if (isCorrect) calculatedScore++;
 
       return {
         question_id: q.question_id,
@@ -713,6 +757,15 @@ export default function LessonViewer() {
         is_correct: isCorrect,
       };
     });
+
+    // Use calculated score
+    const score = calculatedScore;
+    const totalPoints = questions.length;
+    const percentage = Math.round((score / totalPoints) * 100);
+
+    console.log(`📊 Submit Quiz: Score=${score}, Total=${totalPoints}, Percentage=${percentage}%`);
+    console.log('📊 Quiz answers (ref):', latestQuizAnswers);
+    console.log('📊 Calculated answers:', answers);
 
     try {
       const response = await api.submitQuizAttempt(id, {
@@ -857,6 +910,98 @@ export default function LessonViewer() {
       return renderResults();
     }
 
+    // ─── Handle Gesture Recognition Questions ──────────────────────────────
+    if (currentQuestion.question_type === 'gesture') {
+      // DEBUG: Log what we're receiving
+      console.log('🔍 Gesture Question Data:', {
+        question_id: currentQuestion.question_id,
+        question_text: currentQuestion.question_text,
+        gesture_data: currentQuestion.gesture_data,
+        type: typeof currentQuestion.gesture_data,
+      });
+
+      const gestureData = currentQuestion.gesture_data;
+
+      // Check if gesture_data exists and has valid gesture_ids
+      if (!gestureData) {
+        console.error('❌ No gesture_data found for question:', currentQuestion.question_id);
+        return (
+          <View style={s.glassCard}>
+            <Text style={s.errorText}>No gesture data found for this question.</Text>
+            <Pressable style={s.primaryBtn} onPress={handleNextQuestion}>
+              <Text style={s.primaryBtnText}>Skip →</Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      // Ensure gesture_ids is an array
+      const gestureIds = Array.isArray(gestureData.gesture_ids) ? gestureData.gesture_ids : [];
+
+      if (gestureIds.length === 0) {
+        console.error('❌ No gesture_ids found in gesture_data:', gestureData);
+        return (
+          <View style={s.glassCard}>
+            <Text style={s.errorText}>No gestures configured for this question.</Text>
+            <Pressable style={s.primaryBtn} onPress={handleNextQuestion}>
+              <Text style={s.primaryBtnText}>Skip →</Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      console.log('✅ Gesture data loaded:', { gestureIds, moduleId: gestureData.module_id });
+
+      return (
+        <GesturePractice
+          question={{
+            question_id: currentQuestion.question_id,
+            question_text: currentQuestion.question_text,
+            gesture_data: {
+              module_id: String(gestureData.module_id), // Ensure it's a string
+              gesture_ids: gestureIds.map(id => String(id)), // Ensure all IDs are strings
+            },
+            question_number: currentQuestion.question_number,
+          }}
+          questionIndex={currentQuestionIndex}
+          totalQuestions={lesson.quiz.questions.length}
+
+          onComplete={(success, gestureIds) => {
+            console.log('📝 Gesture onComplete called:', { success, gestureIds, questionId: currentQuestion.question_id });
+
+            // Store the result
+            setQuizAnswers(prev => {
+              const newAnswers = {
+                ...prev,
+                [currentQuestion.question_id]: success ? 1 : 0,
+              };
+              quizAnswersRef.current = newAnswers; // ✅ Update ref
+              console.log('📝 Updated quizAnswers:', newAnswers);
+              return newAnswers;
+            });
+
+            if (success) {
+              setCurrentScore(prev => {
+                const newScore = prev + 1;
+                currentScoreRef.current = newScore; // ✅ Update ref
+                console.log(`✅ Score incremented to: ${newScore}`);
+                return newScore;
+              });
+            }
+
+            // Move to next question AFTER state updates have been processed
+            setTimeout(() => {
+              console.log('➡️ Moving to next question...');
+              handleNextQuestion();
+            }, 400);
+          }}
+          onBack={() => setCurrentSlide(0)}
+          lessonId={id}
+          quizId={lesson.quiz.quiz_id}
+        />
+      );
+    }
+    // ─── Regular Multiple Choice / True False ──────────────────────────────
     const isCorrect = selectedOption !== null && selectedOption === currentQuestion.options.findIndex(o => o.is_correct);
     const totalQuestions = lesson.quiz.questions.length;
 
@@ -870,7 +1015,6 @@ export default function LessonViewer() {
         <View style={s.glassCard}>
           <View style={s.progressHeader}>
             <Text style={s.progressLabel}>Question {currentQuestionIndex + 1} of {totalQuestions}</Text>
-
           </View>
           <View style={s.progressDots}>
             {lesson.quiz.questions.map((_, i) => (
@@ -944,7 +1088,6 @@ export default function LessonViewer() {
               ],
             }}
           >
-
             <Image
               source={require('../../assets/images/img/senya_teaching.png')}
               style={s.senyaFeedback}
@@ -974,7 +1117,6 @@ export default function LessonViewer() {
       </>
     );
   };
-
   // ─── RENDER: Results Sub-Views ──────────────────────────────────────────
   const renderScoreView = () => {
     const score = quizResult?.score || 0;
@@ -1006,6 +1148,8 @@ export default function LessonViewer() {
           resultsFadeAnim.setValue(0);
           resultsScaleAnim.setValue(0.85);
           setCurrentSlide(0);
+          quizAnswersRef.current = {};
+          currentScoreRef.current = 0;
         }}>
           <BookIcon size={16} color="#1848c8" />
           <Text style={s.backToLessonText}>← Back to Lesson</Text>
@@ -1344,6 +1488,9 @@ export default function LessonViewer() {
               setQuizResult(null);
               setConfettiFired(false);
               setCurrentSlide(0);
+              // ✅ Reset refs too
+              quizAnswersRef.current = {};
+              currentScoreRef.current = 0;
 
               // Scroll back to top
               resultsScrollRef.current?.scrollTo?.({ y: 0, animated: true });
