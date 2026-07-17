@@ -11,6 +11,12 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import { Audio } from 'expo-av';
 import { api } from '../../services/api';
 import GesturePractice from './GesturePractice';
+import DragDropQuestion from './DragDropQuestion';
+import Constants from 'expo-constants';
+
+const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
+// Remove /api from the end to get the base URL for images
+const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -38,6 +44,7 @@ interface Option {
   option_id: number;
   option_text: string;
   is_correct: boolean;
+  option_media_url?: string | null; // Add this line
 }
 interface Question {
   question_id: number;
@@ -48,10 +55,12 @@ interface Question {
   points: number;
   options: Option[];
   gesture_data?: {
-    module_id: string | number;  // Allow both string and number
-    gesture_ids: string[] | number[];  // Allow both string and number arrays
+    module_id: string | number;
+    gesture_ids: string[] | number[];
   } | null;
   drag_drop_pairs?: any;
+  drag_drop_left_label?: string | null;
+  drag_drop_right_label?: string | null;
 }
 interface Quiz {
   quiz_id: number;
@@ -393,6 +402,17 @@ export default function LessonViewer() {
   const senyaBounceAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = bounce
   const senyaShakeAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = shake
 
+  // Helper function to get full image URL
+  const getFullImageUrl = (path: string | null | undefined): string | null => {
+    if (!path) return null;
+    // If it's already a full URL, return it
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    // Remove leading slash if present
+    const cleanPath = path.replace(/^\/+/, '');
+    return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
+  };
   // ── Play correct answer sound ──
   async function playCorrectSound() {
     try {
@@ -724,41 +744,48 @@ export default function LessonViewer() {
   const submitQuiz = async (): Promise<void> => {
     if (!lesson || !lesson.quiz) return;
 
-    // Use REFS to get latest values (not state)
     const questions = lesson.quiz.questions;
     const latestQuizAnswers = quizAnswersRef.current;
     const latestScore = currentScoreRef.current;
 
     console.log('📊 Submitting with refs:', { latestQuizAnswers, latestScore });
 
-    // Calculate score from quizAnswers
     let calculatedScore = 0;
     const answers: QuizAnswer[] = questions.map((q, index) => {
-      const selectedOptionId = latestQuizAnswers[q.question_id] ?? null;
+      const selectedOptionId: number | null = latestQuizAnswers[q.question_id] ?? null;
 
-      // Check if this is a gesture question
+      // Check question type
       const isGestureQuestion = q.question_type === 'gesture';
+      const isDragDropQuestion = q.question_type === 'drag_drop';
 
       let isCorrect = false;
+      let finalSelectedOptionId: number | null = selectedOptionId;
+
       if (isGestureQuestion) {
-        // For gesture questions: success = 1, failure = 0 or null
+        // For gesture: success = 1, failure = 0 or null
         isCorrect = selectedOptionId === 1;
+        finalSelectedOptionId = selectedOptionId;
+      } else if (isDragDropQuestion) {
+        // For drag_drop: success = 1, failure = 0 or null
+        isCorrect = selectedOptionId === 1;
+        // ✅ IMPORTANT: Set to null for drag_drop questions to avoid foreign key error
+        finalSelectedOptionId = null;
       } else {
         // For multiple choice: check if the selected option is correct
         isCorrect = selectedOptionId !== null &&
           q.options.some(o => o.option_id === selectedOptionId && o.is_correct === true);
+        finalSelectedOptionId = selectedOptionId;
       }
 
       if (isCorrect) calculatedScore++;
 
       return {
         question_id: q.question_id,
-        selected_option_id: selectedOptionId,
+        selected_option_id: finalSelectedOptionId,
         is_correct: isCorrect,
       };
     });
 
-    // Use calculated score
     const score = calculatedScore;
     const totalPoints = questions.length;
     const percentage = Math.round((score / totalPoints) * 100);
@@ -1001,6 +1028,74 @@ export default function LessonViewer() {
         />
       );
     }
+    // ─── Handle Drag and Drop Questions ──────────────────────────────
+    if (currentQuestion.question_type === 'drag_drop') {
+      let dragDropPairs = [];
+      try {
+        dragDropPairs = currentQuestion.drag_drop_pairs
+          ? (typeof currentQuestion.drag_drop_pairs === 'string'
+            ? JSON.parse(currentQuestion.drag_drop_pairs)
+            : currentQuestion.drag_drop_pairs)
+          : [];
+      } catch (e) {
+        console.error('Error parsing drag_drop_pairs:', e);
+        dragDropPairs = [];
+      }
+
+      if (!dragDropPairs || dragDropPairs.length === 0) {
+        return (
+          <View style={s.glassCard}>
+            <Text style={s.errorText}>No drag and drop pairs found for this question.</Text>
+            <Pressable style={s.primaryBtn} onPress={handleNextQuestion}>
+              <Text style={s.primaryBtnText}>Skip →</Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      return (
+        <DragDropQuestion
+          key={currentQuestion.question_id} // ✅ ADD THIS KEY
+          question={{
+            question_id: currentQuestion.question_id,
+            question_text: currentQuestion.question_text,
+            drag_drop_pairs: dragDropPairs,
+            drag_drop_left_label: currentQuestion.drag_drop_left_label ?? undefined,
+            drag_drop_right_label: currentQuestion.drag_drop_right_label ?? undefined,
+            media_url: currentQuestion.media_url,
+          }}
+          questionIndex={currentQuestionIndex}
+          totalQuestions={lesson.quiz.questions.length}
+          onComplete={(success) => {
+            console.log('📝 DragDrop onComplete called:', { success, questionId: currentQuestion.question_id });
+
+            setQuizAnswers(prev => {
+              const newAnswers = {
+                ...prev,
+                [currentQuestion.question_id]: success ? 1 : 0,
+              };
+              quizAnswersRef.current = newAnswers;
+              return newAnswers;
+            });
+
+            if (success) {
+              setCurrentScore(prev => {
+                const newScore = prev + 1;
+                currentScoreRef.current = newScore;
+                return newScore;
+              });
+            }
+
+            setTimeout(() => {
+              console.log('➡️ Moving to next question...');
+              handleNextQuestion();
+            }, 400);
+          }}
+          onBack={() => setCurrentSlide(0)}
+        />
+      );
+    }
+
     // ─── Regular Multiple Choice / True False ──────────────────────────────
     const isCorrect = selectedOption !== null && selectedOption === currentQuestion.options.findIndex(o => o.is_correct);
     const totalQuestions = lesson.quiz.questions.length;
@@ -1050,15 +1145,32 @@ export default function LessonViewer() {
             bgColor = 'rgba(239,246,255,0.9)'; borderColor = '#93C5FD'; textColor = '#1D4ED8'; circleBg = '#2563EB';
           }
 
+          // Check if option has an image
+          const optionImageUrl = opt.option_media_url ? getFullImageUrl(opt.option_media_url) : null;
+          const hasOptionImage = !!optionImageUrl;
+
           return (
-            <Pressable key={`${currentQuestionIndex}-${i}`} style={[s.optionCard, { backgroundColor: bgColor, borderColor }]}
-              onPress={() => handleOptionSelect(i)} disabled={questionRevealed}>
+            <Pressable
+              key={`${currentQuestionIndex}-${i}`}
+              style={[s.optionCard, { backgroundColor: bgColor, borderColor }]}
+              onPress={() => handleOptionSelect(i)}
+              disabled={questionRevealed}
+            >
               <View style={[s.optionCircle, { backgroundColor: circleBg }]}>
                 {questionRevealed && isCorr ? <CheckCircleIcon color="#fff" /> :
                   questionRevealed && isSel && !isCorr ? <XCircleIcon color="#fff" /> :
                     <Text style={[s.optionLetter, { color: isSel ? '#fff' : '#4b7bbb' }]}>{String.fromCharCode(65 + i)}</Text>}
               </View>
-              <Text style={[s.optionText, { color: textColor }]}>{opt.option_text}</Text>
+              {hasOptionImage ? (
+                <Image
+                  source={{ uri: optionImageUrl }}
+                  style={s.optionImage}
+                  contentFit="contain"
+                />
+              ) : null}
+              {!hasOptionImage && (
+                <Text style={[s.optionText, { color: textColor }]}>{opt.option_text}</Text>
+              )}
             </Pressable>
           );
         })}
@@ -1802,10 +1914,35 @@ const s = StyleSheet.create({
   questionEmoji: { fontSize: 72, marginBottom: 12 },
   questionText: { fontSize: 16, fontWeight: '800', color: '#0f3172', textAlign: 'center', lineHeight: 24 },
   questionMedia: { width: '100%', height: 150, borderRadius: 10, marginTop: 12 },
-  optionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 13, marginBottom: 8 },
+  optionImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+
+  optionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    flexWrap: 'wrap', // Allow wrapping for text
+    minHeight: 60, // Add minimum height
+  },
+
   optionCircle: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   optionLetter: { fontSize: 13, fontWeight: '800' },
-  optionText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  optionText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+    minWidth: 50, // Ensure text has minimum width
+  },
   feedbackRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginVertical: 12 },
   senyaFeedback: { width: 80, height: 80, flexShrink: 0 },
   feedbackBubble: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 16, padding: 12 },
