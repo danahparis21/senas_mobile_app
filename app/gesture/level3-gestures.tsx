@@ -38,22 +38,7 @@ const { width, height } = Dimensions.get('window');
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
 const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
 
-// Level 3 Gestures - FSL Numbers 1-10
-const LEVEL3_GESTURES = [
-    'ONE',
-    'TWO',
-    'THREE',
-    'FOUR',
-    'FIVE',
-    'SIX',
-    'SEVEN',
-    'EIGHT',
-    'NINE',
-    'TEN'
-];
-
-// Digit display mapping for the UI
-const DIGIT_DISPLAY: Record<string, string> = {
+const GESTURE_TO_DB_MAP: Record<string, string> = {
     'ONE': '1',
     'TWO': '2',
     'THREE': '3',
@@ -66,9 +51,26 @@ const DIGIT_DISPLAY: Record<string, string> = {
     'TEN': '10'
 };
 
+// Database gesture names (what's stored in the database)
+const LEVEL3_GESTURES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+
+// Display mapping for UI (show digits)
+const DIGIT_DISPLAY: Record<string, string> = {
+    '1': '1',
+    '2': '2',
+    '3': '3',
+    '4': '4',
+    '5': '5',
+    '6': '6',
+    '7': '7',
+    '8': '8',
+    '9': '9',
+    '10': '10'
+};
+
 // Senya's encouragement messages
 const SENYA_MESSAGES = {
-    welcome: "Level 3! Let's learn numbers 1-10! 🔢",
+    welcome: "Level 1! Let's learn numbers 1-10! 🔢",
     correct: [
         "Amazing! You're a number expert!",
         "Perfect! Keep counting!",
@@ -114,7 +116,7 @@ export default function Level3GesturesScreen() {
 
     // Gamification state
     const [completedGestures, setCompletedGestures] = useState<Set<string>>(new Set());
-    const [currentTarget, setCurrentTarget] = useState('ONE');
+    const [currentTarget, setCurrentTarget] = useState(LEVEL3_GESTURES[0] || '1');
     const [senyaMessage, setSenyaMessage] = useState(SENYA_MESSAGES.welcome);
     const [consecutiveWrong, setConsecutiveWrong] = useState(0);
     const [isModuleComplete, setIsModuleComplete] = useState(false);
@@ -325,31 +327,137 @@ export default function Level3GesturesScreen() {
     const lastAttemptTimeRef = useRef<number>(0);
     const MIN_ATTEMPT_INTERVAL = 1000;
 
-    // Handle detection from WebView
+    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
+    const MODULE_NAME = 'level1_numbers';
+
+    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
+    const saveAllPerformance = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
+            }
+
+            // Build performance data for each gesture - use "letter" field name
+            const gesturePerformances = LEVEL3_GESTURES.map(gesture => {
+                const data = gestureAttempts[gesture] || {
+                    gesture,
+                    attempts: 0,
+                    wrongAttempts: 0,
+                    successCount: 0
+                };
+                return {
+                    letter: gesture,  // ✅ API expects "letter"
+                    attempts: data.attempts || 0,
+                    wrong_attempts: data.wrongAttempts || 0,
+                    success_count: data.successCount || 0,
+                    consecutive_wrong: 0,
+                };
+            });
+
+            const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
+            if (totalAttempts === 0) {
+                console.log('ℹ️ No attempts recorded, skipping save');
+                return null;
+            }
+
+            console.log(`📤 Saving performance for ${MODULE_NAME}...`);
+
+            const result = await api.saveGesturePerformance(
+                MODULE_NAME,
+                gesturePerformances,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log('✅ Performance saved!');
+                return result;
+            } else {
+                console.error('❌ Failed to save performance:', result);
+                return null;
+            }
+        } catch (error) {
+            console.error('❌ Error saving performance:', error);
+            return null;
+        }
+    };
+
+    // ─── SAVE SINGLE GESTURE PERFORMANCE ──────────────────────────────────────
+    const saveSingleGesturePerformance = async (gesture: string) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
+            }
+
+            const data = gestureAttempts[gesture] || {
+                gesture,
+                attempts: 0,
+                wrongAttempts: 0,
+                successCount: 0
+            };
+
+            if (data.attempts === 0) {
+                return null;
+            }
+
+            const gesturePerformance = [{
+                letter: gesture,  // ✅ API expects "letter"
+                attempts: data.attempts || 0,
+                wrong_attempts: data.wrongAttempts || 0,
+                success_count: data.successCount || 0,
+                consecutive_wrong: 0,
+            }];
+
+            console.log(`📤 Saving performance for ${gesture}...`);
+
+            const result = await api.saveGesturePerformance(
+                MODULE_NAME,
+                gesturePerformance,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log(`✅ ${gesture} saved!`);
+                return result;
+            } else {
+                console.error(`❌ Failed to save ${gesture}:`, result);
+                return null;
+            }
+        } catch (error) {
+            console.error(`❌ Error saving ${gesture}:`, error);
+            return null;
+        }
+    };
+
+    // ─── HANDLE DETECTION ────────────────────────────────────────────────
     const handleDetection = async (data: any) => {
         const { greeting, confidence: conf, handCount, digit } = data;
 
-        // Use 'greeting' field from WebView (it sends 'greeting' for all levels)
-        const gesture = greeting;
+        // Map WebView greeting to database name
+        const dbGestureName = GESTURE_TO_DB_MAP[greeting] || greeting;
 
-        if (gesture && gesture !== '✋' && gesture !== '...' && LEVEL3_GESTURES.includes(gesture)) {
+        // Use dbGestureName for checking against LEVEL3_GESTURES
+        if (dbGestureName && dbGestureName !== '✋' && dbGestureName !== '...' && LEVEL3_GESTURES.includes(dbGestureName)) {
             // Show the digit if available
-            if (digit && DIGIT_DISPLAY[gesture]) {
+            if (digit && DIGIT_DISPLAY[dbGestureName]) {
                 setDetectedDigit(digit);
-            } else if (DIGIT_DISPLAY[gesture]) {
-                setDetectedDigit(DIGIT_DISPLAY[gesture]);
+            } else if (DIGIT_DISPLAY[dbGestureName]) {
+                setDetectedDigit(DIGIT_DISPLAY[dbGestureName]);
             }
 
-            setDetectedGesture(gesture);
+            setDetectedGesture(dbGestureName);
             setConfidence(conf || 0);
             setIsConnected(true);
             setShowBrowserButton(false);
 
             // Check if this is a stable detection
-            if (gesture === lastProcessedGesture) {
+            if (dbGestureName === lastProcessedGesture) {
                 setGestureStableCount(prev => prev + 1);
             } else {
-                setLastProcessedGesture(gesture);
+                setLastProcessedGesture(dbGestureName);
                 setGestureStableCount(0);
                 return;
             }
@@ -360,18 +468,18 @@ export default function Level3GesturesScreen() {
             }
 
             const now = Date.now();
-            const isNewGesture = gesture !== lastAttemptGestureRef.current;
+            const isNewGesture = dbGestureName !== lastAttemptGestureRef.current;
             const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
 
             if (isNewGesture || isTimeForNewAttempt) {
-                lastAttemptGestureRef.current = gesture;
+                lastAttemptGestureRef.current = dbGestureName;
                 lastAttemptTimeRef.current = now;
 
                 setGestureAttempts(prev => {
-                    const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                    const current = prev[dbGestureName] || { gesture: dbGestureName, attempts: 0, wrongAttempts: 0, successCount: 0 };
                     return {
                         ...prev,
-                        [gesture]: {
+                        [dbGestureName]: {
                             ...current,
                             attempts: current.attempts + 1,
                             lastAttempt: Date.now(),
@@ -383,22 +491,22 @@ export default function Level3GesturesScreen() {
             // Gamification logic
             const target = getCurrentTarget();
 
-            if (gesture === target) {
+            if (dbGestureName === target) {
                 // CORRECT!
-                if (!completedGestures.has(gesture)) {
+                if (!completedGestures.has(dbGestureName)) {
                     await playGestureSound();
 
                     const newCompleted = new Set(completedGestures);
-                    newCompleted.add(gesture);
+                    newCompleted.add(dbGestureName);
                     setCompletedGestures(newCompleted);
                     setConsecutiveWrong(0);
                     setTotalCorrectAttempts(prev => prev + 1);
 
                     setGestureAttempts(prev => {
-                        const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                        const current = prev[dbGestureName] || { gesture: dbGestureName, attempts: 0, wrongAttempts: 0, successCount: 0 };
                         return {
                             ...prev,
-                            [gesture]: {
+                            [dbGestureName]: {
                                 ...current,
                                 successCount: current.successCount + 1,
                                 firstSuccess: current.firstSuccess || Date.now(),
@@ -406,28 +514,29 @@ export default function Level3GesturesScreen() {
                         };
                     });
 
-                    if (!savedGesturesRef.current.has(gesture)) {
-                        savedGesturesRef.current.add(gesture);
+                    if (!savedGesturesRef.current.has(dbGestureName)) {
+                        savedGesturesRef.current.add(dbGestureName);
+                        await saveSingleGesturePerformance(dbGestureName);
                     }
 
                     const msg = getRandomMessage(SENYA_MESSAGES.correct);
                     setSenyaMessage(msg);
                     senyaMsgCooldownRef.current = Date.now();
 
-                    const displayDigit = DIGIT_DISPLAY[gesture] || gesture;
+                    const displayDigit = DIGIT_DISPLAY[dbGestureName] || dbGestureName;
                     showCutePopup(
                         `✓ ${displayDigit}`,
                         `${completedGestures.size + 1}/${LEVEL3_GESTURES.length}`
                     );
                 }
-            } else if (completedGestures.has(gesture)) {
+            } else if (completedGestures.has(dbGestureName)) {
                 // Already completed
                 const now = Date.now();
                 if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                     senyaMsgCooldownRef.current = now;
                     if (target) {
                         const targetDigit = DIGIT_DISPLAY[target] || target;
-                        setSenyaMessage(`You got ${gesture}! Try ${targetDigit}`);
+                        setSenyaMessage(`You got ${dbGestureName}! Try ${targetDigit}`);
                     } else {
                         setSenyaMessage(SENYA_MESSAGES.complete);
                     }
@@ -500,47 +609,46 @@ export default function Level3GesturesScreen() {
         }
     };
 
-    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
-    const saveAllPerformance = async () => {
-        try {
-            const token = await AsyncStorage.getItem('userToken');
-            if (!token) return null;
-
-            const gesturePerformances = LEVEL3_GESTURES.map(gesture => {
-                const data = gestureAttempts[gesture] || {
-                    gesture,
-                    attempts: 0,
-                    wrongAttempts: 0,
-                    successCount: 0
-                };
-                return {
-                    gesture: gesture,
-                    attempts: data.attempts || 0,
-                    wrong_attempts: data.wrongAttempts || 0,
-                    success_count: data.successCount || 0,
-                    consecutive_wrong: 0,
-                };
+    // ─── UPDATE THE MODULE COMPLETION EFFECT ──────────────────────────────────
+    useEffect(() => {
+        if (isModuleComplete) {
+            // Save all performance data at the end
+            saveAllPerformance().then(result => {
+                if (result) {
+                    console.log('📊 All Level 3 performance data saved');
+                }
             });
 
-            const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
-            if (totalAttempts === 0) return null;
-
-            console.log('📤 Saving Level 3 gesture performance...');
-            return { success: true };
-        } catch (error) {
-            console.error('❌ Error saving performance:', error);
-            return null;
+            // Award XP based on star rating
+            setTimeout(async () => {
+                const result = await awardModuleXp(starRating);
+                if (result) {
+                    setXpResult(result);
+                }
+            }, 2000);
         }
-    };
+    }, [isModuleComplete]);
 
-    // XP Award
+
+
+    // ─── XP AWARD ──────────────────────────────────────────────────────────────
     const awardModuleXp = async (starRating: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) return null;
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping XP award');
+                return null;
+            }
 
-            // Level 3 gives more XP (20 per star)
-            return { success: true, xp_earned: starRating * 20, total_xp: 300 };
+            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
+
+            const result = await api.awardModuleXp(MODULE_NAME, starRating);
+
+            if (result && result.success) {
+                console.log(`✅ ${result.xp_message}`);
+                return result;
+            }
+            return null;
         } catch (error) {
             console.error('❌ Error awarding XP:', error);
             return null;
@@ -699,12 +807,17 @@ export default function Level3GesturesScreen() {
                 return;
             }
 
-            if (LEVEL3_GESTURES.includes(detectedValue)) {
-                setDetectedGesture(detectedValue);
+            // 🔥 FIX: Map the WebView greeting to database name BEFORE checking
+            const dbGestureName = GESTURE_TO_DB_MAP[detectedValue] || detectedValue;
+
+            // ✅ Now check against LEVEL3_GESTURES (which has '1', '2', etc.)
+            if (LEVEL3_GESTURES.includes(dbGestureName)) {
+                setDetectedGesture(dbGestureName);
                 setConfidence(confidenceValue);
                 setIsConnected(true);
                 setShowBrowserButton(false);
-                handleDetection(data);
+                // ✅ Pass the data with the mapped name
+                handleDetection({ ...data, greeting: dbGestureName });
             } else {
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
@@ -769,8 +882,20 @@ export default function Level3GesturesScreen() {
         return thresholds[nextLevel] || 4000 + ((level - 9) * 1000);
     };
 
+    // ─── UPDATE THE HANDLE CONTINUE ───────────────────────────────────────────
     const handleContinue = async () => {
+        // Save any remaining gestures that might not have been saved
+        const unsavedGestures = LEVEL3_GESTURES.filter(
+            gesture => completedGestures.has(gesture) && !savedGesturesRef.current.has(gesture)
+        );
+
+        for (const gesture of unsavedGestures) {
+            await saveSingleGesturePerformance(gesture);
+        }
+
+        // Final save just in case
         await saveAllPerformance();
+
         setShowResults(false);
 
         if (xpResult && xpResult.xp_earned > 0) {
@@ -1108,7 +1233,7 @@ export default function Level3GesturesScreen() {
                             <Ionicons name="trophy" size={32} color="#8B5CF6" />
                         </View>
 
-                        <Text style={styles.modalTitle}>Level 3 Complete!</Text>
+                        <Text style={styles.modalTitle}>Numbers Complete!</Text>
                         <Text style={styles.modalSubtitle}>
                             All {LEVEL3_GESTURES.length} numbers mastered!
                         </Text>

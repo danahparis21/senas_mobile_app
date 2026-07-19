@@ -28,8 +28,8 @@ const CARD_MARGIN = 10;
 const SNAP_INTERVAL = CARD_WIDTH + CARD_MARGIN * 2;
 const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH - CARD_MARGIN * 2) / 2;
 
-// Default module data (will be replaced by API data)
 const DEFAULT_MODULES = [
+  // 1. Alphabet Part 1 (keep as is)
   {
     id: 'alphabet_part1',
     title: 'Alphabet Part 1',
@@ -47,6 +47,7 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Alphabet Part 1 (A-M)',
   },
+  // 2. Alphabet Part 2 (keep as is)
   {
     id: 'alphabet_part2',
     title: 'Alphabet Part 2',
@@ -64,6 +65,61 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Alphabet Part 2 (N-Z)',
   },
+  // 3. Numbers (NEW - replacing the old fingerspelling position)
+  {
+    id: 'level1_numbers',
+    title: 'Numbers 1-10',
+    subtitle: 'Learn to count',
+    category: 'numbers', // NEW category
+    color: ['#34D399', '#10B981'] as const,
+    icon: 'grid',
+    description: 'Learn numbers 1 to 10 in FSL',
+    progress: 0,
+    xp: 40,
+    locked: true, // Locked until alphabets are done
+    route: '/gesture/level3-gestures',
+    image: require('../../assets/images/img/numbers.png'),
+    lessons: 10,
+    isCompleted: false,
+    display_name: 'Level 1 Numbers',
+  },
+  // 4. Greetings (renamed from 'greetings' to 'level2_greetings')
+  {
+    id: 'level2_greetings',
+    title: 'Greetings',
+    subtitle: 'Everyday Signs & Phrases',
+    category: 'greetings',
+    color: ['#FFB6C1', '#FF8E9E'] as const,
+    icon: 'chatbubble-ellipses',
+    description: 'Learn common greetings and phrases',
+    progress: 0,
+    xp: 50,
+    locked: true, // Locked until numbers are done
+    route: '/gesture/webview-greetings',
+    image: require('../../assets/images/img/greetings.png'),
+    lessons: 5,
+    isCompleted: false,
+    display_name: 'Level 2 Greetings',
+  },
+  // 5. Survival (NEW)
+  {
+    id: 'level3_survival',
+    title: 'Survival Phrases',
+    subtitle: 'Essential Signs',
+    category: 'survival', // NEW category
+    color: ['#F87171', '#EF4444'] as const,
+    icon: 'shield-checkmark',
+    description: 'Essential survival phrases for everyday situations',
+    progress: 0,
+    xp: 60,
+    locked: true, // Locked until greetings are done
+    route: '/gesture/level2-gestures',
+    image: require('../../assets/images/img/greetings.png'),
+    lessons: 10,
+    isCompleted: false,
+    display_name: 'Level 3 Survival',
+  },
+
   {
     id: 'fingerspelling',
     title: 'Fingerspelling',
@@ -81,67 +137,16 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Fingerspelling',
   },
-  {
-    id: 'greetings',
-    title: 'Basic Greetings',
-    subtitle: 'Everyday Signs & Phrases',
-    category: 'greetings',
-    color: ['#FFB6C1', '#FF8E9E'] as const,
-    icon: 'chatbubble-ellipses',
-    description: 'Learn greetings and phrases',
-    progress: 0,
-    xp: 40,
-    locked: false,
-    route: '/gesture/webview-greetings',
-    image: require('../../assets/images/img/greetings.png'),
-    lessons: 5,
-    isCompleted: false,
-    display_name: 'Basic Greetings',
-  },
-  // NEW: Level 2 Gestures
-  {
-    id: 'level2_gestures',
-    title: 'Level 2 Gestures',
-    subtitle: 'Intermediate Signs',
-    category: 'practice',
-    color: ['#F59E0B', '#FBBF24'] as const,
-    icon: 'trending-up',
-    description: 'Master intermediate level gestures',
-    progress: 0,
-    xp: 60,
-    locked: false,
-    route: '/gesture/level2-gestures',
-    image: require('../../assets/images/img/greetings.png'),
-    lessons: 12,
-    isCompleted: false,
-    display_name: 'Level 2 Gestures',
-  },
-  // NEW: Level 3 Gestures
-  {
-    id: 'level3_gestures',
-    title: 'Level 3 Gestures',
-    subtitle: 'Advanced Signs',
-    category: 'practice',
-    color: ['#8B5CF6', '#A78BFA'] as const,
-    icon: 'rocket',
-    description: 'Conquer advanced gesture techniques',
-    progress: 0,
-    xp: 80,
-    locked: false,
-    route: '/gesture/level3-gestures',
-    image: require('../../assets/images/img/greetings.png'),
-    lessons: 15,
-    isCompleted: false,
-    display_name: 'Level 3 Gestures',
-  },
 ];
 
-// Categories configuration
+// UPDATE CATEGORIES to include the new ones
 const CATEGORIES = [
   { id: 'all', title: 'All', icon: 'grid-outline' },
   { id: 'alphabet', title: 'Alphabet', icon: 'text-outline' },
-  { id: 'practice', title: 'Practice', icon: 'hand-left-outline' },
+  { id: 'numbers', title: 'Numbers', icon: 'grid-outline' }, // NEW
   { id: 'greetings', title: 'Greetings', icon: 'chatbubbles-outline' },
+  { id: 'survival', title: 'Survival', icon: 'shield-outline' }, // NEW
+  { id: 'practice', title: 'Practice', icon: 'hand-left-outline' },
 ];
 
 // Individual module card component

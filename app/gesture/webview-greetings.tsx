@@ -38,7 +38,7 @@ const { width, height } = Dimensions.get('window');
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
 const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
 
-// ONLY THE 5 WORKING SIGNS
+// Level 2 Greetings - FSL Greetings
 const GREETINGS_LIST = [
     'HELLO',
     'THANK YOU',
@@ -47,9 +47,18 @@ const GREETINGS_LIST = [
     'NICE TO MEET YOU'
 ];
 
+// Display names for the UI
+const DISPLAY_NAMES: Record<string, string> = {
+    'HELLO': '👋 Hello',
+    'THANK YOU': '🙏 Thank You',
+    'SEE YOU TOMORROW': '👋 See You Tomorrow',
+    'HOW ARE YOU': '💬 How Are You',
+    'NICE TO MEET YOU': '🤝 Nice To Meet You'
+};
+
 // Senya's encouragement messages
 const SENYA_MESSAGES = {
-    welcome: "Let's learn some greetings! 👋",
+    welcome: "Level 2! Let's learn greetings! 👋",
     correct: [
         "Amazing! You're a natural!",
         "Perfect! Keep going!",
@@ -63,12 +72,12 @@ const SENYA_MESSAGES = {
         "You got this! Try again!",
         "Almost there! One more try!",
     ],
-    complete: "YOU DID IT! ALL 5 GREETINGS! 🎉",
+    complete: "LEVEL 2 COMPLETE! All 5 greetings mastered! 🎉",
 };
 
-// Greeting struggle tracking
-interface GreetingAttempt {
-    greeting: string;
+// Gesture struggle tracking
+interface GestureAttempt {
+    gesture: string;
     attempts: number;
     wrongAttempts: number;
     firstSuccess?: number;
@@ -81,7 +90,7 @@ export default function WebViewGreetingsScreen() {
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);
-    const [detectedGreeting, setDetectedGreeting] = useState('✋');
+    const [detectedGesture, setDetectedGesture] = useState('✋');
     const [confidence, setConfidence] = useState(0);
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
@@ -93,7 +102,7 @@ export default function WebViewGreetingsScreen() {
     const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
 
     // Gamification state
-    const [completedGreetings, setCompletedGreetings] = useState<Set<string>>(new Set());
+    const [completedGestures, setCompletedGestures] = useState<Set<string>>(new Set());
     const [currentTarget, setCurrentTarget] = useState('HELLO');
     const [senyaMessage, setSenyaMessage] = useState(SENYA_MESSAGES.welcome);
     const [consecutiveWrong, setConsecutiveWrong] = useState(0);
@@ -101,8 +110,8 @@ export default function WebViewGreetingsScreen() {
     const [showResults, setShowResults] = useState(false);
     const [starRating, setStarRating] = useState(0);
 
-    // Greeting tracking for results
-    const [greetingAttempts, setGreetingAttempts] = useState<Record<string, GreetingAttempt>>({});
+    // Gesture tracking for results
+    const [gestureAttempts, setGestureAttempts] = useState<Record<string, GestureAttempt>>({});
     const [totalWrongAttempts, setTotalWrongAttempts] = useState(0);
     const [totalCorrectAttempts, setTotalCorrectAttempts] = useState(0);
     const [startTime, setStartTime] = useState<number>(Date.now());
@@ -114,9 +123,9 @@ export default function WebViewGreetingsScreen() {
     const [popupMessage, setPopupMessage] = useState('');
     const [popupSubMessage, setPopupSubMessage] = useState('');
 
-    // Track the last detected greeting to avoid counting transitions as mistakes
-    const [lastProcessedGreeting, setLastProcessedGreeting] = useState<string>('');
-    const [greetingStableCount, setGreetingStableCount] = useState(0);
+    // Track the last detected gesture
+    const [lastProcessedGesture, setLastProcessedGesture] = useState<string>('');
+    const [gestureStableCount, setGestureStableCount] = useState(0);
 
     // Senya message cooldown
     const senyaMsgCooldownRef = useRef<number>(0);
@@ -128,9 +137,9 @@ export default function WebViewGreetingsScreen() {
     const starAnim3 = useRef(new Animated.Value(0)).current;
 
     const [modelLoading, setModelLoading] = useState(true);
-    const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
 
-    const [showFullUI, setShowFullUI] = useState(false);
+    // ── Module Name ──────────────────────────────────────────────────────────
+    const MODULE_NAME = 'level2_greetings';
 
     // ── Play gesture sound ──
     async function playGestureSound() {
@@ -197,26 +206,26 @@ export default function WebViewGreetingsScreen() {
         }
     }
 
-    // Get current target (first incomplete)
+    // Get current target
     const getCurrentTarget = () => {
-        for (const greeting of GREETINGS_LIST) {
-            if (!completedGreetings.has(greeting)) return greeting;
+        for (const gesture of GREETINGS_LIST) {
+            if (!completedGestures.has(gesture)) return gesture;
         }
         return null;
     };
 
-    // Initialize greeting tracking
+    // Initialize gesture tracking
     useEffect(() => {
-        const initial: Record<string, GreetingAttempt> = {};
-        GREETINGS_LIST.forEach(greeting => {
-            initial[greeting] = {
-                greeting,
+        const initial: Record<string, GestureAttempt> = {};
+        GREETINGS_LIST.forEach(gesture => {
+            initial[gesture] = {
+                gesture,
                 attempts: 0,
                 wrongAttempts: 0,
                 successCount: 0,
             };
         });
-        setGreetingAttempts(initial);
+        setGestureAttempts(initial);
         setStartTime(Date.now());
         setEndTime(null);
 
@@ -246,13 +255,13 @@ export default function WebViewGreetingsScreen() {
                     });
                 }, 100);
             }
-        } else if (completedGreetings.size === GREETINGS_LIST.length) {
+        } else if (completedGestures.size === GREETINGS_LIST.length) {
             setIsModuleComplete(true);
             setSenyaMessage(SENYA_MESSAGES.complete);
             const endNow = Date.now();
             setEndTime(endNow);
             const elapsed = Math.round((endNow - startTime) / 1000);
-            setStarRating(elapsed < 30 ? 3 : elapsed < 60 ? 2 : 1);
+            setStarRating(elapsed < 45 ? 3 : elapsed < 90 ? 2 : 1);
 
             playCompleteSound();
 
@@ -260,7 +269,7 @@ export default function WebViewGreetingsScreen() {
                 setShowResults(true);
             }, 1500);
         }
-    }, [completedGreetings]);
+    }, [completedGestures]);
 
     // Animate stars when results are shown
     useEffect(() => {
@@ -302,48 +311,151 @@ export default function WebViewGreetingsScreen() {
         }, 1200);
     };
 
-    const savedGreetingsRef = useRef<Set<string>>(new Set());
-    const lastAttemptGreetingRef = useRef<string>('');
+    const savedGesturesRef = useRef<Set<string>>(new Set());
+    const lastAttemptGestureRef = useRef<string>('');
     const lastAttemptTimeRef = useRef<number>(0);
     const MIN_ATTEMPT_INTERVAL = 1000;
 
-    // Handle detection from WebView
-    const handleDetection = async (data: any) => {
-        const { greeting, confidence: conf, handCount } = data;
+    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
+    const saveSingleGesturePerformance = async (gesture: string) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
+            }
 
-        if (greeting && greeting !== '✋' && greeting !== '...' && GREETINGS_LIST.includes(greeting)) {
-            setDetectedGreeting(greeting);
+            const data = gestureAttempts[gesture] || {
+                gesture,
+                attempts: 0,
+                wrongAttempts: 0,
+                successCount: 0
+            };
+
+            if (data.attempts === 0) {
+                return null;
+            }
+
+            const gesturePerformance = [{
+                letter: gesture,
+                attempts: data.attempts || 0,
+                wrong_attempts: data.wrongAttempts || 0,
+                success_count: data.successCount || 0,
+                consecutive_wrong: 0,
+            }];
+
+            console.log(`📤 Saving performance for ${gesture}...`);
+
+            const result = await api.saveGesturePerformance(
+                MODULE_NAME,
+                gesturePerformance,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log(`✅ ${gesture} saved!`);
+                return result;
+            } else {
+                console.error(`❌ Failed to save ${gesture}:`, result);
+                return null;
+            }
+        } catch (error) {
+            console.error(`❌ Error saving ${gesture}:`, error);
+            return null;
+        }
+    };
+
+    const saveAllPerformance = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
+            }
+
+            const gesturePerformances = GREETINGS_LIST.map(gesture => {
+                const data = gestureAttempts[gesture] || {
+                    gesture,
+                    attempts: 0,
+                    wrongAttempts: 0,
+                    successCount: 0
+                };
+                return {
+                    letter: gesture,
+                    attempts: data.attempts || 0,
+                    wrong_attempts: data.wrongAttempts || 0,
+                    success_count: data.successCount || 0,
+                    consecutive_wrong: 0,
+                };
+            });
+
+            const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
+            if (totalAttempts === 0) {
+                console.log('ℹ️ No attempts recorded, skipping save');
+                return null;
+            }
+
+            console.log(`📤 Saving performance for ${MODULE_NAME}...`);
+
+            const result = await api.saveGesturePerformance(
+                MODULE_NAME,
+                gesturePerformances,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log('✅ Performance saved!');
+                return result;
+            } else {
+                console.error('❌ Failed to save performance:', result);
+                return null;
+            }
+        } catch (error) {
+            console.error('❌ Error saving performance:', error);
+            return null;
+        }
+    };
+
+    // ─── HANDLE DETECTION ────────────────────────────────────────────────
+    const handleDetection = async (data: any) => {
+        const { greeting, confidence: conf } = data;
+
+        // For greetings, the WebView sends the greeting directly
+        const gesture = greeting;
+
+        if (gesture && gesture !== '✋' && gesture !== '...' && GREETINGS_LIST.includes(gesture)) {
+            setDetectedGesture(gesture);
             setConfidence(conf || 0);
             setIsConnected(true);
             setShowBrowserButton(false);
 
             // Check if this is a stable detection
-            if (greeting === lastProcessedGreeting) {
-                setGreetingStableCount(prev => prev + 1);
+            if (gesture === lastProcessedGesture) {
+                setGestureStableCount(prev => prev + 1);
             } else {
-                setLastProcessedGreeting(greeting);
-                setGreetingStableCount(0);
+                setLastProcessedGesture(gesture);
+                setGestureStableCount(0);
                 return;
             }
 
             // Only process after 3 stable detections
-            if (greetingStableCount < 2) {
+            if (gestureStableCount < 2) {
                 return;
             }
 
             const now = Date.now();
-            const isNewGreeting = greeting !== lastAttemptGreetingRef.current;
+            const isNewGesture = gesture !== lastAttemptGestureRef.current;
             const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
 
-            if (isNewGreeting || isTimeForNewAttempt) {
-                lastAttemptGreetingRef.current = greeting;
+            if (isNewGesture || isTimeForNewAttempt) {
+                lastAttemptGestureRef.current = gesture;
                 lastAttemptTimeRef.current = now;
 
-                setGreetingAttempts(prev => {
-                    const current = prev[greeting] || { greeting, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                setGestureAttempts(prev => {
+                    const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
                     return {
                         ...prev,
-                        [greeting]: {
+                        [gesture]: {
                             ...current,
                             attempts: current.attempts + 1,
                             lastAttempt: Date.now(),
@@ -355,22 +467,22 @@ export default function WebViewGreetingsScreen() {
             // Gamification logic
             const target = getCurrentTarget();
 
-            if (greeting === target) {
+            if (gesture === target) {
                 // CORRECT!
-                if (!completedGreetings.has(greeting)) {
+                if (!completedGestures.has(gesture)) {
                     await playGestureSound();
 
-                    const newCompleted = new Set(completedGreetings);
-                    newCompleted.add(greeting);
-                    setCompletedGreetings(newCompleted);
+                    const newCompleted = new Set(completedGestures);
+                    newCompleted.add(gesture);
+                    setCompletedGestures(newCompleted);
                     setConsecutiveWrong(0);
                     setTotalCorrectAttempts(prev => prev + 1);
 
-                    setGreetingAttempts(prev => {
-                        const current = prev[greeting] || { greeting, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                    setGestureAttempts(prev => {
+                        const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
                         return {
                             ...prev,
-                            [greeting]: {
+                            [gesture]: {
                                 ...current,
                                 successCount: current.successCount + 1,
                                 firstSuccess: current.firstSuccess || Date.now(),
@@ -378,41 +490,44 @@ export default function WebViewGreetingsScreen() {
                         };
                     });
 
-                    if (!savedGreetingsRef.current.has(greeting)) {
-                        savedGreetingsRef.current.add(greeting);
+                    if (!savedGesturesRef.current.has(gesture)) {
+                        savedGesturesRef.current.add(gesture);
+                        await saveSingleGesturePerformance(gesture);
                     }
 
                     const msg = getRandomMessage(SENYA_MESSAGES.correct);
                     setSenyaMessage(msg);
                     senyaMsgCooldownRef.current = Date.now();
 
+                    const displayName = DISPLAY_NAMES[gesture] || gesture;
                     showCutePopup(
-                        `✓ ${greeting}`,
-                        `${completedGreetings.size + 1}/${GREETINGS_LIST.length}`
+                        `✓ ${displayName}`,
+                        `${completedGestures.size + 1}/${GREETINGS_LIST.length}`
                     );
                 }
-            } else if (completedGreetings.has(greeting)) {
+            } else if (completedGestures.has(gesture)) {
                 // Already completed
                 const now = Date.now();
                 if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                     senyaMsgCooldownRef.current = now;
                     if (target) {
-                        setSenyaMessage(`You got ${greeting}! Try ${target}`);
+                        const targetDisplay = DISPLAY_NAMES[target] || target;
+                        setSenyaMessage(`You got ${DISPLAY_NAMES[gesture] || gesture}! Try ${targetDisplay}`);
                     } else {
                         setSenyaMessage(SENYA_MESSAGES.complete);
                     }
                 }
                 setConsecutiveWrong(0);
             } else {
-                // Wrong greeting
-                if (greetingStableCount >= 2 && (isNewGreeting || isTimeForNewAttempt)) {
+                // Wrong gesture
+                if (gestureStableCount >= 2 && (isNewGesture || isTimeForNewAttempt)) {
                     const newWrong = consecutiveWrong + 1;
                     setConsecutiveWrong(newWrong);
                     setTotalWrongAttempts(prev => prev + 1);
 
                     if (target) {
-                        setGreetingAttempts(prev => {
-                            const current = prev[target] || { greeting: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                        setGestureAttempts(prev => {
+                            const current = prev[target] || { gesture: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
                             return {
                                 ...prev,
                                 [target]: {
@@ -431,77 +546,62 @@ export default function WebViewGreetingsScreen() {
                             setSenyaMessage(msg);
                             setConsecutiveWrong(0);
                             if (target) {
+                                const targetDisplay = DISPLAY_NAMES[target] || target;
                                 showCutePopup(
-                                    `💡 ${target}`,
+                                    `💡 ${targetDisplay}`,
                                     'Keep your hands steady'
                                 );
+                            } else {
+                                showCutePopup('💡 Keep trying!', 'You got this!');
                             }
                         } else if (newWrong >= 2) {
                             if (target) {
-                                setSenyaMessage(`Try making ${target} shape!`);
+                                const targetDisplay = DISPLAY_NAMES[target] || target;
+                                setSenyaMessage(`Try making ${targetDisplay} shape!`);
+                            } else {
+                                setSenyaMessage(`Try making the shape clearer!`);
                             }
                         }
                     }
                 }
             }
         } else {
-            // No greeting detected
-            setDetectedGreeting('✋');
+            // No gesture detected
+            setDetectedGesture('✋');
             setConfidence(0);
-            setLastProcessedGreeting('');
-            setGreetingStableCount(0);
+            setLastProcessedGesture('');
+            setGestureStableCount(0);
 
             const now = Date.now();
-            if (!isModuleComplete && completedGreetings.size < GREETINGS_LIST.length && now - senyaMsgCooldownRef.current >= 5000) {
+            if (!isModuleComplete && completedGestures.size < GREETINGS_LIST.length && now - senyaMsgCooldownRef.current >= 5000) {
                 senyaMsgCooldownRef.current = now;
                 const target = getCurrentTarget();
                 if (target) {
-                    setSenyaMessage(`Show me ${target}!`);
+                    const targetDisplay = DISPLAY_NAMES[target] || target;
+                    setSenyaMessage(`Show me ${targetDisplay}!`);
                 }
             }
         }
     };
 
-    // ─── SAVE PERFORMANCE (optional) ──────────────────────────────────────
-    const saveAllPerformance = async () => {
-        try {
-            const token = await AsyncStorage.getItem('userToken');
-            if (!token) return null;
-
-            const greetingPerformances = GREETINGS_LIST.map(greeting => {
-                const data = greetingAttempts[greeting] || {
-                    greeting,
-                    attempts: 0,
-                    wrongAttempts: 0,
-                    successCount: 0
-                };
-                return {
-                    greeting: greeting,
-                    attempts: data.attempts || 0,
-                    wrong_attempts: data.wrongAttempts || 0,
-                    success_count: data.successCount || 0,
-                    consecutive_wrong: 0,
-                };
-            });
-
-            const totalAttempts = greetingPerformances.reduce((sum, g) => sum + g.attempts, 0);
-            if (totalAttempts === 0) return null;
-
-            console.log('📤 Saving greeting performance...');
-            return { success: true };
-        } catch (error) {
-            console.error('❌ Error saving performance:', error);
-            return null;
-        }
-    };
-
-    // XP Award (optional)
+    // ─── XP AWARD ──────────────────────────────────────────────────────────────
     const awardModuleXp = async (starRating: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) return null;
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping XP award');
+                return null;
+            }
 
-            return { success: true, xp_earned: starRating * 10, total_xp: 100 };
+            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
+
+            const result = await api.awardModuleXp(MODULE_NAME, starRating);
+
+            if (result && result.success) {
+                console.log(`✅ ${result.xp_message}`);
+                return result;
+            }
+            return null;
         } catch (error) {
             console.error('❌ Error awarding XP:', error);
             return null;
@@ -514,7 +614,7 @@ export default function WebViewGreetingsScreen() {
         if (isModuleComplete) {
             saveAllPerformance().then(result => {
                 if (result) {
-                    console.log('📊 All performance data saved');
+                    console.log('📊 All Level 2 performance data saved');
                 }
             });
 
@@ -527,165 +627,6 @@ export default function WebViewGreetingsScreen() {
         }
     }, [isModuleComplete]);
 
-    const preloadModel = async () => {
-        try {
-            const response = await fetch('https://swipe-drinking-coral.ngrok-free.dev/models/model.json');
-            if (response.ok) {
-                // Model pre-loaded successfully
-            }
-        } catch (error) {
-            console.error('❌ Pre-load failed:', error);
-        }
-    };
-
-    // Call it when the component mounts
-    useEffect(() => {
-        preloadModel();
-    }, []);
-
-    // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const GREETINGS_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
-
-    const injectedJavaScript = `
-    (function() {
-        // HIDE ALL WEBVIEW UI OVERLAYS - Only show camera feed
-        const hideUI = function() {
-            const elementsToHide = [
-                '#status-bar',
-                '#progress-tracker', 
-                '#overlay',
-                '.progress-bar'
-            ];
-            
-            elementsToHide.forEach(selector => {
-                const el = document.querySelector(selector);
-                if (el) {
-                    el.style.display = 'none';
-                    el.style.pointerEvents = 'none';
-                }
-            });
-            
-            // Hide the greeting display overlay completely
-            const greetingDisplay = document.querySelector('#greeting-display');
-            if (greetingDisplay) {
-                greetingDisplay.style.display = 'none';
-            }
-        };
-        
-        // Run immediately and after DOM changes
-        hideUI();
-        
-        // Monitor model loading status
-        const checkModelStatus = setInterval(function() {
-            const statusText = document.getElementById('status-text');
-            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
-            
-            if (modelReady) {
-                clearInterval(checkModelStatus);
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'model_ready',
-                        status: 'loaded'
-                    }));
-                }
-            }
-        }, 1000);
-        
-        // Check for TensorFlow
-        setTimeout(function() {
-            if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'library_check',
-                    tf: typeof tf !== 'undefined',
-                    mediapipe: typeof Hands !== 'undefined'
-                }));
-            }
-        }, 2000);
-    })();
-`;
-
-    const openInBrowser = async () => {
-        try {
-            const urlWithHeader = GREETINGS_URL + '?ngrok-skip-browser-warning=true';
-            await WebBrowser.openBrowserAsync(urlWithHeader);
-        } catch (error) {
-            Linking.openURL(GREETINGS_URL);
-        }
-    };
-
-    const handleMessage = (event: any) => {
-        try {
-            const data = JSON.parse(event.nativeEvent.data);
-
-            // Handle model status updates
-            if (data.type === 'model_status') {
-                if (data.status === 'loaded') {
-                    setModelLoading(false);
-                    setLoading(false);
-                    setIsConnected(true);
-                }
-                return;
-            }
-
-            // Handle model errors
-            if (data.type === 'model_error') {
-                console.error('❌ Model error:', data.error);
-                setModelLoading(false);
-                setLoading(false);
-                setSenyaMessage(`Error: ${data.error}`);
-                return;
-            }
-
-            // Handle model ready signal from HTML
-            if (data.type === 'model_ready' || data.status === 'all_loaded') {
-                setIsConnected(true);
-                setLoading(false);
-                setModelLoading(false);
-                return;
-            }
-
-            // Handle MediaPipe ready
-            if (data.type === 'mediapipe_ready') {
-                return;
-            }
-
-            // Handle test messages
-            if (data.test) {
-                setIsConnected(true);
-                setLoading(false);
-                setModelLoading(false);
-                return;
-            }
-
-            const detectedValue = data.greeting || data.letter || '';
-            const confidenceValue = data.confidence || 0;
-
-            // 🔥 REDUCED LOGGING: Only log on matches
-            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                console.log(`✅ ${detectedValue} (${Math.round(confidenceValue * 100)}%)`);
-            }
-
-            if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
-                setGreetingStableCount(0);
-                return;
-            }
-
-            if (GREETINGS_LIST.includes(detectedValue)) {
-                setDetectedGreeting(detectedValue);
-                setConfidence(confidenceValue);
-                setIsConnected(true);
-                setShowBrowserButton(false);
-                handleDetection(data);
-            } else {
-                setDetectedGreeting(detectedValue);
-                setConfidence(confidenceValue);
-            }
-
-        } catch (error) {
-            console.error('❌ Message error:', error);
-        }
-    };
-
     // ─── RESULTS ──────────────────────────────────────────────────────────
     const getResults = () => {
         const timeToUse = endTime || Date.now();
@@ -694,22 +635,22 @@ export default function WebViewGreetingsScreen() {
         const seconds = totalSecs % 60;
         const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
-        const strugglingGreetings = Object.values(greetingAttempts)
+        const strugglingGestures = Object.values(gestureAttempts)
             .filter(g => g.wrongAttempts >= 2)
             .sort((a, b) => b.wrongAttempts - a.wrongAttempts)
-            .map(g => g.greeting)
+            .map(g => g.gesture)
             .slice(0, 3);
 
-        const easyGreetings = Object.values(greetingAttempts)
+        const easyGestures = Object.values(gestureAttempts)
             .filter(g => g.successCount > 0 && g.wrongAttempts === 0)
-            .map(g => g.greeting);
+            .map(g => g.gesture);
 
-        const completedCount = completedGreetings.size;
+        const completedCount = completedGestures.size;
 
         return {
             totalTime: timeDisplay,
-            strugglingGreetings,
-            easyGreetings,
+            strugglingGestures,
+            easyGestures,
             totalCorrect: completedCount,
             totalWrong: totalWrongAttempts,
         };
@@ -741,11 +682,20 @@ export default function WebViewGreetingsScreen() {
     };
 
     const handleContinue = async () => {
+        const unsavedGestures = GREETINGS_LIST.filter(
+            gesture => completedGestures.has(gesture) && !savedGesturesRef.current.has(gesture)
+        );
+
+        for (const gesture of unsavedGestures) {
+            await saveSingleGesturePerformance(gesture);
+        }
+
         await saveAllPerformance();
+
         setShowResults(false);
 
         if (xpResult && xpResult.xp_earned > 0) {
-            const level = xpResult.level || 1;
+            const level = xpResult.level || 2;
             const totalXp = xpResult.total_xp || 0;
             const xpEarned = xpResult.xp_earned || 0;
             const previousXp = totalXp - xpEarned;
@@ -767,6 +717,142 @@ export default function WebViewGreetingsScreen() {
             });
         } else {
             router.back();
+        }
+    };
+
+    // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
+    const GREETINGS_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
+
+    const injectedJavaScript = `
+    (function() {
+        const hideUI = function() {
+            const elementsToHide = [
+                '#status-bar',
+                '#progress-tracker', 
+                '#overlay',
+                '.progress-bar',
+                '#level-badge',
+                '#match-indicator'
+            ];
+            
+            elementsToHide.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.pointerEvents = 'none';
+                }
+            });
+            
+            const greetingDisplay = document.querySelector('#greeting-display');
+            if (greetingDisplay) {
+                greetingDisplay.style.display = 'none';
+            }
+            
+            console.log('🎨 WebView UI hidden - only camera feed visible');
+        };
+        
+        hideUI();
+        
+        const checkModelStatus = setInterval(function() {
+            const statusText = document.getElementById('status-text');
+            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
+            
+            if (modelReady) {
+                clearInterval(checkModelStatus);
+                if (window.ReactNativeWebView) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'model_ready',
+                        status: 'loaded'
+                    }));
+                }
+            }
+        }, 1000);
+        
+        setTimeout(function() {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'library_check',
+                    tf: typeof tf !== 'undefined',
+                    mediapipe: typeof Hands !== 'undefined'
+                }));
+            }
+        }, 2000);
+    })();
+`;
+
+    const openInBrowser = async () => {
+        try {
+            const urlWithHeader = GREETINGS_URL + '?ngrok-skip-browser-warning=true';
+            await WebBrowser.openBrowserAsync(urlWithHeader);
+        } catch (error) {
+            Linking.openURL(GREETINGS_URL);
+        }
+    };
+
+    const handleMessage = (event: any) => {
+        try {
+            const data = JSON.parse(event.nativeEvent.data);
+
+            if (data.type === 'model_status') {
+                if (data.status === 'loaded') {
+                    setModelLoading(false);
+                    setLoading(false);
+                    setIsConnected(true);
+                }
+                return;
+            }
+
+            if (data.type === 'model_error') {
+                console.error('❌ Model error:', data.error);
+                setModelLoading(false);
+                setLoading(false);
+                setSenyaMessage(`Error: ${data.error}`);
+                return;
+            }
+
+            if (data.type === 'model_ready' || data.status === 'all_loaded') {
+                setIsConnected(true);
+                setLoading(false);
+                setModelLoading(false);
+                return;
+            }
+
+            if (data.type === 'mediapipe_ready') {
+                return;
+            }
+
+            if (data.test) {
+                setIsConnected(true);
+                setLoading(false);
+                setModelLoading(false);
+                return;
+            }
+
+            const detectedValue = data.greeting || data.letter || '';
+            const confidenceValue = data.confidence || 0;
+
+            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                console.log(`🎯 Learned: ${detectedValue}`);
+            }
+
+            if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
+                setGestureStableCount(0);
+                return;
+            }
+
+            if (GREETINGS_LIST.includes(detectedValue)) {
+                setDetectedGesture(detectedValue);
+                setConfidence(confidenceValue);
+                setIsConnected(true);
+                setShowBrowserButton(false);
+                handleDetection(data);
+            } else {
+                setDetectedGesture(detectedValue);
+                setConfidence(confidenceValue);
+            }
+
+        } catch (error) {
+            console.error('❌ Message error:', error);
         }
     };
 
@@ -810,49 +896,9 @@ export default function WebViewGreetingsScreen() {
                     </Pressable>
                 </View>
 
-                <Text style={styles.headerTitle}>Greetings Level 1</Text>
+                <Text style={styles.headerTitle}>Greetings</Text>
 
                 <View style={styles.headerRight}>
-                    {/* UI Toggle Button - COMMENTED OUT */}
-                    {/* <Pressable
-                        onPress={() => {
-                            webViewRef.current?.injectJavaScript(`
-                                (function() {
-                                    const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
-                                    const show = document.querySelector('#status-bar').style.display !== 'none';
-                                    elements.forEach(sel => {
-                                        const el = document.querySelector(sel);
-                                        if (el) el.style.display = show ? 'none' : '';
-                                    });
-                                })();
-                            `);
-                        }}
-                        style={styles.testButton}
-                    >
-                        <Ionicons name="eye-outline" size={20} color="#0f3172" />
-                    </Pressable> */}
-
-                    {/* Bug Button - COMMENTED OUT */}
-                    {/* <Pressable
-                        onPress={() => {
-                            webViewRef.current?.injectJavaScript(`
-                                (function() {
-                                    if (window.ReactNativeWebView) {
-                                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                                            greeting: 'HELLO',
-                                            confidence: 0.95,
-                                            handCount: 1,
-                                            test: true
-                                        }));
-                                    }
-                                })();
-                            `);
-                        }}
-                        style={styles.testButton}
-                    >
-                        <Ionicons name="bug-outline" size={20} color="#0f3172" />
-                    </Pressable> */}
-
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
                             {isConnected ? '🟢 Live' : '⏳ Loading'}
@@ -874,18 +920,18 @@ export default function WebViewGreetingsScreen() {
             {/* Progress */}
             <View style={styles.progressHeader}>
                 <Text style={styles.progressText}>
-                    Progress: {completedGreetings.size}/{GREETINGS_LIST.length}
+                    Progress: {completedGestures.size}/{GREETINGS_LIST.length}
                 </Text>
                 <View style={styles.progressBar}>
                     <View
                         style={[
                             styles.progressFill,
-                            { width: `${(completedGreetings.size / GREETINGS_LIST.length) * 100}%` }
+                            { width: `${(completedGestures.size / GREETINGS_LIST.length) * 100}%` }
                         ]}
                     />
                 </View>
                 <Text style={styles.targetText}>
-                    🎯 {currentTarget}
+                    🎯 {DISPLAY_NAMES[currentTarget] || currentTarget}
                 </Text>
             </View>
 
@@ -904,14 +950,7 @@ export default function WebViewGreetingsScreen() {
                         setLoading(true);
                         setModelLoading(true);
                     }}
-                    onLoadProgress={({ nativeEvent }) => {
-                        if (nativeEvent.progress >= 0.9 && modelLoading) {
-                            // Silently wait for models
-                        }
-                    }}
-                    onLoadEnd={() => {
-                        // WebView HTML loaded - waiting for models to initialize
-                    }}
+                    onLoadEnd={() => { }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
                         setLoading(false);
@@ -938,8 +977,8 @@ export default function WebViewGreetingsScreen() {
                 />
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#FFD700" />
-                        <Text style={styles.loadingOverlayText}>Loading gesture recognition...</Text>
+                        <ActivityIndicator size="large" color="#F59E0B" />
+                        <Text style={styles.loadingOverlayText}>Loading Greetings...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
                 )}
@@ -961,39 +1000,39 @@ export default function WebViewGreetingsScreen() {
                 ref={scrollViewRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                style={styles.greetingGridScroll}
-                contentContainerStyle={styles.greetingGridContent}
+                style={styles.gestureGridScroll}
+                contentContainerStyle={styles.gestureGridContent}
                 scrollEventThrottle={16}
             >
-                {GREETINGS_LIST.map((greeting) => {
-                    const isCompleted = completedGreetings.has(greeting);
-                    const isActive = greeting === currentTarget && !isCompleted;
-                    const displayName = greeting.length > 12 ? greeting.substring(0, 10) + '…' : greeting;
+                {GREETINGS_LIST.map((gesture) => {
+                    const isCompleted = completedGestures.has(gesture);
+                    const isActive = gesture === currentTarget && !isCompleted;
+                    const displayName = DISPLAY_NAMES[gesture] || gesture;
 
                     return (
                         <View
-                            key={greeting}
+                            key={gesture}
                             style={[
-                                styles.greetingSlot,
-                                isCompleted && styles.greetingCompleted,
-                                isActive && styles.greetingActive,
+                                styles.gestureSlot,
+                                isCompleted && styles.gestureCompleted,
+                                isActive && styles.gestureActive,
                             ]}
                         >
                             <Text style={[
-                                styles.greetingChar,
-                                isCompleted && styles.greetingCharCompleted,
-                                isActive && styles.greetingCharActive,
+                                styles.gestureChar,
+                                isCompleted && styles.gestureCharCompleted,
+                                isActive && styles.gestureCharActive,
                             ]}>
-                                {displayName}
+                                {displayName.split(' ').slice(1).join(' ') || displayName}
                             </Text>
                             {isCompleted && (
-                                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                                <Ionicons name="checkmark-circle" size={14} color="#10B981" style={styles.gestureIcon} />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#FFD700" />
+                                <Ionicons name="star" size={13} color="#F59E0B" style={styles.gestureIcon} />
                             )}
                             {!isCompleted && !isActive && (
-                                <View style={styles.greetingStatusDot} />
+                                <View style={styles.gestureStatusDot} />
                             )}
                         </View>
                     );
@@ -1003,7 +1042,9 @@ export default function WebViewGreetingsScreen() {
             {/* Bottom Detection Bar */}
             <View style={styles.resultBar}>
                 <Text style={styles.resultLabel}>Detected:</Text>
-                <Text style={styles.resultGreeting}>{detectedGreeting}</Text>
+                <Text style={styles.resultGesture}>
+                    {DISPLAY_NAMES[detectedGesture] || detectedGesture}
+                </Text>
 
                 {confidence > 0 && (
                     <View style={styles.confidenceContainer}>
@@ -1072,12 +1113,12 @@ export default function WebViewGreetingsScreen() {
                         </TouchableOpacity>
 
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#FFD700" />
+                            <Ionicons name="trophy" size={32} color="#F59E0B" />
                         </View>
 
-                        <Text style={styles.modalTitle}>You Did It!</Text>
+                        <Text style={styles.modalTitle}>Greetings Complete!</Text>
                         <Text style={styles.modalSubtitle}>
-                            All {GREETINGS_LIST.length} greetings mastered
+                            All {GREETINGS_LIST.length} greetings mastered!
                         </Text>
 
                         {/* Stars */}
@@ -1096,7 +1137,7 @@ export default function WebViewGreetingsScreen() {
                                         <Ionicons
                                             name={isEarned ? 'star' : 'star-outline'}
                                             size={i === 1 ? 40 : 32}
-                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
+                                            color={isEarned ? '#F59E0B' : '#D9E2EC'}
                                         />
                                     </Animated.View>
                                 );
@@ -1130,7 +1171,7 @@ export default function WebViewGreetingsScreen() {
                                         <View style={styles.resultItemDivider} />
                                         <View style={styles.resultItem}>
                                             <View style={styles.resultIconWrap}>
-                                                <Ionicons name="hand-left-outline" size={20} color="#0f3172" />
+                                                <Ionicons name="chatbubble-ellipses-outline" size={20} color="#0f3172" />
                                             </View>
                                             <Text style={styles.resultValue}>
                                                 {results.totalCorrect}/{GREETINGS_LIST.length}
@@ -1149,26 +1190,26 @@ export default function WebViewGreetingsScreen() {
                                             const items: { icon: any; color: string; text: string }[] = [];
 
                                             if (starRating === 3) {
-                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
+                                                items.push({ icon: 'sparkles', color: '#F59E0B', text: "You're absolutely incredible at this!" });
                                             } else if (starRating === 2) {
                                                 items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
                                             } else {
                                                 items.push({ icon: 'refresh', color: '#4b7bbb', text: 'Keep practicing! Your hands will get faster.' });
                                             }
 
-                                            if (results.strugglingGreetings.length > 0) {
+                                            if (results.strugglingGestures.length > 0) {
                                                 items.push({
                                                     icon: 'alert-circle-outline',
                                                     color: '#E11D48',
-                                                    text: `Need more help with: ${results.strugglingGreetings.join(', ')}`,
+                                                    text: `Need more help with: ${results.strugglingGestures.map(g => DISPLAY_NAMES[g] || g).join(', ')}`,
                                                 });
                                             }
 
-                                            if (results.easyGreetings.length > 0) {
+                                            if (results.easyGestures.length > 0) {
                                                 items.push({
                                                     icon: 'checkmark-circle',
                                                     color: '#10B981',
-                                                    text: `You nailed: ${results.easyGreetings.join(', ')}`,
+                                                    text: `You nailed: ${results.easyGestures.map(g => DISPLAY_NAMES[g] || g).join(', ')}`,
                                                 });
                                             }
 
@@ -1329,14 +1370,14 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#FFD700',
+        backgroundColor: '#F59E0B',
         borderRadius: 2,
     },
     targetText: {
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: '800',
-        color: '#FFD700',
-        minWidth: 50,
+        color: '#F59E0B',
+        minWidth: 30,
         textAlign: 'center',
     },
     webviewContainer: {
@@ -1400,19 +1441,19 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
     },
-    greetingGridScroll: {
+    gestureGridScroll: {
         maxHeight: 88,
         marginHorizontal: 12,
         marginVertical: 6,
     },
-    greetingGridContent: {
+    gestureGridContent: {
         paddingHorizontal: 4,
         gap: 6,
         alignItems: 'center',
     },
-    greetingSlot: {
-        minWidth: 70,
-        paddingHorizontal: 12,
+    gestureSlot: {
+        minWidth: 48,
+        paddingHorizontal: 6,
         height: 64,
         borderRadius: 12,
         backgroundColor: 'rgba(255,255,255,0.78)',
@@ -1427,42 +1468,44 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 2,
     },
-    greetingCompleted: {
+    gestureCompleted: {
         backgroundColor: 'rgba(16, 185, 129, 0.12)',
         borderColor: '#10B981',
         shadowColor: '#10B981',
         shadowOpacity: 0.2,
     },
-    greetingActive: {
-        borderColor: '#FFD700',
-        backgroundColor: 'rgba(255, 215, 0, 0.15)',
-        transform: [{ scale: 1.05 }],
-        shadowColor: '#FFD700',
+    gestureActive: {
+        borderColor: '#F59E0B',
+        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        transform: [{ scale: 1.1 }],
+        shadowColor: '#F59E0B',
         shadowOpacity: 0.55,
         shadowRadius: 10,
         elevation: 8,
     },
-    greetingChar: {
-        fontSize: 12,
+    gestureChar: {
+        fontSize: 11,
         fontWeight: '700',
-        color: 'rgba(15, 49, 114, 0.35)',
+        color: 'rgba(15, 49, 114, 0.5)',
         textAlign: 'center',
     },
-    greetingCharCompleted: {
+    gestureCharCompleted: {
         color: '#10B981',
-        fontSize: 11,
+        fontSize: 10,
     },
-    greetingCharActive: {
-        color: '#92650A',
-        fontSize: 13,
-        fontWeight: '800',
+    gestureCharActive: {
+        color: '#B45309',
+        fontSize: 12,
     },
-    greetingStatusDot: {
+    gestureIcon: {
+        marginTop: 2,
+    },
+    gestureStatusDot: {
         width: 4,
         height: 4,
         borderRadius: 2,
         backgroundColor: 'rgba(15,49,114,0.15)',
-        marginTop: 2,
+        marginTop: 3,
     },
     resultBar: {
         flexDirection: 'row',
@@ -1472,7 +1515,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 12,
         marginBottom: 12,
         borderRadius: 14,
-        gap: 8,
+        gap: 10,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.8)',
         shadowColor: '#000',
@@ -1482,17 +1525,17 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     resultLabel: {
-        fontSize: 10,
+        fontSize: 11,
         color: '#4b7bbb',
         fontWeight: '600',
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
-    resultGreeting: {
+    resultGesture: {
         fontSize: 16,
         fontWeight: '800',
         color: '#0f3172',
-        minWidth: 50,
+        minWidth: 34,
         textAlign: 'center',
     },
     confidenceContainer: {
@@ -1510,12 +1553,12 @@ const styles = StyleSheet.create({
     },
     confidenceFill: {
         height: '100%',
-        backgroundColor: '#10B981',
+        backgroundColor: '#F59E0B',
         borderRadius: 2,
     },
     resultConfidence: {
         fontSize: 11,
-        color: '#10B981',
+        color: '#F59E0B',
         fontWeight: '700',
         minWidth: 32,
     },
@@ -1540,7 +1583,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#FFD700',
+        borderColor: '#F59E0B',
         minWidth: 80,
     },
     popupSenya: {
@@ -1549,7 +1592,7 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     popupMessage: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '700',
         color: '#0f3172',
         textAlign: 'center',
@@ -1598,9 +1641,9 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        backgroundColor: 'rgba(245, 158, 11, 0.15)',
         borderWidth: 2,
-        borderColor: 'rgba(255, 201, 60, 0.4)',
+        borderColor: 'rgba(245, 158, 11, 0.4)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -1634,7 +1677,7 @@ const styles = StyleSheet.create({
     starLabelPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        backgroundColor: 'rgba(245, 158, 11, 0.15)',
         paddingVertical: 5,
         paddingHorizontal: 12,
         borderRadius: 999,
@@ -1741,16 +1784,6 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 15,
         fontWeight: '700',
-    },
-    testButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(15, 49, 114, 0.1)',
     },
     headerLeft: {
         flexDirection: 'row',

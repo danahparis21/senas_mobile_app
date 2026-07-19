@@ -1,4 +1,4 @@
-// app/gesture/level2-gestures.tsx
+// app/gesture/webview-survival.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import {
     View,
@@ -38,8 +38,8 @@ const { width, height } = Dimensions.get('window');
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
 const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
 
-// Level 2 Gestures - Intermediate Signs
-const LEVEL2_GESTURES = [
+// Level 3 Survival - FSL Survival Phrases
+const SURVIVAL_GESTURES = [
     'UNDERSTAND',
     "DON'T UNDERSTAND",
     'KNOW',
@@ -52,15 +52,29 @@ const LEVEL2_GESTURES = [
     'FAST'
 ];
 
+// Display names for UI
+const DISPLAY_NAMES: Record<string, string> = {
+    'UNDERSTAND': 'Understand',
+    "DON'T UNDERSTAND": "Don't Understand",
+    'KNOW': 'Know',
+    "DON'T KNOW": "Don't Know",
+    'NO': 'No',
+    'YES': 'Yes',
+    'WRONG': 'Wrong',
+    'CORRECT': 'Correct',
+    'SLOW': 'Slow',
+    'FAST': 'Fast'
+};
+
 // Senya's encouragement messages
 const SENYA_MESSAGES = {
-    welcome: "Level 2! Let's learn more signs! 🌟",
+    welcome: "Level 3! Let's learn survival phrases! 🆘",
     correct: [
-        "Amazing progress!",
-        "You're getting so good!",
-        "Intermediate level, crushing it!",
-        "Brilliant! Next sign!",
-        "Fantastic work!",
+        "Amazing! You're a survival expert!",
+        "Perfect! Keep going!",
+        "Great job! You're on fire!",
+        "Wonderful! You're crushing it!",
+        "Fantastic! Next one!",
     ],
     struggle: [
         "Try keeping your hand steady...",
@@ -68,7 +82,7 @@ const SENYA_MESSAGES = {
         "You got this! Try again!",
         "Almost there! One more try!",
     ],
-    complete: "LEVEL 2 COMPLETE! All 8 signs mastered! 🎉",
+    complete: "LEVEL 3 COMPLETE! All 10 survival phrases mastered! 🎉",
 };
 
 // Gesture struggle tracking
@@ -81,7 +95,7 @@ interface GestureAttempt {
     successCount: number;
 }
 
-export default function Level2GesturesScreen() {
+export default function WebViewSurvivalScreen() {
     const router = useRouter();
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
@@ -119,7 +133,7 @@ export default function Level2GesturesScreen() {
     const [popupMessage, setPopupMessage] = useState('');
     const [popupSubMessage, setPopupSubMessage] = useState('');
 
-    // Track the last detected gesture to avoid counting transitions as mistakes
+    // Track the last detected gesture
     const [lastProcessedGesture, setLastProcessedGesture] = useState<string>('');
     const [gestureStableCount, setGestureStableCount] = useState(0);
 
@@ -133,7 +147,9 @@ export default function Level2GesturesScreen() {
     const starAnim3 = useRef(new Animated.Value(0)).current;
 
     const [modelLoading, setModelLoading] = useState(true);
-    const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
+
+    // ── Module Name ──────────────────────────────────────────────────────────
+    const MODULE_NAME = 'level3_survival';
 
     // ── Play gesture sound ──
     async function playGestureSound() {
@@ -200,9 +216,9 @@ export default function Level2GesturesScreen() {
         }
     }
 
-    // Get current target (first incomplete)
+    // Get current target
     const getCurrentTarget = () => {
-        for (const gesture of LEVEL2_GESTURES) {
+        for (const gesture of SURVIVAL_GESTURES) {
             if (!completedGestures.has(gesture)) return gesture;
         }
         return null;
@@ -211,7 +227,7 @@ export default function Level2GesturesScreen() {
     // Initialize gesture tracking
     useEffect(() => {
         const initial: Record<string, GestureAttempt> = {};
-        LEVEL2_GESTURES.forEach(gesture => {
+        SURVIVAL_GESTURES.forEach(gesture => {
             initial[gesture] = {
                 gesture,
                 attempts: 0,
@@ -238,7 +254,7 @@ export default function Level2GesturesScreen() {
         const target = getCurrentTarget();
         if (target) {
             setCurrentTarget(target);
-            const targetIndex = LEVEL2_GESTURES.indexOf(target);
+            const targetIndex = SURVIVAL_GESTURES.indexOf(target);
             if (targetIndex >= 0 && scrollViewRef.current) {
                 const slotWidth = 100;
                 const scrollX = targetIndex * slotWidth - (width - 100) / 2;
@@ -249,13 +265,13 @@ export default function Level2GesturesScreen() {
                     });
                 }, 100);
             }
-        } else if (completedGestures.size === LEVEL2_GESTURES.length) {
+        } else if (completedGestures.size === SURVIVAL_GESTURES.length) {
             setIsModuleComplete(true);
             setSenyaMessage(SENYA_MESSAGES.complete);
             const endNow = Date.now();
             setEndTime(endNow);
             const elapsed = Math.round((endNow - startTime) / 1000);
-            setStarRating(elapsed < 40 ? 3 : elapsed < 80 ? 2 : 1);
+            setStarRating(elapsed < 60 ? 3 : elapsed < 120 ? 2 : 1);
 
             playCompleteSound();
 
@@ -310,57 +326,114 @@ export default function Level2GesturesScreen() {
     const lastAttemptTimeRef = useRef<number>(0);
     const MIN_ATTEMPT_INTERVAL = 1000;
 
-    const handleDetection = async (data: any) => {
-        const gesture = data.greeting || data.gesture || '';
-        const conf = data.confidence || 0;
-        const handCount = data.handCount || 0;
-
-        // 🔥 1. SINGLE SOURCE OF TRUTH: Process WebView Matches First
-        if (data.isMatch && data.learned && Array.isArray(data.learned)) {
-            const newCompleted: Set<string> = new Set(data.learned);
-            if (newCompleted.size > completedGestures.size) {
-                console.log('🔄 Learned:', data.learned[data.learned.length - 1]);
-                await playGestureSound();
-                setCompletedGestures(newCompleted);
-
-                const justCompleted = data.learned[data.learned.length - 1];
-                if (justCompleted) {
-                    setConsecutiveWrong(0);
-                    setTotalCorrectAttempts(prev => prev + 1);
-
-                    setGestureAttempts(prev => {
-                        const current = prev[justCompleted] || { gesture: justCompleted, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                        return {
-                            ...prev,
-                            [justCompleted]: {
-                                ...current,
-                                successCount: current.successCount + 1,
-                                firstSuccess: current.firstSuccess || Date.now(),
-                            }
-                        };
-                    });
-
-                    if (!savedGesturesRef.current.has(justCompleted)) {
-                        savedGesturesRef.current.add(justCompleted);
-                    }
-
-                    const msg = getRandomMessage(SENYA_MESSAGES.correct);
-                    setSenyaMessage(msg);
-                    senyaMsgCooldownRef.current = Date.now();
-
-                    showCutePopup(
-                        `✓ ${justCompleted}`,
-                        `${data.learned.length}/${LEVEL2_GESTURES.length}`
-                    );
-                }
-                return;
+    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
+    const saveSingleGesturePerformance = async (gesture: string) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
             }
-        }
 
-        // 2. Process regular frames for tracking and struggle messages
-        if (gesture && gesture !== '✋' && gesture !== '...' && LEVEL2_GESTURES.includes(gesture)) {
+            const data = gestureAttempts[gesture] || {
+                gesture,
+                attempts: 0,
+                wrongAttempts: 0,
+                successCount: 0
+            };
+
+            if (data.attempts === 0) {
+                return null;
+            }
+
+            const gesturePerformance = [{
+                letter: gesture,
+                attempts: data.attempts || 0,
+                wrong_attempts: data.wrongAttempts || 0,
+                success_count: data.successCount || 0,
+                consecutive_wrong: 0,
+            }];
+
+            console.log(`📤 Saving performance for ${gesture}...`);
+
+            const result = await api.saveGesturePerformance(
+                MODULE_NAME,
+                gesturePerformance,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log(`✅ ${gesture} saved!`);
+                return result;
+            } else {
+                console.error(`❌ Failed to save ${gesture}:`, result);
+                return null;
+            }
+        } catch (error) {
+            console.error(`❌ Error saving ${gesture}:`, error);
+            return null;
+        }
+    };
+
+    const saveAllPerformance = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping save');
+                return null;
+            }
+
+            const gesturePerformances = SURVIVAL_GESTURES.map(gesture => {
+                const data = gestureAttempts[gesture] || {
+                    gesture,
+                    attempts: 0,
+                    wrongAttempts: 0,
+                    successCount: 0
+                };
+                return {
+                    letter: gesture,
+                    attempts: data.attempts || 0,
+                    wrong_attempts: data.wrongAttempts || 0,
+                    success_count: data.successCount || 0,
+                    consecutive_wrong: 0,
+                };
+            });
+
+            const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
+            if (totalAttempts === 0) {
+                console.log('ℹ️ No attempts recorded, skipping save');
+                return null;
+            }
+
+            console.log(`📤 Saving performance for ${MODULE_NAME}...`);
+
+            const result = await api.saveGesturePerformance(
+                MODULE_NAME,
+                gesturePerformances,
+                `session_${Date.now()}`
+            );
+
+            if (result && result.success) {
+                console.log('✅ Performance saved!');
+                return result;
+            } else {
+                console.error('❌ Failed to save performance:', result);
+                return null;
+            }
+        } catch (error) {
+            console.error('❌ Error saving performance:', error);
+            return null;
+        }
+    };
+
+    // ─── HANDLE DETECTION ────────────────────────────────────────────────
+    const handleDetection = async (data: any) => {
+        const { greeting, confidence: conf } = data;
+        const gesture = greeting;
+
+        if (gesture && gesture !== '✋' && gesture !== '...' && SURVIVAL_GESTURES.includes(gesture)) {
             setDetectedGesture(gesture);
-            setConfidence(conf);
+            setConfidence(conf || 0);
             setIsConnected(true);
             setShowBrowserButton(false);
 
@@ -372,7 +445,9 @@ export default function Level2GesturesScreen() {
                 return;
             }
 
-            if (gestureStableCount < 2) return;
+            if (gestureStableCount < 2) {
+                return;
+            }
 
             const now = Date.now();
             const isNewGesture = gesture !== lastAttemptGestureRef.current;
@@ -384,19 +459,65 @@ export default function Level2GesturesScreen() {
 
                 setGestureAttempts(prev => {
                     const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                    return { ...prev, [gesture]: { ...current, attempts: current.attempts + 1, lastAttempt: Date.now() } };
+                    return {
+                        ...prev,
+                        [gesture]: {
+                            ...current,
+                            attempts: current.attempts + 1,
+                            lastAttempt: Date.now(),
+                        }
+                    };
                 });
             }
 
             const target = getCurrentTarget();
 
             if (gesture === target) {
-                // Wait for WebView to confirm match
+                if (!completedGestures.has(gesture)) {
+                    await playGestureSound();
+
+                    const newCompleted = new Set(completedGestures);
+                    newCompleted.add(gesture);
+                    setCompletedGestures(newCompleted);
+                    setConsecutiveWrong(0);
+                    setTotalCorrectAttempts(prev => prev + 1);
+
+                    setGestureAttempts(prev => {
+                        const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                        return {
+                            ...prev,
+                            [gesture]: {
+                                ...current,
+                                successCount: current.successCount + 1,
+                                firstSuccess: current.firstSuccess || Date.now(),
+                            }
+                        };
+                    });
+
+                    if (!savedGesturesRef.current.has(gesture)) {
+                        savedGesturesRef.current.add(gesture);
+                        await saveSingleGesturePerformance(gesture);
+                    }
+
+                    const msg = getRandomMessage(SENYA_MESSAGES.correct);
+                    setSenyaMessage(msg);
+                    senyaMsgCooldownRef.current = Date.now();
+
+                    const displayName = DISPLAY_NAMES[gesture] || gesture;
+                    showCutePopup(
+                        `✓ ${displayName}`,
+                        `${completedGestures.size + 1}/${SURVIVAL_GESTURES.length}`
+                    );
+                }
             } else if (completedGestures.has(gesture)) {
+                const now = Date.now();
                 if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                     senyaMsgCooldownRef.current = now;
                     if (target) {
-                        setSenyaMessage(`You got ${gesture}! Try ${target}`);
+                        const targetDisplay = DISPLAY_NAMES[target] || target;
+                        setSenyaMessage(`You got ${DISPLAY_NAMES[gesture] || gesture}! Try ${targetDisplay}`);
+                    } else {
+                        setSenyaMessage(SENYA_MESSAGES.complete);
                     }
                 }
                 setConsecutiveWrong(0);
@@ -409,18 +530,39 @@ export default function Level2GesturesScreen() {
                     if (target) {
                         setGestureAttempts(prev => {
                             const current = prev[target] || { gesture: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                            return { ...prev, [target]: { ...current, wrongAttempts: current.wrongAttempts + 1 } };
+                            return {
+                                ...prev,
+                                [target]: {
+                                    ...current,
+                                    wrongAttempts: current.wrongAttempts + 1,
+                                }
+                            };
                         });
                     }
 
+                    const now = Date.now();
                     if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                         senyaMsgCooldownRef.current = now;
                         if (newWrong >= 4) {
-                            setSenyaMessage(getRandomMessage(SENYA_MESSAGES.struggle));
+                            const msg = getRandomMessage(SENYA_MESSAGES.struggle);
+                            setSenyaMessage(msg);
                             setConsecutiveWrong(0);
-                            if (target) showCutePopup(`💡 ${target}`, 'Keep your hands steady');
+                            if (target) {
+                                const targetDisplay = DISPLAY_NAMES[target] || target;
+                                showCutePopup(
+                                    `💡 ${targetDisplay}`,
+                                    'Keep your hands steady'
+                                );
+                            } else {
+                                showCutePopup('💡 Keep trying!', 'You got this!');
+                            }
                         } else if (newWrong >= 2) {
-                            if (target) setSenyaMessage(`Try making ${target} shape!`);
+                            if (target) {
+                                const targetDisplay = DISPLAY_NAMES[target] || target;
+                                setSenyaMessage(`Try making ${targetDisplay} shape!`);
+                            } else {
+                                setSenyaMessage(`Try making the shape clearer!`);
+                            }
                         }
                     }
                 }
@@ -432,53 +574,35 @@ export default function Level2GesturesScreen() {
             setGestureStableCount(0);
 
             const now = Date.now();
-            if (!isModuleComplete && completedGestures.size < LEVEL2_GESTURES.length && now - senyaMsgCooldownRef.current >= 5000) {
+            if (!isModuleComplete && completedGestures.size < SURVIVAL_GESTURES.length && now - senyaMsgCooldownRef.current >= 5000) {
                 senyaMsgCooldownRef.current = now;
                 const target = getCurrentTarget();
-                if (target) setSenyaMessage(`Show me ${target}!`);
+                if (target) {
+                    const targetDisplay = DISPLAY_NAMES[target] || target;
+                    setSenyaMessage(`Show me ${targetDisplay}!`);
+                }
             }
         }
     };
 
-    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
-    const saveAllPerformance = async () => {
-        try {
-            const token = await AsyncStorage.getItem('userToken');
-            if (!token) return null;
-
-            const gesturePerformances = LEVEL2_GESTURES.map(gesture => {
-                const data = gestureAttempts[gesture] || {
-                    gesture,
-                    attempts: 0,
-                    wrongAttempts: 0,
-                    successCount: 0
-                };
-                return {
-                    gesture: gesture,
-                    attempts: data.attempts || 0,
-                    wrong_attempts: data.wrongAttempts || 0,
-                    success_count: data.successCount || 0,
-                    consecutive_wrong: 0,
-                };
-            });
-
-            const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
-            if (totalAttempts === 0) return null;
-
-            console.log('📤 Saving Level 2 gesture performance...');
-            return { success: true };
-        } catch (error) {
-            console.error('❌ Error saving performance:', error);
-            return null;
-        }
-    };
-
-    // XP Award
+    // ─── XP AWARD ──────────────────────────────────────────────────────────────
     const awardModuleXp = async (starRating: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) return null;
-            return { success: true, xp_earned: starRating * 15, total_xp: 200 };
+            if (!token) {
+                console.log('ℹ️ No auth token found, skipping XP award');
+                return null;
+            }
+
+            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
+
+            const result = await api.awardModuleXp(MODULE_NAME, starRating);
+
+            if (result && result.success) {
+                console.log(`✅ ${result.xp_message}`);
+                return result;
+            }
+            return null;
         } catch (error) {
             console.error('❌ Error awarding XP:', error);
             return null;
@@ -491,7 +615,7 @@ export default function Level2GesturesScreen() {
         if (isModuleComplete) {
             saveAllPerformance().then(result => {
                 if (result) {
-                    console.log('📊 All Level 2 performance data saved');
+                    console.log('📊 All Level 3 performance data saved');
                 }
             });
 
@@ -503,179 +627,6 @@ export default function Level2GesturesScreen() {
             }, 2000);
         }
     }, [isModuleComplete]);
-
-    // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const LEVEL2_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level2.html';
-
-    const injectedJavaScript = `
-    (function() {
-        // HIDE ALL WEBVIEW UI OVERLAYS - Only show camera feed
-        const hideUI = function() {
-            const elementsToHide = [
-                '#status-bar',
-                '#progress-tracker', 
-                '#overlay',
-                '.progress-bar',
-                '#level-badge',
-                '#match-indicator'
-            ];
-            
-            elementsToHide.forEach(selector => {
-                const el = document.querySelector(selector);
-                if (el) {
-                    el.style.display = 'none';
-                    el.style.pointerEvents = 'none';
-                }
-            });
-            
-            // Hide the greeting display overlay completely
-            const greetingDisplay = document.querySelector('#greeting-display');
-            if (greetingDisplay) {
-                greetingDisplay.style.display = 'none';
-            }
-        };
-        
-        // Run immediately and after DOM changes
-        hideUI();
-        
-        // Monitor model loading status
-        const checkModelStatus = setInterval(function() {
-            const statusText = document.getElementById('status-text');
-            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
-            
-            if (modelReady) {
-                clearInterval(checkModelStatus);
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'model_ready',
-                        status: 'loaded'
-                    }));
-                }
-            }
-        }, 1000);
-        
-        // Check for TensorFlow
-        setTimeout(function() {
-            if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'library_check',
-                    tf: typeof tf !== 'undefined',
-                    mediapipe: typeof Hands !== 'undefined'
-                }));
-            }
-        }, 2000);
-    })();
-`;
-
-    const openInBrowser = async () => {
-        try {
-            const urlWithHeader = LEVEL2_URL + '?ngrok-skip-browser-warning=true';
-            await WebBrowser.openBrowserAsync(urlWithHeader);
-        } catch (error) {
-            Linking.openURL(LEVEL2_URL);
-        }
-    };
-
-    const syncProgressFromWebView = async (learnedFromWebView: string[], progress: number) => {
-        if (learnedFromWebView && learnedFromWebView.length > completedGestures.size) {
-            const newCompleted: Set<string> = new Set(learnedFromWebView);
-            setCompletedGestures(newCompleted);
-
-            const target = getCurrentTarget();
-            if (target) {
-                setCurrentTarget(target);
-            }
-
-            const justCompleted = learnedFromWebView[learnedFromWebView.length - 1];
-            if (justCompleted) {
-                showCutePopup(
-                    `✓ ${justCompleted}`,
-                    `${learnedFromWebView.length}/${LEVEL2_GESTURES.length}`
-                );
-            }
-        }
-    };
-
-    const handleMessage = (event: any) => {
-        try {
-            const data = JSON.parse(event.nativeEvent.data);
-
-            // Handle model status updates
-            if (data.type === 'model_status') {
-                if (data.status === 'loaded') {
-                    setModelLoading(false);
-                    setLoading(false);
-                    setIsConnected(true);
-                }
-                return;
-            }
-
-            // Handle model errors
-            if (data.type === 'model_error') {
-                console.error('❌ Model error:', data.error);
-                setModelLoading(false);
-                setLoading(false);
-                setSenyaMessage(`Error: ${data.error}`);
-                return;
-            }
-
-            // Handle model ready signal from HTML
-            if (data.type === 'model_ready' || data.status === 'all_loaded') {
-                setIsConnected(true);
-                setLoading(false);
-                setModelLoading(false);
-                return;
-            }
-
-            // Handle MediaPipe ready
-            if (data.type === 'mediapipe_ready') {
-                return;
-            }
-
-            // Handle test messages
-            if (data.test) {
-                setIsConnected(true);
-                setLoading(false);
-                setModelLoading(false);
-                return;
-            }
-
-            // Sync progress from WebView
-            if (data.learned && Array.isArray(data.learned)) {
-                syncProgressFromWebView(data.learned, data.progress || 0);
-            }
-
-            const detectedValue = data.greeting || data.letter || '';
-            const confidenceValue = data.confidence || 0;
-
-            // 🔥 REDUCED LOGGING: Only log on matches
-            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                console.log(`✅ ${detectedValue} (${Math.round(confidenceValue * 100)}%)`);
-            }
-
-            if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
-                setGestureStableCount(0);
-                return;
-            }
-
-            if (LEVEL2_GESTURES.includes(detectedValue)) {
-                setDetectedGesture(detectedValue);
-                setConfidence(confidenceValue);
-                setIsConnected(true);
-                setShowBrowserButton(false);
-                handleDetection({
-                    ...data,
-                    gesture: detectedValue
-                });
-            } else {
-                setDetectedGesture(detectedValue);
-                setConfidence(confidenceValue);
-            }
-
-        } catch (error) {
-            console.error('❌ Message error:', error);
-        }
-    };
 
     // ─── RESULTS ──────────────────────────────────────────────────────────
     const getResults = () => {
@@ -732,11 +683,20 @@ export default function Level2GesturesScreen() {
     };
 
     const handleContinue = async () => {
+        const unsavedGestures = SURVIVAL_GESTURES.filter(
+            gesture => completedGestures.has(gesture) && !savedGesturesRef.current.has(gesture)
+        );
+
+        for (const gesture of unsavedGestures) {
+            await saveSingleGesturePerformance(gesture);
+        }
+
         await saveAllPerformance();
+
         setShowResults(false);
 
         if (xpResult && xpResult.xp_earned > 0) {
-            const level = xpResult.level || 2;
+            const level = xpResult.level || 3;
             const totalXp = xpResult.total_xp || 0;
             const xpEarned = xpResult.xp_earned || 0;
             const previousXp = totalXp - xpEarned;
@@ -758,6 +718,142 @@ export default function Level2GesturesScreen() {
             });
         } else {
             router.back();
+        }
+    };
+
+    // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
+    const SURVIVAL_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level2.html';
+
+    const injectedJavaScript = `
+    (function() {
+        const hideUI = function() {
+            const elementsToHide = [
+                '#status-bar',
+                '#progress-tracker', 
+                '#overlay',
+                '.progress-bar',
+                '#level-badge',
+                '#match-indicator'
+            ];
+            
+            elementsToHide.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.pointerEvents = 'none';
+                }
+            });
+            
+            const greetingDisplay = document.querySelector('#greeting-display');
+            if (greetingDisplay) {
+                greetingDisplay.style.display = 'none';
+            }
+            
+            console.log('🎨 WebView UI hidden - only camera feed visible');
+        };
+        
+        hideUI();
+        
+        const checkModelStatus = setInterval(function() {
+            const statusText = document.getElementById('status-text');
+            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
+            
+            if (modelReady) {
+                clearInterval(checkModelStatus);
+                if (window.ReactNativeWebView) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'model_ready',
+                        status: 'loaded'
+                    }));
+                }
+            }
+        }, 1000);
+        
+        setTimeout(function() {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'library_check',
+                    tf: typeof tf !== 'undefined',
+                    mediapipe: typeof Hands !== 'undefined'
+                }));
+            }
+        }, 2000);
+    })();
+`;
+
+    const openInBrowser = async () => {
+        try {
+            const urlWithHeader = SURVIVAL_URL + '?ngrok-skip-browser-warning=true';
+            await WebBrowser.openBrowserAsync(urlWithHeader);
+        } catch (error) {
+            Linking.openURL(SURVIVAL_URL);
+        }
+    };
+
+    const handleMessage = (event: any) => {
+        try {
+            const data = JSON.parse(event.nativeEvent.data);
+
+            if (data.type === 'model_status') {
+                if (data.status === 'loaded') {
+                    setModelLoading(false);
+                    setLoading(false);
+                    setIsConnected(true);
+                }
+                return;
+            }
+
+            if (data.type === 'model_error') {
+                console.error('❌ Model error:', data.error);
+                setModelLoading(false);
+                setLoading(false);
+                setSenyaMessage(`Error: ${data.error}`);
+                return;
+            }
+
+            if (data.type === 'model_ready' || data.status === 'all_loaded') {
+                setIsConnected(true);
+                setLoading(false);
+                setModelLoading(false);
+                return;
+            }
+
+            if (data.type === 'mediapipe_ready') {
+                return;
+            }
+
+            if (data.test) {
+                setIsConnected(true);
+                setLoading(false);
+                setModelLoading(false);
+                return;
+            }
+
+            const detectedValue = data.greeting || data.letter || '';
+            const confidenceValue = data.confidence || 0;
+
+            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                console.log(`✅ ${detectedValue} (${Math.round(confidenceValue * 100)}%)`);
+            }
+
+            if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
+                setGestureStableCount(0);
+                return;
+            }
+
+            if (SURVIVAL_GESTURES.includes(detectedValue)) {
+                setDetectedGesture(detectedValue);
+                setConfidence(confidenceValue);
+                setIsConnected(true);
+                setShowBrowserButton(false);
+                handleDetection(data);
+            } else {
+                setDetectedGesture(detectedValue);
+                setConfidence(confidenceValue);
+            }
+
+        } catch (error) {
+            console.error('❌ Message error:', error);
         }
     };
 
@@ -801,49 +897,9 @@ export default function Level2GesturesScreen() {
                     </Pressable>
                 </View>
 
-                <Text style={styles.headerTitle}>Level 2 Gestures</Text>
+                <Text style={styles.headerTitle}>Survival Phrases</Text>
 
                 <View style={styles.headerRight}>
-                    {/* UI Toggle Button - COMMENTED OUT */}
-                    {/* <Pressable
-                        onPress={() => {
-                            webViewRef.current?.injectJavaScript(`
-                                (function() {
-                                    const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
-                                    const show = document.querySelector('#status-bar').style.display !== 'none';
-                                    elements.forEach(sel => {
-                                        const el = document.querySelector(sel);
-                                        if (el) el.style.display = show ? 'none' : '';
-                                    });
-                                })();
-                            `);
-                        }}
-                        style={styles.testButton}
-                    >
-                        <Ionicons name="eye-outline" size={20} color="#0f3172" />
-                    </Pressable> */}
-
-                    {/* Bug Button - COMMENTED OUT */}
-                    {/* <Pressable
-                        onPress={() => {
-                            webViewRef.current?.injectJavaScript(`
-                                (function() {
-                                    if (window.ReactNativeWebView) {
-                                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                                            gesture: 'PLEASE',
-                                            confidence: 0.95,
-                                            handCount: 1,
-                                            test: true
-                                        }));
-                                    }
-                                })();
-                            `);
-                        }}
-                        style={styles.testButton}
-                    >
-                        <Ionicons name="bug-outline" size={20} color="#0f3172" />
-                    </Pressable> */}
-
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
                             {isConnected ? '🟢 Live' : '⏳ Loading'}
@@ -865,18 +921,18 @@ export default function Level2GesturesScreen() {
             {/* Progress */}
             <View style={styles.progressHeader}>
                 <Text style={styles.progressText}>
-                    Progress: {completedGestures.size}/{LEVEL2_GESTURES.length}
+                    Progress: {completedGestures.size}/{SURVIVAL_GESTURES.length}
                 </Text>
                 <View style={styles.progressBar}>
                     <View
                         style={[
                             styles.progressFill,
-                            { width: `${(completedGestures.size / LEVEL2_GESTURES.length) * 100}%` }
+                            { width: `${(completedGestures.size / SURVIVAL_GESTURES.length) * 100}%` }
                         ]}
                     />
                 </View>
                 <Text style={styles.targetText}>
-                    🎯 {currentTarget}
+                    🎯 {DISPLAY_NAMES[currentTarget] || currentTarget}
                 </Text>
             </View>
 
@@ -885,7 +941,7 @@ export default function Level2GesturesScreen() {
                 <WebView
                     ref={webViewRef}
                     source={{
-                        uri: LEVEL2_URL,
+                        uri: SURVIVAL_URL,
                         headers: {
                             'ngrok-skip-browser-warning': 'true',
                         }
@@ -895,14 +951,7 @@ export default function Level2GesturesScreen() {
                         setLoading(true);
                         setModelLoading(true);
                     }}
-                    onLoadProgress={({ nativeEvent }) => {
-                        if (nativeEvent.progress >= 0.9 && modelLoading) {
-                            // Silently wait for models
-                        }
-                    }}
-                    onLoadEnd={() => {
-                        // WebView HTML loaded - waiting for models to initialize
-                    }}
+                    onLoadEnd={() => { }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
                         setLoading(false);
@@ -929,8 +978,8 @@ export default function Level2GesturesScreen() {
                 />
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#F59E0B" />
-                        <Text style={styles.loadingOverlayText}>Loading Level 2 Gestures...</Text>
+                        <ActivityIndicator size="large" color="#EF4444" />
+                        <Text style={styles.loadingOverlayText}>Loading Survival Phrases...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
                 )}
@@ -956,10 +1005,10 @@ export default function Level2GesturesScreen() {
                 contentContainerStyle={styles.gestureGridContent}
                 scrollEventThrottle={16}
             >
-                {LEVEL2_GESTURES.map((gesture) => {
+                {SURVIVAL_GESTURES.map((gesture) => {
                     const isCompleted = completedGestures.has(gesture);
                     const isActive = gesture === currentTarget && !isCompleted;
-                    const displayName = gesture.length > 12 ? gesture.substring(0, 10) + '…' : gesture;
+                    const displayName = DISPLAY_NAMES[gesture] || gesture;
 
                     return (
                         <View
@@ -981,7 +1030,7 @@ export default function Level2GesturesScreen() {
                                 <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#FFD700" />
+                                <Ionicons name="star" size={13} color="#EF4444" />
                             )}
                             {!isCompleted && !isActive && (
                                 <View style={styles.gestureStatusDot} />
@@ -994,7 +1043,9 @@ export default function Level2GesturesScreen() {
             {/* Bottom Detection Bar */}
             <View style={styles.resultBar}>
                 <Text style={styles.resultLabel}>Detected:</Text>
-                <Text style={styles.resultGesture}>{detectedGesture}</Text>
+                <Text style={styles.resultGesture}>
+                    {DISPLAY_NAMES[detectedGesture] || detectedGesture}
+                </Text>
 
                 {confidence > 0 && (
                     <View style={styles.confidenceContainer}>
@@ -1063,12 +1114,12 @@ export default function Level2GesturesScreen() {
                         </TouchableOpacity>
 
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#FFD700" />
+                            <Ionicons name="trophy" size={32} color="#EF4444" />
                         </View>
 
-                        <Text style={styles.modalTitle}>Level 2 Complete!</Text>
+                        <Text style={styles.modalTitle}>Survival Complete!</Text>
                         <Text style={styles.modalSubtitle}>
-                            All {LEVEL2_GESTURES.length} intermediate gestures mastered
+                            All {SURVIVAL_GESTURES.length} survival phrases mastered!
                         </Text>
 
                         {/* Stars */}
@@ -1087,7 +1138,7 @@ export default function Level2GesturesScreen() {
                                         <Ionicons
                                             name={isEarned ? 'star' : 'star-outline'}
                                             size={i === 1 ? 40 : 32}
-                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
+                                            color={isEarned ? '#EF4444' : '#D9E2EC'}
                                         />
                                     </Animated.View>
                                 );
@@ -1121,12 +1172,12 @@ export default function Level2GesturesScreen() {
                                         <View style={styles.resultItemDivider} />
                                         <View style={styles.resultItem}>
                                             <View style={styles.resultIconWrap}>
-                                                <Ionicons name="hand-left-outline" size={20} color="#0f3172" />
+                                                <Ionicons name="shield-checkmark-outline" size={20} color="#0f3172" />
                                             </View>
                                             <Text style={styles.resultValue}>
-                                                {results.totalCorrect}/{LEVEL2_GESTURES.length}
+                                                {results.totalCorrect}/{SURVIVAL_GESTURES.length}
                                             </Text>
-                                            <Text style={styles.resultGridLabel}>Gestures</Text>
+                                            <Text style={styles.resultGridLabel}>Phrases</Text>
                                         </View>
                                     </View>
 
@@ -1140,7 +1191,7 @@ export default function Level2GesturesScreen() {
                                             const items: { icon: any; color: string; text: string }[] = [];
 
                                             if (starRating === 3) {
-                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
+                                                items.push({ icon: 'sparkles', color: '#EF4444', text: "You're absolutely incredible at this!" });
                                             } else if (starRating === 2) {
                                                 items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
                                             } else {
@@ -1151,7 +1202,7 @@ export default function Level2GesturesScreen() {
                                                 items.push({
                                                     icon: 'alert-circle-outline',
                                                     color: '#E11D48',
-                                                    text: `Need more help with: ${results.strugglingGestures.join(', ')}`,
+                                                    text: `Need more help with: ${results.strugglingGestures.map(g => DISPLAY_NAMES[g] || g).join(', ')}`,
                                                 });
                                             }
 
@@ -1159,7 +1210,7 @@ export default function Level2GesturesScreen() {
                                                 items.push({
                                                     icon: 'checkmark-circle',
                                                     color: '#10B981',
-                                                    text: `You nailed: ${results.easyGestures.join(', ')}`,
+                                                    text: `You nailed: ${results.easyGestures.map(g => DISPLAY_NAMES[g] || g).join(', ')}`,
                                                 });
                                             }
 
@@ -1320,13 +1371,13 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#F59E0B',
+        backgroundColor: '#EF4444',
         borderRadius: 2,
     },
     targetText: {
         fontSize: 13,
         fontWeight: '800',
-        color: '#F59E0B',
+        color: '#EF4444',
         minWidth: 50,
         textAlign: 'center',
     },
@@ -1402,7 +1453,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     gestureSlot: {
-        minWidth: 70,
+        minWidth: 85,
         paddingHorizontal: 12,
         height: 64,
         borderRadius: 12,
@@ -1425,27 +1476,27 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
     },
     gestureActive: {
-        borderColor: '#F59E0B',
-        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        borderColor: '#EF4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.15)',
         transform: [{ scale: 1.05 }],
-        shadowColor: '#F59E0B',
+        shadowColor: '#EF4444',
         shadowOpacity: 0.55,
         shadowRadius: 10,
         elevation: 8,
     },
     gestureChar: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '700',
-        color: 'rgba(15, 49, 114, 0.35)',
+        color: 'rgba(15, 49, 114, 0.5)',
         textAlign: 'center',
     },
     gestureCharCompleted: {
         color: '#10B981',
-        fontSize: 11,
+        fontSize: 10,
     },
     gestureCharActive: {
-        color: '#92400E',
-        fontSize: 13,
+        color: '#991B1B',
+        fontSize: 12,
         fontWeight: '800',
     },
     gestureStatusDot: {
@@ -1501,12 +1552,12 @@ const styles = StyleSheet.create({
     },
     confidenceFill: {
         height: '100%',
-        backgroundColor: '#F59E0B',
+        backgroundColor: '#EF4444',
         borderRadius: 2,
     },
     resultConfidence: {
         fontSize: 11,
-        color: '#F59E0B',
+        color: '#EF4444',
         fontWeight: '700',
         minWidth: 32,
     },
@@ -1531,7 +1582,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#F59E0B',
+        borderColor: '#EF4444',
         minWidth: 80,
     },
     popupSenya: {
@@ -1589,9 +1640,9 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        backgroundColor: 'rgba(239, 68, 68, 0.15)',
         borderWidth: 2,
-        borderColor: 'rgba(245, 158, 11, 0.4)',
+        borderColor: 'rgba(239, 68, 68, 0.4)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -1625,7 +1676,7 @@ const styles = StyleSheet.create({
     starLabelPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        backgroundColor: 'rgba(239, 68, 68, 0.15)',
         paddingVertical: 5,
         paddingHorizontal: 12,
         borderRadius: 999,
@@ -1732,16 +1783,6 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 15,
         fontWeight: '700',
-    },
-    testButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(15, 49, 114, 0.1)',
     },
     headerLeft: {
         flexDirection: 'row',
