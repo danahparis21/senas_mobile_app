@@ -763,12 +763,14 @@ export default function LessonViewer() {
 
       if (isGestureQuestion) {
         // For gesture: success = 1, failure = 0 or null
+        // 🔥 FIX: If skipped or failed, set to null (not 0)
         isCorrect = selectedOptionId === 1;
-        finalSelectedOptionId = selectedOptionId;
+        // 🔥 Set to null for gesture questions to avoid foreign key error
+        finalSelectedOptionId = null;
       } else if (isDragDropQuestion) {
         // For drag_drop: success = 1, failure = 0 or null
         isCorrect = selectedOptionId === 1;
-        // ✅ IMPORTANT: Set to null for drag_drop questions to avoid foreign key error
+        // Set to null for drag_drop questions to avoid foreign key error
         finalSelectedOptionId = null;
       } else {
         // For multiple choice: check if the selected option is correct
