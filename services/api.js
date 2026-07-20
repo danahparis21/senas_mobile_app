@@ -720,4 +720,147 @@ export const api = {
         }
     },
 
+    /**
+     * 🎯 Check if student has a pending promotion
+     * GET /api/student/promotion
+     */
+    checkPromotion: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🎯 Checking for pending promotion...');
+
+            const response = await fetch(`${API_URL}/student/promotion`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🎯 Promotion check response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to check promotion');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error checking promotion:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 🎯 Mark promotion as viewed
+     * POST /api/student/promotion/{id}/viewed
+     */
+    markPromotionViewed: async (promotionId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🎯 Marking promotion ${promotionId} as viewed...`);
+
+            const response = await fetch(`${API_URL}/student/promotion/${promotionId}/viewed`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('✅ Promotion marked as viewed:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to mark promotion as viewed');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error marking promotion as viewed:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 🎯 Get promotion history
+     * GET /api/student/promotion/history
+     */
+    getPromotionHistory: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📜 Fetching promotion history...');
+
+            const response = await fetch(`${API_URL}/student/promotion/history`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📜 Promotion history response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch promotion history');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching promotion history:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 🎯 Check if student has pending promotion (lightweight)
+     * GET /api/student/promotion/status
+     */
+    hasPendingPromotion: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🔍 Checking pending promotion status...');
+
+            const response = await fetch(`${API_URL}/student/promotion/status`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🔍 Promotion status response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to check promotion status');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error checking promotion status:', error);
+            throw error;
+        }
+    },
 };

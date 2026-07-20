@@ -14,9 +14,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
+import PromotionModal from '../../components/PromotionModal';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -92,9 +95,20 @@ export default function Dashboard() {
   const flatListRef = useRef<FlatList>(null);
   const [levelName, setLevelName] = useState<string>('Novice Signer');
 
+  const [promotionVisible, setPromotionVisible] = useState(false);
+  const [promotionData, setPromotionData] = useState<any>(null);
+  const [checkingPromotion, setCheckingPromotion] = useState(false);
+  const [showEnvelope, setShowEnvelope] = useState(true);
+
+  // Animated values for disappearing envelope card
+  const envelopeHeight = useRef(new Animated.Value(134)).current;
+  const envelopeOpacity = useRef(new Animated.Value(1)).current;
+  const envelopeScale = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
     fetchStudentData();
     fetchTeacherLessons();
+    checkForPromotion();
   }, []);
 
   const fetchStudentData = async (): Promise<void> => {
@@ -138,6 +152,61 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  const checkForPromotion = async () => {
+    try {
+      setCheckingPromotion(true);
+      const response = await api.checkPromotion();
+
+      // ✅ The response IS the data directly from api.js
+      if (response.has_promotion) {
+        setPromotionData(response.promotion);
+        setShowEnvelope(true);
+        // Reset animation values
+        envelopeHeight.setValue(134);
+        envelopeOpacity.setValue(1);
+        envelopeScale.setValue(1);
+      }
+    } catch (error) {
+      console.error('Error checking promotion:', error);
+    } finally {
+      setCheckingPromotion(false);
+    }
+  };
+
+  const handlePromotionClose = async () => {
+    if (promotionData) {
+      try {
+        await api.markPromotionViewed(promotionData.id);
+      } catch (error) {
+        console.error('Error marking promotion viewed:', error);
+      }
+
+      // Smooth disappearing transition animation
+      Animated.parallel([
+        Animated.timing(envelopeOpacity, {
+          toValue: 0,
+          duration: 350,
+          useNativeDriver: false,
+        }),
+        Animated.timing(envelopeScale, {
+          toValue: 0.8,
+          duration: 350,
+          useNativeDriver: false,
+        }),
+        Animated.timing(envelopeHeight, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: false,
+        })
+      ]).start(() => {
+        setShowEnvelope(false);
+        setPromotionData(null);
+      });
+    }
+    setPromotionVisible(false);
+  };
+
 
   const fetchTeacherLessons = async (): Promise<void> => {
     try {
@@ -454,6 +523,72 @@ export default function Dashboard() {
           </View>
         </View>
 
+        {/* Promotion Envelope Card */}
+        {promotionData && showEnvelope && (
+          <Animated.View style={[
+            styles.section,
+            {
+              opacity: envelopeOpacity,
+              transform: [{ scale: envelopeScale }],
+              height: envelopeHeight,
+              overflow: 'hidden',
+            }
+          ]}>
+            <Pressable onPress={() => setPromotionVisible(true)}>
+              <BlurView intensity={50} tint="light" style={styles.envelopeCard}>
+                {/* Deep blue gradient fill */}
+                <LinearGradient
+                  colors={['rgba(37,99,235,0.92)', 'rgba(15,49,114,0.88)'] as const}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                {/* Subtle top-edge highlight shimmer */}
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.0)'] as const}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={styles.envelopeShimmer}
+                />
+
+                {/* Envelope flap triangle */}
+                <Svg width="100%" height={60} viewBox="0 0 400 60" style={styles.envelopeFlapSvg} preserveAspectRatio="none">
+                  {/* Filled glass flap */}
+                  <Path d="M0,0 L400,0 L400,5 L200,60 L0,5 Z" fill="rgba(255,255,255,0.10)" />
+                  {/* Flap crease line */}
+                  <Path d="M2,5 L200,58 L398,5" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={1.2} />
+                  {/* Top border glow */}
+                  <Path d="M0,0 L400,0" stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} />
+                </Svg>
+
+                {/* Glassy wax seal */}
+                <View style={styles.envelopeSeal}>
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.10)'] as const}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                  <Text style={styles.envelopeSealIcon}>🎓</Text>
+                </View>
+
+                {/* Text + arrow row */}
+                <View style={styles.envelopeMain}>
+                  <View style={styles.envelopeTextContent}>
+                    <Text style={styles.envelopeTitle}>You have been promoted! 🎉</Text>
+                    <Text style={styles.envelopeSubtitle}>Tap to open your certificate & report card</Text>
+                  </View>
+                  <View style={styles.envelopeArrowBox}>
+                    <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5">
+                      <Polyline points="9 18 15 12 9 6" />
+                    </Svg>
+                  </View>
+                </View>
+              </BlurView>
+            </Pressable>
+          </Animated.View>
+        )}
+
         {/* Uploaded by Teacher Section - Show Next Recommended Lesson */}
         {!loadingLessons && carouselLessons.length > 0 && (
           <View style={styles.section}>
@@ -626,6 +761,15 @@ export default function Dashboard() {
         </View>
 
       </ScrollView>
+
+
+
+      <PromotionModal
+        visible={promotionVisible}
+        promotionData={promotionData}
+        onClose={handlePromotionClose}
+        studentName={studentName}
+      />
     </SafeAreaView>
   );
 }
@@ -861,5 +1005,96 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9AA1B0',
     fontWeight: '600',
+  },
+  envelopeCard: {
+    borderRadius: 20,
+    paddingTop: 68,
+    paddingBottom: 12,
+    paddingHorizontal: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.30,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  envelopeShimmer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 52,
+    borderRadius: 20,
+  },
+  envelopeStripeTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+  },
+  envelopeStripeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+  },
+  envelopeFlapSvg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  envelopeSeal: {
+    position: 'absolute',
+    top: 36,
+    left: '50%',
+    marginLeft: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  envelopeSealIcon: {
+    fontSize: 16,
+  },
+  envelopeMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 6,
+  },
+  envelopeTextContent: {
+    flex: 1,
+  },
+  envelopeTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 3,
+    letterSpacing: 0.1,
+  },
+  envelopeSubtitle: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.75)',
+  },
+  envelopeArrowBox: {
+    paddingLeft: 8,
   },
 });
