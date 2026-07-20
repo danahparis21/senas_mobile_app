@@ -13,6 +13,8 @@ import {
   Animated,
   RefreshControl,
   ActivityIndicator,
+  Modal,
+  Alert
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
@@ -300,6 +302,135 @@ function CarouselDots({ currentIndex, total }: { currentIndex: number; total: nu
   );
 }
 
+// Challenge Modal Component
+function ChallengeModal({
+  visible,
+  onClose,
+  onSelectMode,
+  isLoading,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelectMode: (mode: 'master' | 'infinite') => void;
+  isLoading?: boolean;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>🏆 Gesture Challenge</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={24} color="#0F3172" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.modalSubtitle}>
+            Choose your challenge mode and test your skills!
+          </Text>
+
+          {/* Master Mode Option */}
+          <TouchableOpacity
+            style={[styles.modeOption, styles.masterMode]}
+            onPress={() => onSelectMode('master')}
+            disabled={isLoading}
+          >
+            <View style={styles.modeIconContainer}>
+              <LinearGradient
+                colors={['#FF6B6B', '#FF8E8E']}
+                style={styles.modeIconGradient}
+              >
+                <Ionicons name="trophy" size={28} color="#FFF" />
+              </LinearGradient>
+            </View>
+            <View style={styles.modeContent}>
+              <View style={styles.modeHeader}>
+                <Text style={styles.modeTitle}>Master Mode</Text>
+                <View style={styles.modeBadge}>
+                  <Text style={styles.modeBadgeText}>Recommended</Text>
+                </View>
+              </View>
+              <Text style={styles.modeDescription}>
+                Focus on signs you need to improve. Master each sign one by one.
+              </Text>
+              <View style={styles.modeFeatures}>
+                <View style={styles.modeFeature}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.modeFeatureText}>Personalized learning</Text>
+                </View>
+                <View style={styles.modeFeature}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.modeFeatureText}>Track your progress</Text>
+                </View>
+                <View style={styles.modeFeature}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.modeFeatureText}>Complete all signs</Text>
+                </View>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#6B7280" style={styles.modeArrow} />
+          </TouchableOpacity>
+
+          {/* Infinite Mode Option */}
+          <TouchableOpacity
+            style={[styles.modeOption, styles.infiniteMode]}
+            onPress={() => onSelectMode('infinite')}
+            disabled={isLoading}
+          >
+            <View style={styles.modeIconContainer}>
+              <LinearGradient
+                colors={['#4ECDC4', '#45B7AA']}
+                style={styles.modeIconGradient}
+              >
+                <Ionicons name="infinite" size={28} color="#FFF" />
+              </LinearGradient>
+            </View>
+            <View style={styles.modeContent}>
+              <Text style={styles.modeTitle}>Infinite Mode</Text>
+              <Text style={styles.modeDescription}>
+                Practice random signs continuously. No pressure, just practice!
+              </Text>
+              <View style={styles.modeFeatures}>
+                <View style={styles.modeFeature}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.modeFeatureText}>Endless practice</Text>
+                </View>
+                <View style={styles.modeFeature}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.modeFeatureText}>Build muscle memory</Text>
+                </View>
+                <View style={styles.modeFeature}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.modeFeatureText}>Stop anytime</Text>
+                </View>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#6B7280" style={styles.modeArrow} />
+          </TouchableOpacity>
+
+          {isLoading && (
+            <View style={styles.modalLoadingContainer}>
+              <ActivityIndicator size="small" color="#0F3172" />
+              <Text style={styles.modalLoadingText}>Starting challenge...</Text>
+            </View>
+          )}
+
+          <TouchableOpacity onPress={onClose} style={styles.modalCancelButton}>
+            <Text style={styles.modalCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+
 export default function GestureMain() {
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -308,6 +439,8 @@ export default function GestureMain() {
   const [totalXp, setTotalXp] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [challengeModalVisible, setChallengeModalVisible] = useState(false);
+  const [challengeLoading, setChallengeLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   // Fetch gesture progress from API
@@ -383,6 +516,56 @@ export default function GestureMain() {
     });
   };
 
+  const handleChallengeMode = async (mode: 'master' | 'infinite') => {
+    setChallengeLoading(true);
+
+    try {
+      const unlockedModules = modules.filter(m => !m.locked);
+
+      if (unlockedModules.length === 0) {
+        setChallengeLoading(false);
+        setChallengeModalVisible(false);
+        // Show alert
+        Alert.alert('No Modules', 'Complete at least one module to start a challenge!');
+        return;
+      }
+
+      // Determine which module to use
+      // Priority: alphabet → numbers → greetings → survival
+      const priorityOrder = ['alphabet', 'numbers', 'greetings', 'survival'];
+      let selectedModule = unlockedModules.find(m => m.category === 'alphabet');
+
+      if (!selectedModule) {
+        for (const category of priorityOrder) {
+          const found = unlockedModules.find(m => m.category === category);
+          if (found) {
+            selectedModule = found;
+            break;
+          }
+        }
+      }
+
+      if (!selectedModule) {
+        selectedModule = unlockedModules[0];
+      }
+
+      // Navigate to challenge screen
+      router.push({
+        pathname: '/gesture/challenge',
+        params: {
+          mode: mode,
+          moduleType: selectedModule.category,
+          moduleId: selectedModule.id,
+        },
+      });
+
+      setChallengeModalVisible(false);
+    } catch (error) {
+      console.error('❌ Challenge start error:', error);
+    } finally {
+      setChallengeLoading(false);
+    }
+  };
   // Filter modules based on category
   const filteredModules = selectedCategory === 'all'
     ? modules
@@ -544,13 +727,27 @@ export default function GestureMain() {
             )}
           </View>
 
-          {/* Quick Access */}
           <View style={styles.quickAccess}>
             <Text style={styles.sectionTitle}>Quick Start</Text>
             <View style={styles.quickAccessGrid}>
+              {/* Challenge Button */}
+              <TouchableOpacity
+                style={[styles.quickAccessItem, styles.challengeButton]}
+                onPress={() => setChallengeModalVisible(true)}
+              >
+                <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
+                  <Ionicons name="trophy" size={28} color="#FFD700" />
+                </View>
+                <Text style={[styles.quickAccessText, styles.challengeText]}>Challenge</Text>
+                <View style={styles.challengeBadge}>
+                  <Text style={styles.challengeBadgeText}>NEW</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* First unlocked non-alphabet module */}
               {modules
-                .filter(m => !m.locked && m.category === 'alphabet')
-                .slice(0, 2)
+                .filter(m => !m.locked && m.category !== 'alphabet')
+                .slice(0, 1)
                 .map((module) => (
                   <TouchableOpacity
                     key={module.id}
@@ -564,6 +761,7 @@ export default function GestureMain() {
                   </TouchableOpacity>
                 ))}
 
+              {/* Next locked module */}
               {modules
                 .filter(m => m.locked)
                 .slice(0, 1)
@@ -601,6 +799,14 @@ export default function GestureMain() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Challenge Modal */}
+      <ChallengeModal
+        visible={challengeModalVisible}
+        onClose={() => setChallengeModalVisible(false)}
+        onSelectMode={handleChallengeMode}
+        isLoading={challengeLoading}
+      />
     </LinearGradient>
   );
 }
@@ -1062,4 +1268,173 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    padding: 24,
+    width: '100%',
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0F3172',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    position: 'relative',
+  },
+  masterMode: {
+    borderColor: '#FF6B6B',
+    backgroundColor: '#FFF5F5',
+  },
+  infiniteMode: {
+    borderColor: '#4ECDC4',
+    backgroundColor: '#F0FDFA',
+  },
+  modeIconContainer: {
+    marginRight: 14,
+  },
+  modeIconGradient: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeContent: {
+    flex: 1,
+  },
+  modeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  modeTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0F3172',
+  },
+  modeBadge: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  modeBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#0F3172',
+    letterSpacing: 0.5,
+  },
+  modeDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+  modeFeatures: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  modeFeature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  modeFeatureText: {
+    fontSize: 11,
+    color: '#4B7BBB',
+    fontWeight: '500',
+  },
+  modeArrow: {
+    marginLeft: 4,
+  },
+  modalLoadingContainer: {
+    marginTop: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  modalLoadingText: {
+    fontSize: 14,
+    color: '#4B7BBB',
+    fontWeight: '600',
+  },
+  modalCancelButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  modalCancelText: {
+    fontSize: 15,
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
+
+  // Quick Access - Challenge Button
+  challengeButton: {
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    backgroundColor: '#FFFDF0',
+    position: 'relative',
+  },
+  challengeText: {
+    color: '#D97706',
+  },
+  challengeBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  challengeBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.5,
+  },
+
 });

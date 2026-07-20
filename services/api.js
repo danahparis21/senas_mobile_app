@@ -646,5 +646,78 @@ export const api = {
         }
     },
 
+    /**
+   * Get weak signs for a student
+   */
+    getWeakSigns: async (moduleName) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📊 Calling API: ${API_URL}/student/weak-signs?module_name=${moduleName}`);
+
+            const response = await fetch(`${API_URL}/student/weak-signs?module_name=${moduleName}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📊 Weak signs API response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch weak signs');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching weak signs:', error);
+            throw error;
+        }
+    },
+
+    /**
+ * Award XP for challenge mode (no cap)
+ */
+    awardChallengeXp: async (moduleName, xpEarned, starRating) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`⭐ Awarding Challenge XP for ${moduleName} with ${starRating} star(s)...`);
+
+            const response = await fetch(`${API_URL}/student/award-challenge-xp`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    module_name: moduleName,
+                    xp_earned: xpEarned,
+                    star_rating: starRating,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to award challenge XP');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error awarding challenge XP:', error);
+            throw error;
+        }
+    },
 
 };
