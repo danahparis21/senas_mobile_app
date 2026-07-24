@@ -8,4 +8,5 @@ config.resolver.assetExts.push('tflite');
 // Enable worklets support
 config.transformer.unstable_allowRequireContext = true;
 
+
 module.exports = config;

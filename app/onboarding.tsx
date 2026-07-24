@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, SafeAreaView, Pressable } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, Dimensions, SafeAreaView, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { Colors } from '../constants/Colors';
 import { GlassCard } from '../components/ui/GlassCard';
 
 const { width } = Dimensions.get('window');
@@ -60,6 +59,7 @@ const SLIDES = [
 export default function Onboarding() {
   const router = useRouter();
   const [current, setCurrent] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
   const slide = SLIDES[current];
   const isLast = current === SLIDES.length - 1;
 
@@ -67,13 +67,67 @@ export default function Onboarding() {
     if (isLast) {
       router.replace('/role');
     } else {
-      setCurrent(current + 1);
+      const nextIndex = current + 1;
+      setCurrent(nextIndex);
+      flatListRef.current?.scrollToIndex({
+        index: nextIndex,
+        animated: true,
+        viewPosition: 0.5
+      });
     }
   };
 
   const back = () => {
-    if (current > 0) setCurrent(current - 1);
+    if (current > 0) {
+      const prevIndex = current - 1;
+      setCurrent(prevIndex);
+      flatListRef.current?.scrollToIndex({
+        index: prevIndex,
+        animated: true,
+        viewPosition: 0.5
+      });
+    }
   };
+
+  const onScroll = (event: any) => {
+    const offset = event.nativeEvent.contentOffset.x;
+    // Calculate which slide is centered based on the slide width
+    const slideWidth = width;
+    const index = Math.round(offset / slideWidth);
+    if (index !== current && index >= 0 && index < SLIDES.length) {
+      setCurrent(index);
+    }
+  };
+
+  const renderSlide = ({ item }: { item: typeof SLIDES[0] }) => (
+    <View style={styles.slideContainer}>
+      <GlassCard style={styles.card}>
+        <View style={[styles.cardTopStrip, { backgroundColor: item.accent }]} />
+
+        <View style={[styles.tagContainer, { backgroundColor: item.accentLight }]}>
+          <View style={[styles.tagDot, { backgroundColor: item.accent }]} />
+          <Text style={[styles.tagText, { color: item.accent }]}>{item.tag.toUpperCase()}</Text>
+        </View>
+
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.body}>{item.body}</Text>
+
+        {item.highlights && (
+          <View style={styles.highlightsContainer}>
+            {item.highlights.map((h, i) => (
+              <View key={i} style={[styles.highlightChip, { backgroundColor: item.accentLight, borderColor: `${item.accent}22` }]}>
+                <Text style={[styles.highlightText, { color: item.accent }]}>✦ {h}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.imageContainer}>
+          <Image source={item.senya} style={styles.senyaImage} contentFit="contain" />
+        </View>
+      </GlassCard>
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: slide.bg }]}>
@@ -103,33 +157,26 @@ export default function Onboarding() {
         ))}
       </View>
 
-      {/* Main Card */}
+      {/* Swipeable Main Card - Using FlatList */}
       <View style={styles.mainContent}>
-        <GlassCard style={styles.card}>
-          <View style={[styles.cardTopStrip, { backgroundColor: slide.accent }]} />
-          
-          <View style={[styles.tagContainer, { backgroundColor: slide.accentLight }]}>
-            <View style={[styles.tagDot, { backgroundColor: slide.accent }]} />
-            <Text style={[styles.tagText, { color: slide.accent }]}>{slide.tag.toUpperCase()}</Text>
-          </View>
-
-          <Text style={styles.title}>{slide.title}</Text>
-          <Text style={styles.body}>{slide.body}</Text>
-
-          {slide.highlights && (
-            <View style={styles.highlightsContainer}>
-              {slide.highlights.map((h, i) => (
-                <View key={i} style={[styles.highlightChip, { backgroundColor: slide.accentLight, borderColor: `${slide.accent}22` }]}>
-                  <Text style={[styles.highlightText, { color: slide.accent }]}>✦ {h}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          <View style={styles.imageContainer}>
-            <Image source={slide.senya} style={styles.senyaImage} contentFit="contain" />
-          </View>
-        </GlassCard>
+        <FlatList
+          ref={flatListRef}
+          data={SLIDES}
+          renderItem={renderSlide}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          keyExtractor={(item) => item.id.toString()}
+          decelerationRate="fast"
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+          getItemLayout={(data, index) => ({
+            length: width,
+            offset: width * index,
+            index,
+          })}
+        />
       </View>
 
       {/* Speech Bubble */}
@@ -184,8 +231,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   dot: { height: 8, borderRadius: 99 },
-  mainContent: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
-  card: { flex: 1, padding: 20, paddingTop: 22 },
+  mainContent: { flex: 1, paddingVertical: 16 },
+  slideContainer: {
+    width: width,
+    paddingHorizontal: 16,
+    flex: 1,
+  },
+  card: {
+    flex: 1,
+    padding: 20,
+    paddingTop: 22,
+  },
   cardTopStrip: {
     position: 'absolute',
     top: 0,

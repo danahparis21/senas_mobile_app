@@ -34,7 +34,7 @@ interface Lesson {
   has_quiz: boolean;
   total_steps: number;
   is_locked?: boolean;
-  is_next_lesson?: boolean; // 🔥 ADD THIS
+  is_next_lesson?: boolean;
   score?: number | null;
   progress: {
     current_step: number;
@@ -101,15 +101,78 @@ export default function Dashboard() {
   const [showEnvelope, setShowEnvelope] = useState(true);
 
   // Animated values for disappearing envelope card
-  const envelopeHeight = useRef(new Animated.Value(134)).current;
+  const envelopeHeight = useRef(new Animated.Value(92)).current;
   const envelopeOpacity = useRef(new Animated.Value(1)).current;
   const envelopeScale = useRef(new Animated.Value(1)).current;
+
+  // Pulsing animation values - using useNativeDriver: false for style properties that don't support native driver
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const glowOpacity = useRef(new Animated.Value(0.3)).current;
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchStudentData();
     fetchTeacherLessons();
     checkForPromotion();
+
+    // Start pulsing animation
+    startPulseAnimation();
   }, []);
+
+  const startPulseAnimation = () => {
+    // Pulse animation (scale) - uses native driver
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.03,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Glow animation (opacity) - uses native driver: false since we're not animating native-only props
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowOpacity, {
+          toValue: 0.8,
+          duration: 1000,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowOpacity, {
+          toValue: 0.3,
+          duration: 1000,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+
+    // Shimmer sweep animation - light diagonal streak passing across the card
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
 
   const fetchStudentData = async (): Promise<void> => {
     try {
@@ -131,7 +194,6 @@ export default function Dashboard() {
         if (student?.level !== undefined && student?.level !== null) {
           setLevel(student.level);
         }
-        // ✅ ADD THIS - Get level name from stored data if available
         if (student?.level_name) {
           setLevelName(student.level_name);
         }
@@ -158,12 +220,11 @@ export default function Dashboard() {
       setCheckingPromotion(true);
       const response = await api.checkPromotion();
 
-      // ✅ The response IS the data directly from api.js
       if (response.has_promotion) {
         setPromotionData(response.promotion);
         setShowEnvelope(true);
         // Reset animation values
-        envelopeHeight.setValue(134);
+        envelopeHeight.setValue(92);
         envelopeOpacity.setValue(1);
         envelopeScale.setValue(1);
       }
@@ -229,7 +290,6 @@ export default function Dashboard() {
           if (response.student.level !== undefined && response.student.level !== null) {
             setLevel(response.student.level);
           }
-          // ✅ ADD THIS - Get the level name from the API
           if (response.student.level_name) {
             setLevelName(response.student.level_name);
           }
@@ -380,18 +440,6 @@ export default function Dashboard() {
     );
   }
 
-  // const getLevelDisplay = (levelNum: number): string => {
-  //   const levelNames: Record<number, string> = {
-  //     1: 'Novice Signer',
-  //     2: 'Beginner Signer',
-  //     3: 'Intermediate Signer',
-  //     4: 'Advanced Signer',
-  //     5: 'Expert Signer',
-  //   };
-  //   return levelNames[levelNum] || 'Novice Signer';
-  // };
-
-
   // Get the next recommended lesson (first unlocked, not-completed lesson)
   const nextRecommendedLesson = teacherLessons
     .filter(lesson => {
@@ -403,18 +451,13 @@ export default function Dashboard() {
 
   const carouselLessons = teacherLessons
     .filter(lesson => {
-      // 🔥 A lesson is LOCKED only if:
-      // 1. it's_locked is true
-      // 2. AND it's NOT the next lesson (is_next_lesson !== true)
       const isActuallyLocked = lesson.is_locked === true && lesson.is_next_lesson !== true;
 
       if (isActuallyLocked) return false;
 
-      // Show if not completed
       const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
       if (!isCompleted) return true;
 
-      // Show if completed but not perfect (score < 100)
       const score = lesson.score ?? lesson.progress?.quiz_score ?? 0;
       return score < 100;
     })
@@ -523,7 +566,7 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Promotion Envelope Card */}
+        {/* Promotion Banner Card - Clean glassmorphic design */}
         {promotionData && showEnvelope && (
           <Animated.View style={[
             styles.section,
@@ -532,59 +575,93 @@ export default function Dashboard() {
               transform: [{ scale: envelopeScale }],
               height: envelopeHeight,
               overflow: 'hidden',
+              marginBottom: 8,
             }
           ]}>
-            <Pressable onPress={() => setPromotionVisible(true)}>
-              <BlurView intensity={50} tint="light" style={styles.envelopeCard}>
-                {/* Deep blue gradient fill */}
+            <Pressable
+              onPress={() => setPromotionVisible(true)}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.92 : 1,
+              })}
+            >
+              <Animated.View style={[
+                styles.envelopeCardEnhanced,
+                { transform: [{ scale: pulseAnim }] }
+              ]}>
+                {/* Colorful gradient base */}
                 <LinearGradient
-                  colors={['rgba(37,99,235,0.92)', 'rgba(15,49,114,0.88)'] as const}
+                  colors={['#0f172a', '#1d4ed8', '#3b82f6', '#38bdf8'] as const}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
-                {/* Subtle top-edge highlight shimmer */}
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.0)'] as const}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={styles.envelopeShimmer}
+
+                {/* Frosted glass layer on top of the gradient */}
+                <BlurView intensity={35} tint="light" style={StyleSheet.absoluteFill} />
+                <View style={styles.envelopeGlassTint} />
+
+                {/* Animated glowing border */}
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.envelopeBorderGlow, { opacity: glowOpacity }]}
                 />
 
-                {/* Envelope flap triangle */}
-                <Svg width="100%" height={60} viewBox="0 0 400 60" style={styles.envelopeFlapSvg} preserveAspectRatio="none">
-                  {/* Filled glass flap */}
-                  <Path d="M0,0 L400,0 L400,5 L200,60 L0,5 Z" fill="rgba(255,255,255,0.10)" />
-                  {/* Flap crease line */}
-                  <Path d="M2,5 L200,58 L398,5" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={1.2} />
-                  {/* Top border glow */}
-                  <Path d="M0,0 L400,0" stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} />
-                </Svg>
+                {/* Light sweep shimmer */}
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.envelopeShimmerSweep,
+                    {
+                      transform: [
+                        {
+                          translateX: shimmerAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-220, 260],
+                          }),
+                        },
+                        { rotate: '18deg' },
+                      ],
+                    },
+                  ]}
+                />
 
-                {/* Glassy wax seal */}
-                <View style={styles.envelopeSeal}>
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.10)'] as const}
-                    style={StyleSheet.absoluteFill}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  />
-                  <Text style={styles.envelopeSealIcon}>🎓</Text>
-                </View>
-
-                {/* Text + arrow row */}
-                <View style={styles.envelopeMain}>
-                  <View style={styles.envelopeTextContent}>
-                    <Text style={styles.envelopeTitle}>You have been promoted! 🎉</Text>
-                    <Text style={styles.envelopeSubtitle}>Tap to open your certificate & report card</Text>
+                {/* Content */}
+                <View style={styles.envelopeRow}>
+                  <View style={styles.envelopeIconWrap}>
+                    <View style={styles.envelopeIconGlow} />
+                    <LinearGradient
+                      colors={['#fde68a', '#f59e0b', '#d97706'] as const}
+                      start={{ x: 0.2, y: 0.1 }}
+                      end={{ x: 0.8, y: 0.9 }}
+                      style={styles.envelopeIconCircle}
+                    >
+                      <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <Path
+                          d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                          fill="#FFFBEB"
+                          stroke="#FDE68A"
+                          strokeWidth="0.5"
+                        />
+                      </Svg>
+                    </LinearGradient>
                   </View>
-                  <View style={styles.envelopeArrowBox}>
-                    <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5">
+
+                  <View style={styles.envelopeTextContent}>
+                    <Text style={styles.envelopeTitle} numberOfLines={1}>
+                      You leveled up! 🎉
+                    </Text>
+                    <Text style={styles.envelopeSubtitle} numberOfLines={1}>
+                      Tap to open your certificate
+                    </Text>
+                  </View>
+
+                  <View style={styles.envelopeArrowCircle}>
+                    <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <Polyline points="9 18 15 12 9 6" />
                     </Svg>
                   </View>
                 </View>
-              </BlurView>
+              </Animated.View>
             </Pressable>
           </Animated.View>
         )}
@@ -1022,14 +1099,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 6,
   },
-  envelopeShimmer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 52,
-    borderRadius: 20,
-  },
+
   envelopeStripeTop: {
     position: 'absolute',
     top: 0,
@@ -1044,12 +1114,7 @@ const styles = StyleSheet.create({
     right: 0,
     height: 5,
   },
-  envelopeFlapSvg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
+
   envelopeSeal: {
     position: 'absolute',
     top: 36,
@@ -1073,28 +1138,96 @@ const styles = StyleSheet.create({
   envelopeSealIcon: {
     fontSize: 16,
   },
-  envelopeMain: {
+
+  envelopeCardEnhanced: {
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    justifyContent: 'center',
+    minHeight: 88,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(191, 219, 254, 0.35)',
+  },
+  envelopeGlassTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  envelopeBorderGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(96, 165, 250, 0.85)',
+  },
+  envelopeShimmerSweep: {
+    position: 'absolute',
+    top: -60,
+    left: 0,
+    width: 60,
+    height: 220,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  envelopeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 6,
+  },
+  envelopeIconWrap: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  envelopeIconGlow: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(251, 191, 36, 0.35)',
+  },
+  envelopeIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   envelopeTextContent: {
     flex: 1,
+    paddingRight: 8,
   },
   envelopeTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#ffffff',
+    fontSize: 15.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginBottom: 3,
     letterSpacing: 0.1,
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   envelopeSubtitle: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.1,
   },
-  envelopeArrowBox: {
-    paddingLeft: 8,
+  envelopeArrowCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
   },
 });
