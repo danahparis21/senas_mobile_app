@@ -9,6 +9,7 @@ import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { GlassCard } from '../../components/ui/GlassCard';
+import PromotionModal from '../../components/PromotionModal';
 
 // ── SVG Icons ──────────────────────────────────────────────────────────
 function BellIcon({ size = 20 }: { size?: number }) {
@@ -68,6 +69,15 @@ function InfoIcon({ size = 20 }: { size?: number }) {
     </Svg>
   );
 }
+function CertificateIcon({ size = 20 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="8" r="6" stroke="#2563EB" strokeWidth="2" />
+      <Path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M9.5 8l1.7 1.7L14.5 6" stroke="#2563EB" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
 function ChevronIcon() {
   return (
     <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -94,6 +104,17 @@ function formatLearningGoal(goal: string) {
 function formatPracticeTime(time: string) {
   if (!time) return 'Not set';
   return time.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function formatPromotionLabel(fromLevel: string, toLevel: string) {
+  return `${fromLevel} Level Promoted to ${toLevel}`;
+}
+
+function formatDocDate(dateStr: string) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // ── Sign Out Modal ──────────────────────────────────────────────────────
@@ -213,8 +234,10 @@ export default function Profile() {
   const [streakDays, setStreakDays] = useState(0);
   const [totalLessons, setTotalLessons] = useState(0);
   const [totalBadges, setTotalBadges] = useState(0);
-  const [progressData, setProgressData] = useState<{ name: string, pct: number, color: string }[]>([]);
   const [recentBadges, setRecentBadges] = useState<{ src: any, label: string }[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
 
   // Settings state
   const [notifs, setNotifs] = useState(true);
@@ -274,29 +297,6 @@ export default function Profile() {
         const earnedBadges = Math.min(Math.floor((student?.total_xp || 0) / 50) + 1, 8);
         setTotalBadges(earnedBadges > 0 ? Math.min(earnedBadges, 8) : 0);
 
-        // Build progress data
-        const progressItems = response.lessons?.slice(0, 4).map((lesson: any, index: number) => {
-          const progress = lesson.progress;
-          const pct = progress ? Math.round((progress.current_step / lesson.total_steps) * 100) : 0;
-          const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
-          return {
-            name: lesson.title,
-            pct: pct,
-            color: colors[index % colors.length]
-          };
-        }) || [];
-
-        while (progressItems.length < 4) {
-          const placeholders = ['FSL Alphabet', 'Greetings', 'Numbers', 'Classroom Words'];
-          const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
-          progressItems.push({
-            name: placeholders[progressItems.length],
-            pct: 0,
-            color: colors[progressItems.length]
-          });
-        }
-        setProgressData(progressItems);
-
         // ── FIXED: Set recent badges ──
         const badgeData = [
           { xp: 0, label: 'First Step', src: require('../../assets/images/img/first_step.png') },
@@ -323,6 +323,17 @@ export default function Profile() {
         setRecentBadges(earnedBadgeList);
       }
 
+      // Fetch promotion history — each record is a "document" the student can view
+      try {
+        const promoResponse = await api.getPromotionHistory();
+        // ✅ Look for the 'history' key that your API returns
+        const promotions = promoResponse?.history || [];
+        setDocuments(promotions);
+        console.log('✅ Documents set:', promotions.length); // Debug log
+      } catch (error) {
+        console.log('No promotion history found');
+      }
+
       // Get learning path
       try {
         const pathResponse = await api.getLearningPath();
@@ -339,6 +350,71 @@ export default function Profile() {
       console.error('Error fetching profile data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenDocument = async (promotion: any) => {
+    try {
+      console.log('📜 Opening document:', promotion);
+
+      // Fetch full promotion details with summary
+      const response = await api.getPromotionDetails(promotion.id);
+      console.log('📜 Full promotion details:', response);
+
+      // The API returns the promotion data directly
+      const fullPromotion = response?.promotion || response;
+
+      // Ensure we have all required fields
+      const promotionWithSummary = {
+        ...fullPromotion,
+        // Use the summary from the API if available
+        summary: fullPromotion.summary || {
+          quizzes_taken: 0,
+          quizzes_passed: 0,
+          avg_quiz_score: 0,
+          lessons_completed: 0,
+          gestures_attempted: 0,
+          total_xp: promotion.xp_at_promotion || 0,
+          accuracy: 0
+        },
+        // Ensure we have all the fields the modal expects
+        id: fullPromotion.id || promotion.id,
+        from_level: fullPromotion.from_level || promotion.from_level,
+        to_level: fullPromotion.to_level || promotion.to_level,
+        promotion_date: fullPromotion.promotion_date || promotion.promoted_at || new Date().toISOString(),
+        title: fullPromotion.title || `${promotion.from_level} to ${promotion.to_level}`,
+        subtitle: fullPromotion.subtitle || 'Promotion Achievement',
+        message: fullPromotion.message || 'Congratulations on your promotion!',
+        badge_icon: fullPromotion.badge_icon || '🎓',
+        was_forced: fullPromotion.was_forced || false,
+      };
+
+      setSelectedPromotion(promotionWithSummary);
+      setShowPromotionModal(true);
+    } catch (error) {
+      console.error('❌ Error fetching promotion details:', error);
+
+      // Fallback: Use basic data with default summary
+      const promotionWithSummary = {
+        ...promotion,
+        summary: {
+          quizzes_taken: 0,
+          quizzes_passed: 0,
+          avg_quiz_score: 0,
+          lessons_completed: 0,
+          gestures_attempted: 0,
+          total_xp: promotion.xp_at_promotion || 0,
+          accuracy: 0
+        },
+        title: `${promotion.from_level} to ${promotion.to_level}`,
+        subtitle: 'Promotion Achievement',
+        message: 'Congratulations on your promotion!',
+        badge_icon: '🎓',
+        promotion_date: promotion.promoted_at || new Date().toISOString()
+      };
+
+      setSelectedPromotion(promotionWithSummary);
+      setShowPromotionModal(true);
     }
   };
 
@@ -372,6 +448,14 @@ export default function Profile() {
         onClose={() => setShowSignOutModal(false)}
         onConfirm={() => { setShowSignOutModal(false); router.replace('/onboarding'); }}
       />
+      {selectedPromotion && (
+        <PromotionModal
+          visible={showPromotionModal}
+          promotionData={selectedPromotion}
+          onClose={() => setShowPromotionModal(false)}
+          studentName={userName}  // ✅ Use the actual student name from state
+        />
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         {/* ── Header ── */}
@@ -470,24 +554,6 @@ export default function Profile() {
           </GlassCard>
         </View>
 
-        {/* ── Learning Progress ── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Learning Progress</Text>
-          <GlassCard style={styles.progressCard}>
-            {progressData.map((item, i) => (
-              <View key={i} style={[styles.progressItem, i < progressData.length - 1 && styles.progressItemBorder]}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressName}>{item.name}</Text>
-                  <Text style={[styles.progressPct, { color: item.color }]}>{item.pct}%</Text>
-                </View>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${item.pct}%` as any, backgroundColor: item.color }]} />
-                </View>
-              </View>
-            ))}
-          </GlassCard>
-        </View>
-
         {/* ── Recent Badges ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Badges</Text>
@@ -500,6 +566,42 @@ export default function Profile() {
                 </View>
               ))}
             </View>
+          </GlassCard>
+        </View>
+
+        {/* ── Documents ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Documents</Text>
+          <GlassCard style={styles.documentsCard}>
+            {documents.length === 0 ? (
+              <View style={styles.docsEmpty}>
+                <CertificateIcon size={28} />
+                <Text style={styles.docsEmptyText}>
+                  No documents yet. Keep learning to earn your first certificate!
+                </Text>
+              </View>
+            ) : (
+              documents.map((doc, i) => (
+                <Pressable
+                  key={doc.id ?? i}
+                  style={[styles.docRow, i < documents.length - 1 && styles.settingBorder]}
+                  onPress={() => handleOpenDocument(doc)}
+                >
+                  <View style={styles.settingIconBox}>
+                    <CertificateIcon size={20} />
+                  </View>
+                  <View style={styles.settingText}>
+                    <Text style={styles.settingLabel}>
+                      {formatPromotionLabel(doc.from_level, doc.to_level)}
+                    </Text>
+                    <Text style={styles.settingSub}>
+                      {formatDocDate(doc.promoted_at)}
+                    </Text>
+                  </View>
+                  <ChevronIcon />
+                </Pressable>
+              ))
+            )}
           </GlassCard>
         </View>
 
@@ -603,22 +705,18 @@ const styles = StyleSheet.create({
   learningPathValue: { fontSize: 15, fontWeight: '700', color: '#0f3172', marginTop: 2 },
   learningPathDivider: { height: 1, backgroundColor: 'rgba(15,49,114,0.08)', marginVertical: 12 },
 
-  // Progress
-  progressCard: { padding: 20 },
-  progressItem: { paddingBottom: 14, marginBottom: 14 },
-  progressItemBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(15,49,114,0.08)' },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  progressName: { fontSize: 13, fontWeight: '700', color: '#1F2937' },
-  progressPct: { fontSize: 12, fontWeight: '700' },
-  progressTrack: { backgroundColor: 'rgba(15,49,114,0.10)', borderRadius: 99, height: 6, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 99 },
-
   // Badges
   badgesCard: { padding: 20 },
   badgesRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
   badgeItem: { alignItems: 'center', gap: 4 },
   badgeImg: { width: 48, height: 48 },
   badgeLabel: { fontSize: 10, color: '#6B7280', textAlign: 'center' },
+
+  // Documents
+  documentsCard: { overflow: 'hidden', padding: 0 },
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 18 },
+  docsEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 32, paddingHorizontal: 24, gap: 10 },
+  docsEmptyText: { fontSize: 13, color: '#6B7280', fontWeight: '500', textAlign: 'center', lineHeight: 19 },
 
   // Settings
   settingsCard: { overflow: 'hidden', padding: 0 },

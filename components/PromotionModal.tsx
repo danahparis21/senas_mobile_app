@@ -148,6 +148,7 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
         return null;
     }
 
+
     const toLevelLower = (promotionData.to_level || '').toLowerCase();
     const fromLevelLower = (promotionData.from_level || '').toLowerCase();
 
@@ -170,6 +171,7 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
         });
 
     const recipientName = studentName || 'Learner';
+    const teacherName = '';  // Teacher signature line — pass in via prop later if needed
 
     const targetLevelUpper = promotionData.to_level.toUpperCase();
     const formattedPillText = targetLevelUpper.includes('LEVEL')
@@ -185,6 +187,13 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
             const certBodyText = isGraduation
                 ? `for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels of Filipino Sign Language. Congratulations on this remarkable achievement!`
                 : `for successfully completing the <span class="level-highlight">${promotionData.from_level} Level</span> of the SEÑAS Filipino Sign Language Learning Platform and demonstrating the knowledge and skills required to advance to the next stage.`;
+
+            // Medal geometry: gold scalloped seal (cx,cy = 70,120) hanging from a two-tail navy ribbon.
+            const medalCx = 89, medalCy = 148;
+            const medalScallop = buildScallopPoints(medalCx, medalCy, 66, 56, 14);
+            const medalStarRing = buildStarRing(medalCx, medalCy, 52, 20, '#92400e');
+            const medalTopArc = `M ${medalCx - 34},${medalCy} A 34,34 0 1,1 ${medalCx + 34},${medalCy}`;
+            const medalBottomArc = `M ${medalCx + 34},${medalCy + 5} A 34,34 0 1,1 ${medalCx - 34},${medalCy + 5}`;
 
             const htmlContent = `
 <!DOCTYPE html>
@@ -247,35 +256,14 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       z-index: 1;
       line-height: 1;
     }
-    /* Official Top-Right Ribbon with V-Notch Tail */
-    .ribbon-banner {
-      width: 128px;
-      height: 182px;
+    /* Gold medal hanging from a navy two-tail ribbon, top-right */
+    .medal-wrap {
+      width: 178px;
+      height: 275px;
       position: absolute;
-      top: 0;
-      right: 78px;
+      top: -6px;
+      right: 56px;
       z-index: 10;
-      text-align: center;
-    }
-    .ribbon-shape {
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 0;
-    }
-    .ribbon-content {
-      position: relative;
-      z-index: 1;
-      padding: 16px 8px 22px 8px;
-      color: #ffffff;
-    }
-    .ribbon-title {
-      font-size: 10.5px;
-      font-weight: 900;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-      margin-bottom: 10px;
-      line-height: 1.25;
     }
     .stamp-center-text {
       font-size: 13px;
@@ -322,7 +310,11 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       font-size: 42px;
       font-weight: 900;
       color: #0f2a5c;
-      margin-bottom: 10px;
+      margin-bottom: 6px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #0f2a5c;
+      display: inline-block;
+      min-width: 420px;
     }
     .divider-row {
       position: relative;
@@ -410,11 +402,11 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
     .date-container {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 16px;
     }
     .date-badge {
-      width: 42px;
-      height: 42px;
+      width: 52px;
+      height: 52px;
       border-radius: 50%;
       background: #eaf2ff;
       border: 1px solid #bfdbfe;
@@ -423,15 +415,18 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       justify-content: center;
     }
     .date-label {
-      font-size: 9.5px;
+      font-size: 10px;
       font-weight: 800;
       color: #64748b;
-      letter-spacing: 1px;
+      letter-spacing: 1.4px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
     }
     .date-val {
-      font-size: 13.5px;
-      font-weight: 700;
+      font-size: 15px;
+      font-weight: 800;
       color: #0f2a5c;
+      line-height: 1.2;
     }
     .signatures-group {
       display: flex;
@@ -443,12 +438,23 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       text-align: center;
       width: 150px;
     }
-    .sig-line {
-      border-top: 1.5px solid #cbd5e1;
-      padding-top: 6px;
-      font-size: 12px;
-      font-weight: 800;
+    .sig-name {
+      font-size: 14px;
+      font-weight: 700;
       color: #0f2a5c;
+      font-style: italic;
+      min-height: 20px;
+      padding-bottom: 2px;
+      margin-bottom: 0;
+    }
+    .sig-line {
+      border-top: 1.5px solid #0f2a5c;
+      padding-top: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
     }
     .sig-divider {
       height: 26px;
@@ -476,32 +482,49 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
     <span class="sparkle-star" style="bottom:120px; right:260px; font-size:18px; opacity:0.5;">✦</span>
     <span class="sparkle-star" style="bottom:70px; right:340px; font-size:10px; opacity:0.4;">✦</span>
     <span class="sparkle-star" style="bottom:190px; right:200px; font-size:11px; opacity:0.35;">✦</span>
-    <div class="ribbon-banner">
-      <svg class="ribbon-shape" width="128" height="182" viewBox="0 0 128 182" xmlns="http://www.w3.org/2000/svg">
+    <div class="medal-wrap">
+      <svg width="178" height="275" viewBox="0 0 178 275" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
         <defs>
-          <linearGradient id="ribbonGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#2563eb" />
-            <stop offset="55%" stop-color="#1d4ed8" />
-            <stop offset="100%" stop-color="#1e40af" />
+          <linearGradient id="ribbonGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#0f2a5c" />
+            <stop offset="50%" stop-color="#1e3a8a" />
+            <stop offset="100%" stop-color="#0f2a5c" />
+          </linearGradient>
+          <linearGradient id="medalGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fde68a" />
+            <stop offset="45%" stop-color="#f2b53d" />
+            <stop offset="100%" stop-color="#b8791a" />
+          </linearGradient>
+          <linearGradient id="medalFaceGrad" x1="0.2" y1="0.1" x2="0.8" y2="0.9">
+            <stop offset="0%" stop-color="#fef3c7" />
+            <stop offset="55%" stop-color="#f6c453" />
+            <stop offset="100%" stop-color="#e0a530" />
           </linearGradient>
         </defs>
-        <path d="M0,0 L128,0 L128,158 L64,182 L0,158 Z" fill="url(#ribbonGrad)" />
+        <!-- ribbon top band, extends behind the medal so ribbon reads as continuous -->
+        <rect x="64" y="0" width="50" height="155" fill="url(#ribbonGrad)" />
+        <line x1="74" y1="0" x2="74" y2="155" stroke="#ffffff" stroke-width="1" opacity="0.35" />
+        <line x1="104" y1="0" x2="104" y2="155" stroke="#ffffff" stroke-width="1" opacity="0.35" />
+        <!-- ribbon tails, connected to top band via the medal, each with a small V notch -->
+        <polygon points="58,205 89,205 92,268 74,248 54,268" fill="url(#ribbonGrad)" />
+        <polygon points="120,205 89,205 86,268 104,248 124,268" fill="url(#ribbonGrad)" />
+        <line x1="66" y1="205" x2="60" y2="262" stroke="#ffffff" stroke-width="1" opacity="0.3" />
+        <line x1="112" y1="205" x2="118" y2="262" stroke="#ffffff" stroke-width="1" opacity="0.3" />
+        <!-- gold scalloped medal -->
+        <polygon points="${medalScallop}" fill="url(#medalGrad)" stroke="#92400e" stroke-width="1" />
+        <circle cx="${medalCx}" cy="${medalCy}" r="38" fill="url(#medalFaceGrad)" stroke="#c99a3b" stroke-width="1.5" />
+        <circle cx="${medalCx}" cy="${medalCy}" r="34.5" fill="none" stroke="#92400e" stroke-width="0.6" opacity="0.55" />
+        ${medalStarRing}
+        <path id="medalTopPath" d="${medalTopArc}" fill="none" />
+        <path id="medalBottomPath" d="${medalBottomArc}" fill="none" />
+        <text font-size="5.6" font-weight="800" letter-spacing="0.6" fill="#7c4a03">
+          <textPath href="#medalTopPath" xlink:href="#medalTopPath" startOffset="50%" text-anchor="middle">OFFICIAL</textPath>
+        </text>
+        <text font-size="5.6" font-weight="800" letter-spacing="0.6" fill="#7c4a03">
+          <textPath href="#medalBottomPath" xlink:href="#medalBottomPath" startOffset="50%" text-anchor="middle">CERTIFICATE</textPath>
+        </text>
+        <text x="${medalCx}" y="${medalCy + 5}" font-size="13" font-weight="900" fill="#7c4a03" text-anchor="middle" class="stamp-center-text">SEÑAS</text>
       </svg>
-      <div class="ribbon-content">
-        <div class="ribbon-title">OFFICIAL<br/>CERTIFICATE</div>
-        <svg width="86" height="86" viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-          <circle cx="43" cy="43" r="34" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="2.6 2.6" opacity="0.85" />
-          <path id="stampTopPath" d="M 9,43 A 34,34 0 1,1 77,43" fill="none" />
-          <path id="stampBottomPath" d="M 77,47 A 34,34 0 1,1 9,47" fill="none" />
-          <text font-size="5.4" font-weight="700" letter-spacing="0.5" fill="#ffffff">
-            <textPath href="#stampTopPath" xlink:href="#stampTopPath" startOffset="50%" text-anchor="middle">FILIPINO SIGN LANGUAGE</textPath>
-          </text>
-          <text font-size="5" font-weight="700" letter-spacing="0.5" fill="#ffffff">
-            <textPath href="#stampBottomPath" xlink:href="#stampBottomPath" startOffset="50%" text-anchor="middle">LEARNING PLATFORM</textPath>
-          </text>
-          <text x="43" y="47" font-size="12.5" font-weight="900" fill="#ffffff" text-anchor="middle" class="stamp-center-text">SEÑAS</text>
-        </svg>
-      </div>
     </div>
     <div class="cert-inner">
       <div class="header-left">
@@ -530,7 +553,7 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       <div class="cert-footer">
         <div class="date-container">
           <div class="date-badge">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" />
               <line x1="16" y1="2" x2="16" y2="6" />
               <line x1="8" y1="2" x2="8" y2="6" />
@@ -544,10 +567,12 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
         </div>
         <div class="signatures-group">
           <div class="sig-box">
-            <div class="sig-line">SEÑAS Team</div>
+            <div class="sig-name">${teacherName || ' '}</div>
+            <div class="sig-line">Adviser</div>
           </div>
           <div class="sig-divider"></div>
           <div class="sig-box">
+            <div class="sig-name"> </div>
             <div class="sig-line">FSL Academic Committee</div>
           </div>
         </div>
@@ -570,68 +595,312 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
     const handleDownloadReportCard = async () => {
         try {
             const logoUri = getAssetUriForPrint(LOGO_IMAGE);
+            const senyaBlueUri = getAssetUriForPrint(SENYA_BLUE_IMAGE);
+
+            // Compact gold seal (no ribbon tails) reused from the certificate's medal styling.
+            const sealCx = 50, sealCy = 50;
+            const sealScallop = buildScallopPoints(sealCx, sealCy, 38, 32, 12);
+            const sealStarRing = buildStarRing(sealCx, sealCy, 29.5, 16, '#92400e');
+            const sealTopArc = `M ${sealCx - 19},${sealCy} A 19,19 0 1,1 ${sealCx + 19},${sealCy}`;
+            const sealBottomArc = `M ${sealCx + 19},${sealCy + 3} A 19,19 0 1,1 ${sealCx - 19},${sealCy + 3}`;
+
+            const accuracy = promotionData.summary.accuracy;
+
             const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0f3172; padding: 40px; line-height: 1.6; background-color: #f8fafc; }
-    .container { border: 1px solid #e2e8f0; padding: 40px; background: #ffffff; border-radius: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); max-width: 650px; margin: 0 auto; }
-    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #edf2f7; padding-bottom: 20px; margin-bottom: 25px; }
-    .logo-img { height: 42px; object-fit: contain; }
-    .title { font-size: 16px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: 1.5px; }
-    .student-info { background: #f8fafc; border-radius: 12px; padding: 16px 20px; margin-bottom: 25px; display: flex; justify-content: space-between; border: 1px solid #e2e8f0; }
+    @page { size: A4 landscape; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+    }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background: #ffffff;
+    }
+    .report-frame {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 45%, #38bdf8 75%, #1d4ed8 100%);
+      padding: 14px;
+    }
+    .report-container {
+      width: 100%;
+      height: 100%;
+      background: #ffffff;
+      position: relative;
+      overflow: hidden;
+      padding: 40px 56px;
+      display: flex;
+      flex-direction: column;
+    }
+    .blob-tl {
+      position: absolute;
+      top: -150px;
+      left: -170px;
+      width: 400px;
+      height: 400px;
+      background: linear-gradient(135deg, #eaf2ff 0%, #f7fafe 100%);
+      border-radius: 42% 58% 65% 35% / 45% 40% 60% 55%;
+      z-index: 0;
+    }
+    .blob-br {
+      position: absolute;
+      bottom: -190px;
+      right: -180px;
+      width: 460px;
+      height: 460px;
+      background: linear-gradient(135deg, #eaf2ff 0%, #f7fafe 100%);
+      border-radius: 60% 40% 35% 65% / 55% 60% 40% 45%;
+      z-index: 0;
+    }
+    .report-inner { position: relative; z-index: 2; display: flex; flex-direction: column; height: 100%; }
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+    .header-left { display: flex; flex-direction: column; align-items: flex-start; }
+    .logo-img { height: 44px; object-fit: contain; margin-bottom: 6px; }
+    .brand-tagline {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #1d4ed8;
+    }
+    .seal-wrap { width: 100px; height: 100px; }
+    .report-title-row { margin-bottom: 22px; }
+    .report-title {
+      font-size: 27px;
+      font-weight: 900;
+      color: #0f2a5c;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .report-subtitle { font-size: 13px; color: #64748b; font-weight: 500; }
+    .info-bar {
+      display: flex;
+      justify-content: space-between;
+      background: #eaf2ff;
+      border: 1.5px solid #bfdbfe;
+      border-radius: 16px;
+      padding: 14px 26px;
+      margin-bottom: 22px;
+    }
     .info-col { min-width: 140px; }
-    .info-label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-    .info-value { font-size: 15px; font-weight: 800; color: #0f3172; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
-    th { background-color: #0f3172; color: white; text-align: left; padding: 12px 16px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 6px 6px 0 0; }
-    td { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+    .info-col.right { text-align: right; }
+    .info-label {
+      font-size: 9.5px;
+      color: #64748b;
+      text-transform: uppercase;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      margin-bottom: 3px;
+    }
+    .info-value { font-size: 16px; font-weight: 800; color: #0f2a5c; }
+    .kpi-row { display: flex; gap: 16px; margin-bottom: 22px; }
+    .kpi-card {
+      flex: 1;
+      border: 1.5px solid #dbeafe;
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: #fbfdff;
+    }
+    .kpi-card.xp {
+      background: #fffaeb;
+      border-color: #fde3a7;
+    }
+    .kpi-value { font-size: 22px; font-weight: 900; color: #0f2a5c; margin-bottom: 3px; }
+    .kpi-card.xp .kpi-value { color: #b8791a; }
+    .kpi-label {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .table-wrap {
+      border: 1.5px solid #e2e8f0;
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: linear-gradient(90deg, #0f2a5c, #1d4ed8);
+      color: #ffffff;
+      text-align: left;
+      padding: 11px 18px;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    td { padding: 10px 18px; border-bottom: 1px solid #edf2f7; font-size: 13.5px; }
+    tr:last-child td { border-bottom: none; }
     tr:nth-child(even) td { background-color: #f8fafc; }
     .metric-name { font-weight: 600; color: #334155; }
-    .metric-value { font-weight: 800; text-align: right; color: #0f3172; }
-    .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+    .metric-value { font-weight: 800; text-align: right; color: #0f2a5c; }
+    .report-footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 48px;
+      border-top: 1.5px solid #e2e8f0;
+      padding-top: 16px;
+      padding-right: 140px; /* clear space for Senya mascot at bottom-right */
+    }
+    .date-container { display: flex; align-items: center; gap: 12px; }
+    .date-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #eaf2ff;
+      border: 1px solid #bfdbfe;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .date-label { font-size: 9px; font-weight: 800; color: #64748b; letter-spacing: 1px; }
+    .date-val { font-size: 13px; font-weight: 700; color: #0f2a5c; }
+    .verification { text-align: left; font-size: 10.5px; color: #94a3b8; line-height: 1.55; max-width: 380px; }
+    .senya-mascot-small {
+      position: absolute;
+      bottom: 10px;
+      right: 24px;
+      height: 90px;
+      object-fit: contain;
+      z-index: 1;
+      opacity: 0.94;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <img src="${logoUri}" class="logo-img" alt="SEÑAS Logo" />
-      <div class="title">Performance Summary</div>
-    </div>
-    <div class="student-info">
-      <div class="info-col">
-        <div class="info-label">Learner Name</div>
-        <div class="info-value">${recipientName}</div>
+  <div class="report-frame">
+  <div class="report-container">
+    <div class="blob-tl"></div>
+    <div class="blob-br"></div>
+    <img src="${senyaBlueUri}" class="senya-mascot-small" alt="Senya Mascot" />
+    <div class="report-inner">
+      <div class="report-header">
+        <div class="header-left">
+          <img src="${logoUri}" class="logo-img" alt="SEÑAS Logo" />
+          <div class="brand-tagline">Filipino Sign Language Learning Platform</div>
+        </div>
+        <svg class="seal-wrap" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+          <defs>
+            <linearGradient id="sealGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#fde68a" />
+              <stop offset="45%" stop-color="#f2b53d" />
+              <stop offset="100%" stop-color="#b8791a" />
+            </linearGradient>
+            <linearGradient id="sealFaceGrad" x1="0.2" y1="0.1" x2="0.8" y2="0.9">
+              <stop offset="0%" stop-color="#fef3c7" />
+              <stop offset="55%" stop-color="#f6c453" />
+              <stop offset="100%" stop-color="#e0a530" />
+            </linearGradient>
+          </defs>
+          <polygon points="${sealScallop}" fill="url(#sealGrad)" stroke="#92400e" stroke-width="0.8" />
+          <circle cx="${sealCx}" cy="${sealCy}" r="27" fill="url(#sealFaceGrad)" stroke="#c99a3b" stroke-width="1.2" />
+          ${sealStarRing}
+          <path id="sealTopPath" d="${sealTopArc}" fill="none" />
+          <path id="sealBottomPath" d="${sealBottomArc}" fill="none" />
+          <text font-size="4.6" font-weight="800" letter-spacing="0.5" fill="#7c4a03">
+            <textPath href="#sealTopPath" xlink:href="#sealTopPath" startOffset="50%" text-anchor="middle">OFFICIAL</textPath>
+          </text>
+          <text font-size="4.6" font-weight="800" letter-spacing="0.5" fill="#7c4a03">
+            <textPath href="#sealBottomPath" xlink:href="#sealBottomPath" startOffset="50%" text-anchor="middle">RECORD</textPath>
+          </text>
+          <text x="${sealCx}" y="${sealCy + 4.5}" font-size="10" font-weight="900" fill="#7c4a03" text-anchor="middle">SEÑAS</text>
+        </svg>
       </div>
-      <div class="info-col">
-        <div class="info-label">Promoted Level</div>
-        <div class="info-value">${promotionData.to_level}</div>
+
+      <div class="report-title-row">
+        <div class="report-title">Performance Summary</div>
+        <div class="report-subtitle">Official Learning Progress Report</div>
       </div>
-      <div class="info-col" style="text-align: right;">
-        <div class="info-label">Date Issued</div>
-        <div class="info-value">${promotionDateFormatted}</div>
+
+      <div class="info-bar">
+        <div class="info-col">
+          <div class="info-label">Learner Name</div>
+          <div class="info-value">${recipientName}</div>
+        </div>
+        <div class="info-col">
+          <div class="info-label">Promoted Level</div>
+          <div class="info-value">${promotionData.to_level}</div>
+        </div>
+        <div class="info-col right">
+          <div class="info-label">Date Issued</div>
+          <div class="info-value">${promotionDateFormatted}</div>
+        </div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-value">${promotionData.summary.quizzes_passed}/${promotionData.summary.quizzes_taken}</div>
+          <div class="kpi-label">Quizzes Passed</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value">${accuracy}%</div>
+          <div class="kpi-label">Accuracy Rate</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value">${promotionData.summary.lessons_completed}</div>
+          <div class="kpi-label">Lessons Completed</div>
+        </div>
+        <div class="kpi-card xp">
+          <div class="kpi-value">★ ${promotionData.summary.total_xp}</div>
+          <div class="kpi-label">Total XP Earned</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Learning Metric</th><th style="text-align: right;">Record</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="metric-name">Quizzes Taken</td><td class="metric-value">${promotionData.summary.quizzes_taken}</td></tr>
+            <tr><td class="metric-name">Quizzes Passed</td><td class="metric-value">${promotionData.summary.quizzes_passed}</td></tr>
+            <tr><td class="metric-name">Average Quiz Score</td><td class="metric-value">${promotionData.summary.avg_quiz_score}%</td></tr>
+            <tr><td class="metric-name">Lessons Completed</td><td class="metric-value">${promotionData.summary.lessons_completed}</td></tr>
+            <tr><td class="metric-name">Gestures Attempted</td><td class="metric-value">${promotionData.summary.gestures_attempted}</td></tr>
+            <tr><td class="metric-name">Accuracy Rate</td><td class="metric-value">${accuracy}%</td></tr>
+            <tr><td class="metric-name">Total Experience Points (XP)</td><td class="metric-value" style="color: #b8791a;">★ ${promotionData.summary.total_xp} XP</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="report-footer">
+        <div class="date-container">
+          <div class="date-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </div>
+          <div>
+            <div class="date-label">DATE ISSUED</div>
+            <div class="date-val">${promotionDateFormatted}</div>
+          </div>
+        </div>
+        <div class="verification">
+          Official Performance Summary — SEÑAS Filipino Sign Language Learning Platform<br/>
+          Verification Record ID: SENAS-PR-${promotionData.id}
+        </div>
       </div>
     </div>
-    <table>
-      <thead>
-        <tr><th>Learning Metric</th><th style="text-align: right;">Record</th></tr>
-      </thead>
-      <tbody>
-        <tr><td class="metric-name">Quizzes Taken</td><td class="metric-value">${promotionData.summary.quizzes_taken}</td></tr>
-        <tr><td class="metric-name">Quizzes Passed</td><td class="metric-value">${promotionData.summary.quizzes_passed}</td></tr>
-        <tr><td class="metric-name">Average Quiz Score</td><td class="metric-value">${promotionData.summary.avg_quiz_score}%</td></tr>
-        <tr><td class="metric-name">Lessons Completed</td><td class="metric-value">${promotionData.summary.lessons_completed}</td></tr>
-        <tr><td class="metric-name">Gestures Attempted</td><td class="metric-value">${promotionData.summary.gestures_attempted}</td></tr>
-        <tr><td class="metric-name">Accuracy Rate</td><td class="metric-value">${promotionData.summary.accuracy}%</td></tr>
-        <tr><td class="metric-name">Total Experience Points (XP)</td><td class="metric-value" style="color: #d97706; font-size: 16px;">★ ${promotionData.summary.total_xp} XP</td></tr>
-      </tbody>
-    </table>
-    <div class="footer">
-      <div>Official Performance Summary - SEÑAS Filipino Sign Language Learning Platform</div>
-      <div>Verification Record ID: SENAS-PR-${promotionData.id}</div>
-    </div>
+  </div>
   </div>
 </body>
 </html>

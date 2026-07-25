@@ -25,6 +25,8 @@ export const api = {
             console.log('✅ Login response:', data);
 
             if (!response.ok) {
+                // ✅ REMOVED the scary console.error here
+                // console.error('❌ Login error:', data.message || 'Login failed');
                 throw new Error(data.message || 'Login failed');
             }
 
@@ -35,7 +37,8 @@ export const api = {
 
             return data;
         } catch (error) {
-            console.error('❌ Login error:', error);
+            // ✅ REMOVED the scary console.error here too
+            // console.error('❌ Login error:', error);
             throw error;
         }
     },
@@ -863,4 +866,41 @@ export const api = {
             throw error;
         }
     },
+
+    /**
+ * 🎯 Get promotion details by ID
+ * GET /api/student/promotion/{id}
+ */
+    getPromotionDetails: async (promotionId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📜 Fetching promotion details for ID: ${promotionId}`);
+
+            const response = await fetch(`${API_URL}/student/promotion/${promotionId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📜 Promotion details response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch promotion details');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching promotion details:', error);
+            throw error;
+        }
+    },
+
 };

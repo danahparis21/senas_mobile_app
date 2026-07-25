@@ -72,7 +72,6 @@ export default function Onboarding() {
       flatListRef.current?.scrollToIndex({
         index: nextIndex,
         animated: true,
-        viewPosition: 0.5
       });
     }
   };
@@ -84,16 +83,13 @@ export default function Onboarding() {
       flatListRef.current?.scrollToIndex({
         index: prevIndex,
         animated: true,
-        viewPosition: 0.5
       });
     }
   };
 
   const onScroll = (event: any) => {
     const offset = event.nativeEvent.contentOffset.x;
-    // Calculate which slide is centered based on the slide width
-    const slideWidth = width;
-    const index = Math.round(offset / slideWidth);
+    const index = Math.round(offset / width);
     if (index !== current && index >= 0 && index < SLIDES.length) {
       setCurrent(index);
     }
@@ -170,7 +166,8 @@ export default function Onboarding() {
           scrollEventThrottle={16}
           keyExtractor={(item) => item.id.toString()}
           decelerationRate="fast"
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          snapToInterval={width}
+          snapToAlignment="center"
           getItemLayout={(data, index) => ({
             length: width,
             offset: width * index,
@@ -234,7 +231,7 @@ const styles = StyleSheet.create({
   mainContent: { flex: 1, paddingVertical: 16 },
   slideContainer: {
     width: width,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     flex: 1,
   },
   card: {

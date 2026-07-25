@@ -12,7 +12,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
-  Keyboard
+  Keyboard,
+  Modal
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -136,6 +137,124 @@ function Field({
   );
 }
 
+// ✨ Kid-friendly error modal — matches sign-out design, semantic colors
+interface FriendlyErrorModalProps {
+  visible: boolean;
+  message: string;
+  tip: string;
+  onClose: () => void;
+}
+
+type ErrorTone = 'info' | 'warning' | 'danger';
+
+function FriendlyErrorModal({ visible, message, tip, onClose }: FriendlyErrorModalProps) {
+  const getErrorInfo = () => {
+    // NETWORK — warning (amber), not danger
+    if (message.includes('network') || message.includes('connection') || message.includes('internet')) {
+      return {
+        tone: 'warning' as ErrorTone,
+        title: 'No internet!',
+        emoji: '📡',
+        image: require('../assets/images/img/senya_blue.png'),
+        bgColor: '#FFF7E6',
+        borderColor: '#FCD97A',
+        iconBg: '#FEF3C7',
+        buttonColor: '#F59E0B',
+        buttonShadow: 'rgba(245, 158, 11, 0.35)',
+      };
+    }
+    // LRN NOT FOUND — info (brand blue)
+    if (message.includes('LRN') || message.includes('Student') || message.includes('find')) {
+      return {
+        tone: 'info' as ErrorTone,
+        title: "Can't find you!",
+        emoji: '🔍',
+        image: require('../assets/images/img/senya_magnify.png'),
+        bgColor: '#E6F0FB',
+        borderColor: '#9EC5EC',
+        iconBg: '#DCEBFA',
+        buttonColor: '#1E4F8A',
+        buttonShadow: 'rgba(30, 79, 138, 0.35)',
+      };
+    }
+    // WRONG PIN — warning (amber). NOT red — kid just needs to try again.
+    if (message.includes('PIN') || message.includes('Incorrect') || message.includes('match')) {
+      return {
+        tone: 'warning' as ErrorTone,
+        title: "Hmm, let's try again!",
+        emoji: '🔑',
+        image: require('../assets/images/img/senya_blue.png'),
+        bgColor: '#FFF7E6',
+        borderColor: '#FCD97A',
+        iconBg: '#FEF3C7',
+        buttonColor: '#F59E0B',
+        buttonShadow: 'rgba(245, 158, 11, 0.35)',
+      };
+    }
+    // FALLBACK — info brand blue
+    return {
+      tone: 'info' as ErrorTone,
+      title: 'Just a moment!',
+      emoji: '💬',
+      image: require('../assets/images/img/senya_blue.png'),
+      bgColor: '#E6F0FB',
+      borderColor: '#9EC5EC',
+      iconBg: '#DCEBFA',
+      buttonColor: '#1E4F8A',
+      buttonShadow: 'rgba(30, 79, 138, 0.35)',
+    };
+  };
+
+  const info = getErrorInfo();
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+          {/* Icon halo */}
+          <View style={[styles.modalIconContainer, { backgroundColor: info.iconBg, borderColor: info.borderColor }]}>
+            <Image source={info.image} style={styles.modalImage} contentFit="contain" />
+          </View>
+
+          {/* Emoji badge */}
+          <Text style={styles.modalEmoji}>{info.emoji}</Text>
+
+          {/* Title — brand navy, big & friendly */}
+          <Text style={styles.modalTitle}>{info.title}</Text>
+
+          {/* Message */}
+          <Text style={styles.modalMessage}>{message}</Text>
+
+          {/* Tip card */}
+          <View style={[styles.modalTipContainer, { backgroundColor: info.bgColor, borderColor: info.borderColor }]}>
+            <Text style={styles.tipIcon}>💡</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.tipLabel}>Tip</Text>
+              <Text style={styles.modalTip}>{tip}</Text>
+            </View>
+          </View>
+
+          {/* CTA */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.modalButton,
+              {
+                backgroundColor: info.buttonColor,
+                shadowColor: info.buttonShadow,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              },
+            ]}
+            onPress={onClose}
+          >
+            <Text style={styles.modalButtonText}>Got it! 👍</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+
 export default function Login() {
   const router = useRouter();
   const [lrn, setLrn] = useState('');
@@ -144,6 +263,11 @@ export default function Login() {
   const [lrnError, setLrnError] = useState('');
   const [pinError, setPinError] = useState('');
   const pinInputRef = useRef(null);
+
+  // State for friendly error modal
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [errorTip, setErrorTip] = useState('');
 
   const validateLRN = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, '');
@@ -169,6 +293,13 @@ export default function Login() {
     } else {
       setPinError('');
     }
+  };
+
+  // Show friendly error popup
+  const showFriendlyError = (message: string, tip: string) => {
+    setErrorMessage(message);
+    setErrorTip(tip);
+    setErrorModalVisible(true);
   };
 
   const handleSignIn = async () => {
@@ -197,29 +328,36 @@ export default function Login() {
       if (response.user) {
         // Show success message
         Alert.alert(
-          '✅ Login Successful!',
-          `Welcome back, ${response.user.student?.first_name || response.user.name || 'Student'}!`,
+          '🎉 Welcome!',
+          `Hello, ${response.user.student?.first_name || response.user.name || 'Student'}! Ready to learn?`,
           [
             {
-              text: 'Continue',
+              text: 'Let\'s go! 🚀',
               onPress: () => router.replace('/assessment'),
             },
           ]
         );
       }
     } catch (error: any) {
-      // Handle specific error messages from the server
-      let errorMessage = 'Invalid LRN or PIN. Please try again.';
+      // Handle specific error messages with friendly messages
+      let friendlyMessage = '';
+      let friendlyTip = 'Check your information and try again!';
 
       if (error.message === 'Student not found') {
-        errorMessage = '❌ Student not found. Please check your LRN.';
+        friendlyMessage = "Hmm, I can't find that LRN.";
+        friendlyTip = "Double-check your 12-digit number and try again!";
       } else if (error.message === 'Invalid PIN') {
-        errorMessage = '❌ Incorrect PIN. Please try again.';
-      } else if (error.message.includes('network')) {
-        errorMessage = '📡 Network error. Please check your connection.';
+        friendlyMessage = "That PIN doesn't match our records.";
+        friendlyTip = "Make sure you're using the right 4-digit PIN from your teacher!";
+      } else if (error.message.includes('network') || error.message.includes('connection')) {
+        friendlyMessage = "Uh oh! No internet connection found.";
+        friendlyTip = "Please check your Wi-Fi or mobile data and try again!";
+      } else {
+        friendlyMessage = "Something went wrong.";
+        friendlyTip = "Please check your LRN and PIN, then try again!";
       }
 
-      Alert.alert('Login Failed', errorMessage);
+      showFriendlyError(friendlyMessage, friendlyTip);
     } finally {
       setLoading(false);
     }
@@ -227,6 +365,14 @@ export default function Login() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Add the friendly error modal */}
+      <FriendlyErrorModal
+        visible={errorModalVisible}
+        message={errorMessage}
+        tip={errorTip}
+        onClose={() => setErrorModalVisible(false)}
+      />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -423,4 +569,110 @@ const styles = StyleSheet.create({
   signInText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   footerText: { textAlign: 'center', marginTop: 24, fontSize: 11, color: '#8A9AAA', lineHeight: 18 },
   linkText: { color: '#1E4F8A', fontWeight: '600' },
+
+
+  // ✨ Kid-friendly modal — matches sign-out design
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31, 41, 55, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '88%',
+    maxWidth: 340,
+    backgroundColor: '#fff',
+    borderRadius: 32,
+    paddingTop: 28,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.22,
+    shadowRadius: 48,
+    elevation: 24,
+  },
+  modalIconContainer: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    borderWidth: 3,
+  },
+  modalImage: {
+    width: 92,
+    height: 92,
+  },
+  modalEmoji: {
+    fontSize: 22,
+    marginTop: -8,
+    marginBottom: 6,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0f3172',
+    marginBottom: 6,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalMessage: {
+    fontSize: 15,
+    color: '#5B6B80',
+    fontWeight: '500',
+    lineHeight: 21,
+    marginBottom: 18,
+    textAlign: 'center',
+    paddingHorizontal: 4,
+  },
+  modalTipContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    width: '100%',
+  },
+  tipIcon: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+  tipLabel: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#0f3172',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 1,
+    opacity: 0.75,
+  },
+  modalTip: {
+    fontSize: 11.5,
+    color: '#4B5563',
+    fontWeight: '500',
+    lineHeight: 15,
+  },
+  modalButton: {
+    paddingVertical: 15,
+    paddingHorizontal: 44,
+    borderRadius: 999,
+    minWidth: 160,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
 });

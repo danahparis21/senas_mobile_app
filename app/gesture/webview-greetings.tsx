@@ -95,6 +95,7 @@ export default function WebViewGreetingsScreen() {
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
+    const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
@@ -780,6 +781,11 @@ export default function WebViewGreetingsScreen() {
     })();
 `;
 
+    const switchCamera = () => {
+        webViewRef.current?.postMessage(JSON.stringify({ type: 'switch_camera' }));
+        setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
+    };
+
     const openInBrowser = async () => {
         try {
             const urlWithHeader = GREETINGS_URL + '?ngrok-skip-browser-warning=true';
@@ -899,6 +905,9 @@ export default function WebViewGreetingsScreen() {
                 <Text style={styles.headerTitle}>Greetings</Text>
 
                 <View style={styles.headerRight}>
+                    <Pressable onPress={switchCamera} style={styles.backBtn} hitSlop={8}>
+                        <Ionicons name="camera-reverse-outline" size={24} color="#0f3172" />
+                    </Pressable>
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
                             {isConnected ? '🟢 Live' : '⏳ Loading'}
