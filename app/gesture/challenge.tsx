@@ -679,26 +679,49 @@ export default function ChallengeScreen() {
                 const levelName = getLevelName(level);
                 const nextLevelXp = getNextLevelXp(level);
 
-                router.push({
-                    pathname: '/lesson/xp-progress',
-                    params: {
-                        xpEarned: String(xpEarned),
-                        totalXp: String(totalXp),
-                        level: String(level),
-                        levelName: levelName,
-                        previousXp: String(previousXp),
-                        nextLevelXp: String(nextLevelXp),
-                        showStreak: 'true',
-                        streakDays: String(0),
-                    },
-                });
+                // 🔥 FIX: Fetch the actual streak from API
+                try {
+                    const streakData = await api.getStreak();
+                    const streakDays = streakData.streak_days || 0;
+                    console.log('📊 Fetched streak from API:', streakDays);
+
+                    router.push({
+                        pathname: '/lesson/xp-progress',
+                        params: {
+                            xpEarned: String(xpEarned),
+                            totalXp: String(totalXp),
+                            level: String(level),
+                            levelName: levelName,
+                            previousXp: String(previousXp),
+                            nextLevelXp: String(nextLevelXp),
+                            showStreak: 'true',
+                            streakDays: String(streakDays),
+                        },
+                    });
+                } catch (error) {
+                    console.error('Error fetching streak:', error);
+                    // Fallback to 0 if streak fetch fails
+                    router.push({
+                        pathname: '/lesson/xp-progress',
+                        params: {
+                            xpEarned: String(xpEarned),
+                            totalXp: String(totalXp),
+                            level: String(level),
+                            levelName: levelName,
+                            previousXp: String(previousXp),
+                            nextLevelXp: String(nextLevelXp),
+                            showStreak: 'true',
+                            streakDays: String(0),
+                        },
+                    });
+                }
             } else {
                 router.back();
             }
             return;
         }
 
-        // Master mode logic (unchanged)
+        // Master mode logic
         const remaining = remainingSigns;
         if (remaining.length === 0) {
             const result = await awardModuleXp(starRating);
@@ -712,19 +735,42 @@ export default function ChallengeScreen() {
                 const levelName = getLevelName(level);
                 const nextLevelXp = getNextLevelXp(level);
 
-                router.push({
-                    pathname: '/lesson/xp-progress',
-                    params: {
-                        xpEarned: String(xpEarned),
-                        totalXp: String(totalXp),
-                        level: String(level),
-                        levelName: levelName,
-                        previousXp: String(previousXp),
-                        nextLevelXp: String(nextLevelXp),
-                        showStreak: 'true',
-                        streakDays: String(0),
-                    },
-                });
+                // 🔥 FIX: Fetch the actual streak from API
+                try {
+                    const streakData = await api.getStreak();
+                    const streakDays = streakData.streak_days || 0;
+                    console.log('📊 Fetched streak from API:', streakDays);
+
+                    router.push({
+                        pathname: '/lesson/xp-progress',
+                        params: {
+                            xpEarned: String(xpEarned),
+                            totalXp: String(totalXp),
+                            level: String(level),
+                            levelName: levelName,
+                            previousXp: String(previousXp),
+                            nextLevelXp: String(nextLevelXp),
+                            showStreak: 'true',
+                            streakDays: String(streakDays),
+                        },
+                    });
+                } catch (error) {
+                    console.error('Error fetching streak:', error);
+                    // Fallback
+                    router.push({
+                        pathname: '/lesson/xp-progress',
+                        params: {
+                            xpEarned: String(xpEarned),
+                            totalXp: String(totalXp),
+                            level: String(level),
+                            levelName: levelName,
+                            previousXp: String(previousXp),
+                            nextLevelXp: String(nextLevelXp),
+                            showStreak: 'true',
+                            streakDays: String(0),
+                        },
+                    });
+                }
             } else {
                 router.back();
             }
@@ -765,7 +811,6 @@ export default function ChallengeScreen() {
         };
 
         const masteredCount = mastered.length;
-        // ✅ Use calculateXP instead of manual calculation
         const { xp, starRating: calculatedStars } = calculateXP(masteredCount, finalTotal);
 
         console.log(`🎯 Finish - Mastered: ${masteredCount}/${finalTotal}, XP: ${xp}, Stars: ${calculatedStars}`);
@@ -776,6 +821,8 @@ export default function ChallengeScreen() {
         setShowResults(true);
         setShowFinishButton(false);
         setIsProcessing(false);
+        // 🔥 The continue button will use handleContinueAfterResults
+        // which now fetches the streak correctly
     };
 
     // ─── GET LEVEL NAME ──────────────────────────────────────────────────────────

@@ -903,4 +903,147 @@ export const api = {
         }
     },
 
+    // ============================================================
+    // 🏆 ACHIEVEMENTS API METHODS
+    // ============================================================
+
+    /**
+     * Get all achievements with unlock status for the student
+     * GET /api/student/achievements
+     */
+    getAchievements: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🏆 Fetching achievements...');
+
+            const response = await fetch(`${API_URL}/student/achievements`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🏆 Achievements response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch achievements');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching achievements:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get only unlocked achievements
+     * GET /api/student/achievements/unlocked
+     */
+    getUnlockedAchievements: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🏆 Fetching unlocked achievements...');
+
+            const response = await fetch(`${API_URL}/student/achievements/unlocked`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch unlocked achievements');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching unlocked achievements:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Manually trigger achievement check (after level up, etc.)
+     * POST /api/student/achievements/check
+     */
+    checkAchievements: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🏆 Checking for newly unlocked achievements...');
+
+            const response = await fetch(`${API_URL}/student/achievements/check`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🏆 Achievement check response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to check achievements');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error checking achievements:', error);
+            throw error;
+        }
+    },
+
+    /**
+ * Get student's current streak
+ * GET /api/student/streak
+ */
+    getStreak: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            const response = await fetch(`${API_URL}/student/streak`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch streak');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching streak:', error);
+            throw error;
+        }
+    },
 };

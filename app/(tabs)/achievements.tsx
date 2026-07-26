@@ -8,74 +8,28 @@ import { api } from '../../services/api';
 import { GlassCard } from '../../components/ui/GlassCard';
 import ConfettiCannon from 'react-native-confetti-cannon';
 
-// Badge definitions with XP requirements
-const BADGE_DEFINITIONS = [
-  {
-    id: 'first_step',
-    name: "First Step",
-    image: require('../../assets/images/img/first_step.png'),
-    desc: "Complete your first lesson",
-    xpRequired: 0,
-    color: "#10B981"
-  },
-  {
-    id: 'alphabet_star',
-    name: "Alphabet Star",
-    image: require('../../assets/images/img/alphabet_star.png'),
-    desc: "Learn all 26 FSL alphabet signs",
-    xpRequired: 50,
-    color: "#F59E0B"
-  },
-  {
-    id: 'streak_starter',
-    name: "Streak Starter",
-    image: require('../../assets/images/img/streak1.png'),
-    desc: "Practice 3 days in a row",
-    xpRequired: 30,
-    color: "#EF4444"
-  },
-  {
-    id: 'greeter',
-    name: "Greeter",
-    image: require('../../assets/images/img/greetings.png'),
-    desc: "Complete the Greetings module",
-    xpRequired: 100,
-    color: "#06B6D4"
-  },
-  {
-    id: 'quiz_whiz',
-    name: "Quiz Whiz",
-    image: require('../../assets/images/img/greetings.png'), // Using existing image as placeholder
-    desc: "Score 100% on any quiz",
-    xpRequired: 150,
-    color: "#8B5CF6"
-  },
-  {
-    id: 'sign_detective',
-    name: "Sign Detective",
-    image: require('../../assets/images/img/first_step.png'), // Using existing image as placeholder
-    desc: "Use gesture recognition 10 times",
-    xpRequired: 200,
-    color: "#2563EB"
-  },
-  {
-    id: 'number_ninja',
-    name: "Number Ninja",
-    image: require('../../assets/images/img/numbers.png'),
-    desc: "Learn numbers 1–10",
-    xpRequired: 80,
-    color: "#F97316"
-  },
-  {
-    id: 'week_warrior',
-    name: "Week Warrior",
-    image: require('../../assets/images/img/greetings.png'), // Using existing image as placeholder
-    desc: "7-day learning streak",
-    xpRequired: 250,
-    color: "#EC4899"
-  },
-];
+// 🎯 ICON MAPPING - Map backend achievement codes to local images
+const ACHIEVEMENT_IMAGES: Record<string, any> = {
+  'xp_50': require('../../assets/images/img/first_step.png'),
+  'xp_100': require('../../assets/images/img/alphabet_star.png'),
+  'xp_250': require('../../assets/images/img/streak1.png'),
+  'xp_500': require('../../assets/images/img/greetings.png'),
+  'xp_1000': require('../../assets/images/img/numbers.png'),
+  'beginner_welcome': require('../../assets/images/img/first_step.png'),
+  'alphabet_master': require('../../assets/images/img/alphabet_star.png'),
+  'streak_3': require('../../assets/images/img/streak1.png'),
+  'streak_7': require('../../assets/images/img/greetings.png'),
+  'numbers_master': require('../../assets/images/img/numbers.png'),
+  'intermediate_reached': require('../../assets/images/img/greetings.png'),
+  'advanced_reached': require('../../assets/images/img/greetings.png'),
+  'graduated': require('../../assets/images/img/greetings.png'),
+  'quiz_whiz': require('../../assets/images/img/greetings.png'),
+  'leaderboard_top': require('../../assets/images/img/greetings.png'),
+  'greetings_master': require('../../assets/images/img/greetings.png'),
+};
 
+// Default image for achievements without specific mapping
+const DEFAULT_IMAGE = require('../../assets/images/img/badges.png');
 
 const MILESTONES = [
   { label: "50 XP", xp: 50 },
@@ -103,6 +57,24 @@ function MilestoneIcon({ done }: { done: boolean }) {
   );
 }
 
+// 🎯 Achievement Type from Backend
+interface Achievement {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  color: string;
+  is_unlocked: boolean;
+  unlocked_at: string | null;
+  progress: {
+    current: number;
+    target: number;
+    percentage: number;
+  } | null;
+}
+
 export default function Achievements() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -111,13 +83,12 @@ export default function Achievements() {
   const [streakDays, setStreakDays] = useState(0);
   const [studentName, setStudentName] = useState('');
   const [filter, setFilter] = useState('all');
-  const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [newlyEarned, setNewlyEarned] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
 
-
   useEffect(() => {
-    fetchStudentData();
+    fetchAchievements();
   }, []);
 
   useEffect(() => {
@@ -127,9 +98,11 @@ export default function Achievements() {
     }
   }, [newlyEarned]);
 
-  const fetchStudentData = async () => {
+  const fetchAchievements = async () => {
     try {
       setLoading(true);
+
+      // Get student name from storage
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
         const user = JSON.parse(userData);
@@ -137,43 +110,55 @@ export default function Achievements() {
         setStudentName(`${student?.first_name || ''} ${student?.last_name || ''}`.trim());
       }
 
-      // Fetch latest XP data from API
-      const response = await api.getStudentLessons();
-      if (response.success && response.student) {
-        setTotalXP(response.student.total_xp || 0);
-        setLevel(response.student.level || 1);
-        setStreakDays(response.student.streak_days || 0);
-        calculateEarnedBadges(response.student.total_xp || 0);
+      // 🎯 Fetch achievements from backend
+      const response = await api.getAchievements();
+
+      if (response.success) {
+        setAchievements(response.achievements || []);
+
+        // Update XP, level, streak from the response
+        // The response includes student summary
+        if (response.summary) {
+          // We'll get XP from the student data in the response
+          // Or from the getStudentLessons call
+        }
       }
+
+      // Also fetch XP data
+      const lessonsResponse = await api.getStudentLessons();
+      if (lessonsResponse.success && lessonsResponse.student) {
+        setTotalXP(lessonsResponse.student.total_xp || 0);
+        setLevel(lessonsResponse.student.level || 1);
+        setStreakDays(lessonsResponse.student.streak_days || 0);
+      }
+
     } catch (error) {
-      console.error('Error fetching student data:', error);
+      console.error('Error fetching achievements:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateEarnedBadges = (xp: number) => {
-    const earned = BADGE_DEFINITIONS
-      .filter(badge => xp >= badge.xpRequired)
-      .map(badge => badge.id);
-    setEarnedBadges(earned);
+  const getAchievementImage = (code: string) => {
+    return ACHIEVEMENT_IMAGES[code] || DEFAULT_IMAGE;
   };
 
-  const isBadgeEarned = (badgeId: string) => earnedBadges.includes(badgeId);
+  const earnedCount = achievements.filter(a => a.is_unlocked).length;
+  const totalCount = achievements.length;
 
-  const getBadgeStatus = (badgeId: string) => {
-    if (isBadgeEarned(badgeId)) return 'earned';
-    return 'locked';
-  };
+  const filteredAchievements = achievements.filter(a => {
+    if (filter === 'all') return true;
+    if (filter === 'earned') return a.is_unlocked;
+    if (filter === 'locked') return !a.is_unlocked;
+    return true;
+  });
 
-  const xpToNext = 500 - totalXP;
-  const earned = earnedBadges.length;
-
-  const filteredBadges = BADGE_DEFINITIONS.filter(b =>
-    filter === "all" ? true :
-      filter === "earned" ? isBadgeEarned(b.id) :
-        !isBadgeEarned(b.id)
-  );
+  // Sort: unlocked first, then by order
+  const sortedAchievements = [...filteredAchievements].sort((a, b) => {
+    if (a.is_unlocked && !b.is_unlocked) return -1;
+    if (!a.is_unlocked && b.is_unlocked) return 1;
+    return (a.id || 0) - (b.id || 0);
+  });
 
   if (loading) {
     return (
@@ -211,7 +196,7 @@ export default function Achievements() {
                 <View style={styles.heroBadgesRow}>
                   <View style={styles.heroBadgeOrange}>
                     <Image source={require('../../assets/images/img/badges.png')} style={{ width: 16, height: 16 }} />
-                    <Text style={styles.heroBadgeTextOrange}>{earned}/{BADGE_DEFINITIONS.length} badges</Text>
+                    <Text style={styles.heroBadgeTextOrange}>{earnedCount}/{totalCount} badges</Text>
                   </View>
                   <View style={styles.heroBadgeBlue}>
                     <Text style={styles.heroBadgeTextBlue}>⚡ {totalXP} XP</Text>
@@ -231,7 +216,9 @@ export default function Achievements() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>XP Milestones</Text>
             <View style={styles.xpToNextBadge}>
-              <Text style={styles.xpToNextText}>{xpToNext > 0 ? `${xpToNext} XP to next` : '🎉 Max Level!'}</Text>
+              <Text style={styles.xpToNextText}>
+                {totalXP < 500 ? `${500 - totalXP} XP to next` : '🎉 Max Level!'}
+              </Text>
             </View>
           </View>
           <GlassCard style={styles.milestoneCard}>
@@ -271,9 +258,9 @@ export default function Achievements() {
         {/* Filters */}
         <View style={styles.filterSection}>
           {[
-            { key: "all", label: `All (${BADGE_DEFINITIONS.length})` },
-            { key: "earned", label: `Earned (${earned})` },
-            { key: "locked", label: `Locked (${BADGE_DEFINITIONS.length - earned})` },
+            { key: "all", label: `All (${totalCount})` },
+            { key: "earned", label: `Earned (${earnedCount})` },
+            { key: "locked", label: `Locked (${totalCount - earnedCount})` },
           ].map(tab => (
             <Pressable
               key={tab.key}
@@ -288,10 +275,13 @@ export default function Achievements() {
         {/* Grid */}
         <View style={styles.gridSection}>
           <View style={styles.grid}>
-            {filteredBadges.map((b, i) => {
-              const earned = isBadgeEarned(b.id);
+            {sortedAchievements.map((achievement) => {
+              const earned = achievement.is_unlocked;
+              const progress = achievement.progress;
+              const progressPercent = progress?.percentage || 0;
+
               return (
-                <GlassCard key={i} style={[styles.badgeCard, !earned && { opacity: 0.85 }]}>
+                <GlassCard key={achievement.id} style={[styles.badgeCard, !earned && { opacity: 0.85 }]}>
                   {earned && (
                     <View style={styles.earnedRibbon}>
                       <Text style={styles.earnedRibbonText}>✓ EARNED</Text>
@@ -300,22 +290,50 @@ export default function Achievements() {
 
                   <View style={styles.badgeIconBox}>
                     {earned ? (
-                      <View style={[styles.customBadgeBox, { shadowColor: b.color }]}>
-                        <Image source={b.image as any} style={{ width: 40, height: 40 }} contentFit="contain" />
+                      <View style={[styles.customBadgeBox, { shadowColor: achievement.color }]}>
+                        <Image
+                          source={getAchievementImage(achievement.code)}
+                          style={{ width: 40, height: 40 }}
+                          contentFit="contain"
+                        />
                       </View>
                     ) : (
                       <View style={styles.lockedBadgeBox}>
-                        <Image source={require('../../assets/images/img/locked.png')} style={{ width: 40, height: 40, opacity: 0.7 }} contentFit="contain" />
+                        <Image
+                          source={require('../../assets/images/img/locked.png')}
+                          style={{ width: 40, height: 40, opacity: 0.7 }}
+                          contentFit="contain"
+                        />
+                        {/* Show progress bar for locked achievements */}
+                        {progress && progress.target > 0 && (
+                          <View style={styles.progressMiniTrack}>
+                            <View
+                              style={[
+                                styles.progressMiniFill,
+                                { width: `${Math.min(progressPercent, 100)}%` }
+                              ]}
+                            />
+                          </View>
+                        )}
                       </View>
                     )}
                   </View>
 
-                  <Text style={[styles.badgeName, earned ? { color: '#0f3172' } : { color: '#9CA3AF' }]}>{b.name}</Text>
-                  <Text style={styles.badgeDesc}>{b.desc}</Text>
+                  <Text style={[styles.badgeName, earned ? { color: '#0f3172' } : { color: '#9CA3AF' }]}>
+                    {achievement.name}
+                  </Text>
+                  <Text style={styles.badgeDesc}>{achievement.description}</Text>
 
-                  <View style={[styles.badgeXpTag, earned ? { backgroundColor: `${b.color}15` } : { backgroundColor: 'rgba(15,49,114,0.06)' }]}>
-                    <Text style={[styles.badgeXpText, earned ? { color: b.color } : { color: '#9CA3AF' }]}>
-                      {earned ? '✅ ' : '🔒 '}{b.xpRequired} XP required
+                  {!earned && progress && progress.target > 0 && (
+                    <Text style={styles.progressText}>
+                      {progress.current} / {progress.target}
+                    </Text>
+                  )}
+
+                  <View style={[styles.badgeXpTag, earned ? { backgroundColor: `${achievement.color}15` } : { backgroundColor: 'rgba(15,49,114,0.06)' }]}>
+                    <Text style={[styles.badgeXpText, earned ? { color: achievement.color } : { color: '#9CA3AF' }]}>
+                      {earned ? '✅ ' : '🔒 '}
+                      {progress?.target ? `${progress.target} required` : 'Achievement'}
                     </Text>
                   </View>
                 </GlassCard>
@@ -323,7 +341,6 @@ export default function Achievements() {
             })}
           </View>
         </View>
-
 
       </ScrollView>
       {showConfetti && (
@@ -405,4 +422,7 @@ const styles = StyleSheet.create({
   badgeDesc: { fontSize: 10.5, color: '#6B7280', lineHeight: 14, marginBottom: 8 },
   badgeXpTag: { alignSelf: 'flex-start', borderRadius: 99, paddingVertical: 3, paddingHorizontal: 10 },
   badgeXpText: { fontSize: 11, fontWeight: '800' },
-});
+  progressText: { fontSize: 10, color: '#6B7280', marginBottom: 6, textAlign: 'center' },
+  progressMiniTrack: { width: 40, height: 4, backgroundColor: 'rgba(156,163,175,0.3)', borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  progressMiniFill: { height: '100%', backgroundColor: '#F59E0B', borderRadius: 2 },
+}); 

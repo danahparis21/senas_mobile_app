@@ -19,6 +19,7 @@ import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import PromotionModal from '../../components/PromotionModal';
+import AchievementModal from '../../components/AchievementModal';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -105,6 +106,12 @@ export default function Dashboard() {
   const envelopeOpacity = useRef(new Animated.Value(1)).current;
   const envelopeScale = useRef(new Animated.Value(1)).current;
 
+  const [newAchievements, setNewAchievements] = useState<any[]>([]);
+  const [achievementModalVisible, setAchievementModalVisible] = useState(false);
+  const [checkingAchievements, setCheckingAchievements] = useState(false);
+
+
+
   // Pulsing animation values - using useNativeDriver: false for style properties that don't support native driver
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0.3)).current;
@@ -114,6 +121,10 @@ export default function Dashboard() {
     fetchStudentData();
     fetchTeacherLessons();
     checkForPromotion();
+
+    setTimeout(() => {
+      checkForNewAchievements();
+    }, 1000);
 
     // Start pulsing animation
     startPulseAnimation();
@@ -316,6 +327,26 @@ export default function Dashboard() {
     }
   };
 
+  const checkForNewAchievements = async () => {
+    try {
+      setCheckingAchievements(true);
+      const response = await api.checkAchievements();
+
+      if (response.success && response.newly_unlocked && response.newly_unlocked.length > 0) {
+        console.log('🏆 New achievements unlocked:', response.newly_unlocked);
+        setNewAchievements(response.newly_unlocked);
+        setAchievementModalVisible(true);
+      }
+    } catch (error) {
+      console.error('Error checking achievements:', error);
+    } finally {
+      setCheckingAchievements(false);
+    }
+  };
+
+
+
+
   const getLessonStatusColor = (status: string): string => {
     switch (status) {
       case 'completed': return '#4CAF50';
@@ -331,6 +362,7 @@ export default function Dashboard() {
       default: return '📖 Pending';
     }
   };
+
 
   const renderTeacherLesson = ({ item }: { item: Lesson }) => {
     const progress = item.progress;
@@ -494,6 +526,7 @@ export default function Dashboard() {
 
   // Show continue learning if available, otherwise show completed
   const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
+
 
   // Debug logging
   console.log('📚 Teacher Lessons total:', teacherLessons.length);
@@ -847,6 +880,16 @@ export default function Dashboard() {
         onClose={handlePromotionClose}
         studentName={studentName}
       />
+      {/* 🎯 ADD THIS - Achievement Modal */}
+      <AchievementModal
+        visible={achievementModalVisible}
+        achievements={newAchievements}
+        onClose={() => {
+          setAchievementModalVisible(false);
+          setNewAchievements([]);
+        }}
+      />
+
     </SafeAreaView>
   );
 }

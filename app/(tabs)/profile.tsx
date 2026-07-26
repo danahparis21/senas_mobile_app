@@ -291,8 +291,24 @@ export default function Profile() {
           setStudentLevel(student.fsl_mastery_level);
         }
 
-        const completedLessons = response.lessons?.filter((l: any) => l.status === 'completed') || [];
-        setTotalLessons(completedLessons.length);
+        // 🔥 FIX: Count completed lessons from modules
+        let completedCount = 0;
+        if (response.modules && Array.isArray(response.modules)) {
+          response.modules.forEach((module: any) => {
+            if (module.lessons && Array.isArray(module.lessons)) {
+              const completed = module.lessons.filter((l: any) => l.status === 'completed' || l.status === 'passed');
+              completedCount += completed.length;
+            }
+          });
+        }
+        setTotalLessons(completedCount);
+
+        // Alternative: If response has a 'lessons' property directly (for getAllLessons)
+        // You can also check for that
+        if (response.lessons && Array.isArray(response.lessons) && completedCount === 0) {
+          const completed = response.lessons.filter((l: any) => l.status === 'completed');
+          setTotalLessons(completed.length);
+        }
 
         const earnedBadges = Math.min(Math.floor((student?.total_xp || 0) / 50) + 1, 8);
         setTotalBadges(earnedBadges > 0 ? Math.min(earnedBadges, 8) : 0);
@@ -309,7 +325,7 @@ export default function Profile() {
           .filter(b => (student?.total_xp || 0) >= b.xp)
           .slice(0, 4);
 
-        // Add locked badges as placeholders if needed - FIXED to include xp property
+        // Add locked badges as placeholders if needed
         const placeholderBadges: { xp: number; label: string; src: any }[] = [
           { xp: 200, label: 'Quiz Whiz', src: require('../../assets/images/img/locked.png') },
           { xp: 250, label: 'Sign Detective', src: require('../../assets/images/img/locked.png') },
@@ -323,13 +339,12 @@ export default function Profile() {
         setRecentBadges(earnedBadgeList);
       }
 
-      // Fetch promotion history — each record is a "document" the student can view
+      // Fetch promotion history
       try {
         const promoResponse = await api.getPromotionHistory();
-        // ✅ Look for the 'history' key that your API returns
         const promotions = promoResponse?.history || [];
         setDocuments(promotions);
-        console.log('✅ Documents set:', promotions.length); // Debug log
+        console.log('✅ Documents set:', promotions.length);
       } catch (error) {
         console.log('No promotion history found');
       }
@@ -509,7 +524,18 @@ export default function Profile() {
 
         {/* ── Learning Path ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Learning Path</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Your Learning Path</Text>
+            <Pressable
+              style={styles.editPathBtn}
+              onPress={() => router.push('/assessment?edit=true')}
+            >
+              <Text style={styles.editPathBtnText}>Edit</Text>
+              <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2">
+                <Path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </Svg>
+            </Pressable>
+          </View>
           <GlassCard style={styles.learningPathCard}>
             <View style={styles.learningPathItem}>
               <View style={styles.learningPathIconBox}>
@@ -693,6 +719,29 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, color: '#6B7280', fontWeight: '600', textAlign: 'center' },
 
   // Sections
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  editPathBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(37,99,235,0.10)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.20)',
+  },
+  editPathBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+
   section: { paddingHorizontal: 16, marginTop: 20 },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172', marginBottom: 12 },
 
