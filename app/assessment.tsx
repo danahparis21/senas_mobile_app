@@ -15,6 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 import {
   ChevronLeft,
   Sprout,
@@ -48,12 +49,12 @@ const CARD_MAX_W = 420;
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const palette = {
-  skyDeep: '#0A84FF',
-  sky: '#12B0FF',
-  skyLight: '#5CD1FF',
-  skyMist: '#D8F1FF',
-  skyWash: '#F1FAFF',
-  white: '#FFFFFF',
+  skyDeep: '#1848c8',        // Changed from '#0A84FF' to match header blue
+  sky: '#2563eb',            // Changed from '#3262ffff' to a cleaner blue
+  skyLight: '#4b7bbb',       // Changed from '#5CD1FF' to match your app's light blue
+  skyMist: '#D8F1FF',        // Kept the same - works well
+  skyWash: '#F1FAFF',        // Kept the same - works well
+  white: '#FFFFFF',          // Kept the same
   card: '#FFFFFF',
   cardBorder: 'rgba(10,132,255,0.10)',
   tint: 'rgba(18,176,255,0.10)',
@@ -73,6 +74,23 @@ const levelColors: Record<string, string> = {
 
 // Senya mascot artwork
 const SENYA_IMG = require('../assets/images/img/senya_blue.png');
+
+// ─── Sound Effects ───────────────────────────────────────────────────────────
+const CLICK_SOUND = require('../assets/music/assessment_click.wav');
+const LEVEL_UP_SOUND = require('../assets/music/level-up.mp3');
+
+async function playSound(source: any, volume = 0.9) {
+  try {
+    const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: true, volume });
+    sound.setOnPlaybackStatusUpdate(status => {
+      if (status.isLoaded && status.didJustFinish) {
+        sound.unloadAsync();
+      }
+    });
+  } catch (error) {
+    console.error('Failed to play sound:', error);
+  }
+}
 
 // ─── Screen background ───────────────────────────────────────────────────────
 // Sky gradient at the top fading to white, exactly like the reference shot.
@@ -590,6 +608,7 @@ export default function Assessment() {
 
   const selectOption = (index: number, measure: { x: number; y: number; width: number; height: number }) => {
     if (flying) return;
+    playSound(CLICK_SOUND);
     const option = currentQuestion.options[index];
     setAnswers(prev => ({ ...prev, [currentQuestion.key]: option.value }));
     setFlying({ from: measure, to: senyaCenter.current, option, index });
@@ -613,7 +632,10 @@ export default function Assessment() {
     const startedAt = Date.now();
     const ok = await saveLearningPath();
     const remaining = Math.max(0, 3000 - (Date.now() - startedAt));
-    setTimeout(() => setAnalyzing(false), ok ? remaining : 0);
+    setTimeout(() => {
+      setAnalyzing(false);
+      if (ok) playSound(LEVEL_UP_SOUND, 0.8);
+    }, ok ? remaining : 0);
   };
 
   const back = () => {
@@ -774,14 +796,14 @@ export default function Assessment() {
               <View style={styles.readyPill}>
                 <Sparkles size={12} color={palette.white} />
                 <Text style={styles.readyPillText}>
-                  {isEditMode ? '✅ Learning path updated!' : `All set, ${studentName || 'friend'}`}
+                  {isEditMode ? 'Learning path updated!' : `All set, ${studentName || 'friend'}`}
                 </Text>
               </View>
 
               <SenyaCharacter size={126} />
 
               <Text style={styles.heroTitle}>
-                {isEditMode ? '✨ Updated Successfully!' : 'Your path is ready'}
+                {isEditMode ? 'Updated Successfully!' : 'Your path is ready'}
               </Text>
               <Text style={styles.heroSub}>
                 {isEditMode

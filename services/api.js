@@ -33,12 +33,15 @@ export const api = {
             if (data.token) {
                 await AsyncStorage.setItem('userToken', data.token);
                 await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+
+                // ✅ Store profile picture separately for quick access
+                if (data.user?.student?.profile_picture) {
+                    await AsyncStorage.setItem('userAvatar', data.user.student.profile_picture);
+                }
             }
 
             return data;
         } catch (error) {
-            // ✅ REMOVED the scary console.error here too
-            // console.error('❌ Login error:', error);
             throw error;
         }
     },
@@ -1046,4 +1049,48 @@ export const api = {
             throw error;
         }
     },
+    /**
+ * Update student's profile picture
+ * POST /api/student/update-profile-picture
+ */
+    updateProfilePicture: async (profilePicture) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🎨 Updating profile picture to: ${profilePicture}`);
+
+            const response = await fetch(`${API_URL}/student/update-profile-picture`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ profile_picture: profilePicture }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to update profile picture');
+            }
+
+            // Update stored user data with new profile picture
+            const userData = await AsyncStorage.getItem('userData');
+            if (userData) {
+                const user = JSON.parse(userData);
+                user.student.profile_picture = profilePicture;
+                await AsyncStorage.setItem('userData', JSON.stringify(user));
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error updating profile picture:', error);
+            throw error;
+        }
+    },
+
 };

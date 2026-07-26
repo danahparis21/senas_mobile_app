@@ -79,6 +79,29 @@ const ACHIEVEMENT_NAMES: Record<string, string> = {
 
 // ─── Description Mapping ──────────────────────────────────────────────────────
 const ACHIEVEMENT_DESCRIPTIONS: Record<string, string> = {
+    'xp_50': 'Earned 50 XP total!',
+    'xp_100': 'Earned 100 XP total!',
+    'xp_250': 'Earned 250 XP total!',
+    'xp_500': 'Earned 500 XP total!',
+    'xp_1000': 'Earned 1,000 XP total!',
+    'xp_2500': 'Earned 2,500 XP total!',
+    'xp_5000': 'Earned 5,000 XP total!',
+    'beginner_welcome': 'Completed your very first lesson!',
+    'beginner_5_lessons': 'Completed 5 beginner lessons!',
+    'beginner_10_lessons': 'Completed 10 beginner lessons!',
+    'alphabet_master': 'Learned the entire sign language alphabet!',
+    'numbers_master': 'Mastered signing all the numbers!',
+    'intermediate_reached': 'Reached the Intermediate level!',
+    'intermediate_5_lessons': 'Completed 5 intermediate lessons!',
+    'intermediate_10_lessons': 'Completed 10 intermediate lessons!',
+    'greetings_master': 'Mastered all the greeting signs!',
+    'advanced_reached': 'Reached the Advanced level!',
+    'advanced_5_lessons': 'Completed 5 advanced lessons!',
+    'graduated': 'Completed the entire course from start to finish!',
+    'streak_3': 'Practiced 3 days in a row!',
+    'streak_7': 'Practiced 7 days in a row!',
+    'streak_30': 'Practiced 30 days in a row!',
+    'quiz_whiz': 'Aced a quiz with a perfect score!',
     'leaderboard_top': 'Reached #1 on any leaderboard!',
 };
 
@@ -304,8 +327,9 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
         >
             <StatusBar barStyle="dark-content" backgroundColor="rgba(255,255,255,0.5)" />
 
-            {/* Confetti */}
+            {/* Confetti - keyed by achievement index so it replays for every achievement, not just the first */}
             <ConfettiCannon
+                key={`confetti-${currentIndex}`}
                 count={200}
                 origin={{ x: SCREEN_WIDTH / 2 - 20, y: -20 }}
                 autoStart={true}
@@ -344,39 +368,36 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
                         },
                     ]}
                 >
-                    {/* White Background with Light Gradient */}
-                    <LinearGradient
-                        colors={['#FFFFFF', '#F0F7FF', '#E8F0FE']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.gradient}
-                    />
+                    {/* White Body Background */}
+                    <View style={styles.bodyBackground} />
 
-                    {/* Gold Accent Border - Top */}
-                    <LinearGradient
-                        colors={['#F59E0B', '#FBBF24', '#D97706']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.goldAccentTop}
-                    />
+                    {/* Curved Gradient Hero Header */}
+                    <View style={styles.heroHeader}>
+                        <LinearGradient
+                            colors={['#FDE047', '#F59E0B', '#D97706']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={StyleSheet.absoluteFill}
+                        />
 
-                    {/* Gold Accent Border - Bottom */}
-                    <LinearGradient
-                        colors={['#D97706', '#FBBF24', '#F59E0B']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.goldAccentBottom}
-                    />
+                        {/* Decorative Sparkles */}
+                        <Ionicons name="sparkles" size={22} color="rgba(255,255,255,0.85)" style={styles.sparkleTopLeft} />
+                        <Ionicons name="sparkles" size={16} color="rgba(255,255,255,0.6)" style={styles.sparkleTopRight} />
+                        <View style={[styles.dot, styles.dotOne]} />
+                        <View style={[styles.dot, styles.dotTwo]} />
+                        <View style={[styles.diamond, styles.diamondOne]} />
 
-                    {/* Header - Achievement Counter */}
-                    <View style={styles.header}>
-                        <Text style={styles.counterText}>
-                            {currentIndex + 1} / {totalAchievements}
-                        </Text>
-                        <View style={styles.headerLine} />
+                        {/* Header - Achievement Counter */}
+                        <View style={styles.header}>
+                            <View style={styles.counterPill}>
+                                <Text style={styles.counterText}>
+                                    {currentIndex + 1} / {totalAchievements}
+                                </Text>
+                            </View>
+                        </View>
                     </View>
 
-                    {/* Badge Icon with Swipe Animation */}
+                    {/* Badge Icon with Swipe Animation - overlaps hero + body seam */}
                     <Animated.View
                         style={[
                             styles.badgeContainer,
@@ -396,7 +417,7 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
                             ]}
                         >
                             <LinearGradient
-                                colors={['rgba(251, 191, 36, 0.12)', 'rgba(251, 191, 36, 0.05)']}
+                                colors={['rgba(251, 191, 36, 0.18)', 'rgba(251, 191, 36, 0.06)']}
                                 style={styles.badgeGlow}
                             />
                             <Image
@@ -425,10 +446,11 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
                                 {description}
                             </Text>
                         ) : null}
-                        <View style={styles.divider} />
-                        <Text style={styles.celebrationText}>
-                            🎉 Achievement Unlocked!
-                        </Text>
+                        <View style={styles.celebrationChip}>
+                            <Text style={styles.celebrationText}>
+                                🎉 Achievement Unlocked!
+                            </Text>
+                        </View>
                     </Animated.View>
 
                     {/* Next/Continue Button */}
@@ -440,17 +462,19 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
                         onPress={handleNext}
                     >
                         <LinearGradient
-                            colors={['#F59E0B', '#D97706']}
+                            colors={['#FBBF24', '#F59E0B', '#D97706']}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.actionButtonGradient}
                         >
                             <Text style={styles.actionButtonText}>
-                                {isLast ? 'Continue' : 'Next Achievement →'}
+                                {isLast ? 'Continue' : 'Next Achievement'}
                             </Text>
-                            {!isLast && (
-                                <Ionicons name="arrow-forward" size={20} color="#fff" />
-                            )}
+                            <Ionicons
+                                name={isLast ? 'checkmark-circle' : 'arrow-forward-circle'}
+                                size={24}
+                                color="#fff"
+                            />
                         </LinearGradient>
                     </Pressable>
                 </Animated.View>
@@ -478,144 +502,180 @@ const styles = StyleSheet.create({
     },
     modalContent: {
         width: SCREEN_WIDTH * 0.88,
-        maxHeight: SCREEN_HEIGHT * 0.72,
+        maxHeight: SCREEN_HEIGHT * 0.78,
         backgroundColor: 'white',
-        borderRadius: 32,
+        borderRadius: 36,
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 24 },
-        shadowOpacity: 0.15,
+        shadowOpacity: 0.2,
         shadowRadius: 40,
         elevation: 20,
     },
-    gradient: {
+    bodyBackground: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        borderRadius: 32,
+        backgroundColor: '#FFFFFF',
     },
-    goldAccentTop: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 4,
-    },
-    goldAccentBottom: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 4,
+    // Curved gradient hero header sitting behind the badge
+    heroHeader: {
+        height: 190,
+        width: '100%',
+        borderBottomLeftRadius: SCREEN_WIDTH,
+        borderBottomRightRadius: SCREEN_WIDTH,
+        overflow: 'hidden',
+        transform: [{ scaleX: 1.4 }],
     },
     header: {
-        paddingTop: 24,
-        paddingHorizontal: 24,
+        paddingTop: 20,
         alignItems: 'center',
+        transform: [{ scaleX: 1 / 1.4 }], // counter the header's horizontal stretch
+    },
+    counterPill: {
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        paddingHorizontal: 14,
+        paddingVertical: 5,
+        borderRadius: 20,
     },
     counterText: {
         fontSize: 13,
-        fontWeight: '700',
-        color: '#6B7280',
+        fontWeight: '800',
+        color: '#FFFFFF',
         letterSpacing: 1,
     },
-    headerLine: {
-        width: 40,
-        height: 2,
-        backgroundColor: 'rgba(251, 191, 36, 0.3)',
-        borderRadius: 1,
-        marginTop: 8,
+    sparkleTopLeft: {
+        position: 'absolute',
+        top: 22,
+        left: '32%',
+        transform: [{ scaleX: 1 / 1.4 }],
+    },
+    sparkleTopRight: {
+        position: 'absolute',
+        top: 34,
+        right: '30%',
+        transform: [{ scaleX: 1 / 1.4 }],
+    },
+    dot: {
+        position: 'absolute',
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.55)',
+    },
+    dotOne: {
+        width: 8,
+        height: 8,
+        top: 55,
+        left: '38%',
+    },
+    dotTwo: {
+        width: 6,
+        height: 6,
+        top: 18,
+        right: '37%',
+    },
+    diamond: {
+        position: 'absolute',
+        width: 8,
+        height: 8,
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        transform: [{ rotate: '45deg' }],
+    },
+    diamondOne: {
+        top: 45,
+        right: '25%',
     },
     badgeContainer: {
         alignItems: 'center',
         justifyContent: 'center',
-        marginVertical: 8,
+        marginTop: -128,
     },
     badgeCircle: {
-        width: 160,
-        height: 160,
-        borderRadius: 80,
-        backgroundColor: 'rgba(251, 191, 36, 0.06)',
+        width: 220,
+        height: 220,
+        borderRadius: 110,
+        backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: 'rgba(251, 191, 36, 0.15)',
-        shadowColor: '#F59E0B',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.15,
-        shadowRadius: 30,
-        elevation: 8,
+        borderWidth: 6,
+        borderColor: '#FFFFFF',
+        shadowColor: '#D97706',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 12,
     },
     badgeGlow: {
         position: 'absolute',
-        top: -20,
-        left: -20,
-        right: -20,
-        bottom: -20,
-        borderRadius: 100,
+        top: -16,
+        left: -16,
+        right: -16,
+        bottom: -16,
+        borderRadius: 130,
     },
     badgeImage: {
-        width: 100,
-        height: 100,
+        width: 168,
+        height: 168,
     },
     infoContainer: {
         paddingHorizontal: 24,
+        paddingTop: 8,
         paddingBottom: 8,
         alignItems: 'center',
     },
     achievementName: {
-        fontSize: 26,
+        fontSize: 30,
         fontWeight: '900',
         color: '#0f3172',
         textAlign: 'center',
         letterSpacing: 0.3,
     },
     achievementDescription: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '500',
         color: '#6B7280',
         textAlign: 'center',
-        marginTop: 2,
+        marginTop: 4,
+        lineHeight: 20,
     },
-    divider: {
-        width: 60,
-        height: 2,
-        backgroundColor: 'rgba(251, 191, 36, 0.25)',
-        borderRadius: 1,
-        marginVertical: 10,
+    celebrationChip: {
+        backgroundColor: '#FEF3C7',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        marginTop: 14,
     },
     celebrationText: {
-        fontSize: 14,
-        fontWeight: '600',
+        fontSize: 15,
+        fontWeight: '700',
         color: '#92400E',
-        letterSpacing: 0.5,
+        letterSpacing: 0.3,
     },
     actionButton: {
         marginHorizontal: 24,
-        marginBottom: 24,
-        marginTop: 6,
-        borderRadius: 16,
+        marginBottom: 26,
+        marginTop: 18,
+        borderRadius: 20,
         overflow: 'hidden',
         shadowColor: '#F59E0B',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 12,
-        elevation: 6,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 8,
     },
     actionButtonGradient: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 16,
-        gap: 8,
+        paddingVertical: 18,
+        gap: 10,
     },
     actionButtonText: {
-        fontSize: 16,
-        fontWeight: '700',
+        fontSize: 17,
+        fontWeight: '800',
         color: '#fff',
-        letterSpacing: 0.5,
+        letterSpacing: 0.4,
     },
 });
 

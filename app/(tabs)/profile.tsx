@@ -28,29 +28,6 @@ function SoundIcon({ size = 20 }: { size?: number }) {
     </Svg>
   );
 }
-function HapticIcon({ size = 20 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect x="4" y="4" width="16" height="16" rx="3" stroke="#4b7bbb" strokeWidth="2" />
-      <Rect x="9" y="9" width="6" height="6" rx="1" fill="#4b7bbb" fillOpacity="0.3" />
-    </Svg>
-  );
-}
-function TextSizeIcon({ size = 20 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M4 7V4h16v3M9 20h6M12 4v16" stroke="#4b7bbb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-function LanguageIcon({ size = 20 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Circle cx="12" cy="12" r="9" stroke="#4b7bbb" strokeWidth="2" />
-      <Path d="M3 12h18M12 3a15 15 0 0 0 0 18 15 15 0 0 0 0-18z" stroke="#4b7bbb" strokeWidth="2" />
-    </Svg>
-  );
-}
 function HelpIcon({ size = 20 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -147,11 +124,46 @@ function SignOutModal({ visible, onClose, onConfirm }: {
 }
 
 // ── Edit Profile Modal ──────────────────────────────────────────────────
-function EditProfileModal({ visible, onClose, userName, onSave }: {
-  visible: boolean; onClose: () => void; userName: string; onSave: (name: string) => void;
+function EditProfileModal({
+  visible,
+  onClose,
+  userName,
+  onSave,
+  currentAvatar,
+  onAvatarChange
+}: {
+  visible: boolean;
+  onClose: () => void;
+  userName: string;
+  onSave: (name: string) => void;
+  currentAvatar: string;
+  onAvatarChange: (avatar: string) => void;
 }) {
   const [name, setName] = useState(userName);
   const [showBadges, setShowBadges] = useState(true);
+  const [selectedAvatar, setSelectedAvatar] = useState(currentAvatar);
+
+  // Available characters
+  const characters = [
+    { id: 'senya', label: 'Senya', image: require('../../assets/images/img/senya_blue.png') },
+    { id: 'boy', label: 'Boy', image: require('../../assets/characters/boy.png') },
+    { id: 'girl', label: 'Girl', image: require('../../assets/characters/girl.png') },
+    { id: 'catto', label: 'Catto', image: require('../../assets/characters/catto.png') },
+  ];
+
+  const handleSave = async () => {
+    try {
+      // Save the avatar to backend
+      await api.updateProfilePicture(selectedAvatar);
+      onAvatarChange(selectedAvatar);
+      onSave(name);
+      onClose();
+      Alert.alert('✅ Success', 'Profile updated successfully!');
+    } catch (error) {
+      Alert.alert('❌ Error', 'Failed to update profile. Please try again.');
+      console.error(error);
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -164,18 +176,42 @@ function EditProfileModal({ visible, onClose, userName, onSave }: {
             </Pressable>
           </View>
 
-          {/* Avatar */}
+          {/* Avatar Selection */}
           <View style={styles.avatarEditCenter}>
             <View style={styles.avatarEditRing}>
               <Image
-                source={require('../../assets/images/img/senya_blue.png')}
+                source={characters.find(c => c.id === selectedAvatar)?.image || characters[0].image}
                 style={styles.avatarEditImg}
                 contentFit="cover"
               />
             </View>
-            <Pressable style={styles.changePicBtn}>
-              <Text style={styles.changePicText}>Change Picture</Text>
-            </Pressable>
+            <Text style={styles.avatarEditLabel}>Choose your character</Text>
+          </View>
+
+          {/* Character Grid */}
+          <View style={styles.characterGrid}>
+            {characters.map((char) => (
+              <Pressable
+                key={char.id}
+                style={[
+                  styles.characterOption,
+                  selectedAvatar === char.id && styles.characterOptionSelected,
+                ]}
+                onPress={() => setSelectedAvatar(char.id)}
+              >
+                <Image
+                  source={char.image}
+                  style={styles.characterImage}
+                  contentFit="contain"
+                />
+                <Text style={[
+                  styles.characterLabel,
+                  selectedAvatar === char.id && styles.characterLabelSelected,
+                ]}>
+                  {char.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
           {/* Display Name */}
@@ -210,7 +246,7 @@ function EditProfileModal({ visible, onClose, userName, onSave }: {
             <Pressable style={styles.cancelEditBtn} onPress={onClose}>
               <Text style={styles.cancelEditText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.saveBtn} onPress={() => { onSave(name); onClose(); }}>
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
               <Text style={styles.saveBtnText}>Save Changes</Text>
             </Pressable>
           </View>
@@ -220,6 +256,112 @@ function EditProfileModal({ visible, onClose, userName, onSave }: {
   );
 }
 
+// ── Help & Support Modal ──────────────────────────────────────────────
+function HelpSupportModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSubmit = () => {
+    if (!message.trim()) {
+      Alert.alert('Please enter a message');
+      return;
+    }
+    setSending(true);
+    // Simulate sending
+    setTimeout(() => {
+      setSending(false);
+      Alert.alert('✅ Message Sent!', 'We\'ll get back to you within 24 hours.');
+      setMessage('');
+      onClose();
+    }, 1500);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.helpModal} onPress={e => e.stopPropagation()}>
+          <View style={styles.editModalHeader}>
+            <Text style={styles.editModalTitle}>Help & Support</Text>
+            <Pressable style={styles.closeBtn} onPress={onClose}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.helpSubtitle}>
+            Having trouble? Send us a message and we'll help you out.
+          </Text>
+
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>Your Message</Text>
+            <TextInput
+              style={[styles.fieldInput, styles.messageInput]}
+              value={message}
+              onChangeText={setMessage}
+              placeholder="Describe your issue or question..."
+              placeholderTextColor="#9CA3AF"
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <Pressable
+            style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={sending}
+          >
+            {sending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.sendBtnText}>Send Message</Text>
+            )}
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── About SEÑAS Modal ──────────────────────────────────────────────────
+function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.aboutModal} onPress={e => e.stopPropagation()}>
+          <View style={styles.editModalHeader}>
+            <Text style={styles.editModalTitle}>About SEÑAS</Text>
+            <Pressable style={styles.closeBtn} onPress={onClose}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </Pressable>
+          </View>
+
+          <Image
+            source={require('../../assets/images/img/senya_blue.png')}
+            style={styles.aboutLogo}
+            contentFit="contain"
+          />
+
+          <Text style={styles.aboutTitle}>SEÑAS</Text>
+          <Text style={styles.aboutSubtitle}>Filipino Sign Language Learning App</Text>
+
+          <View style={styles.aboutDivider} />
+
+          <Text style={styles.aboutText}>
+            SEÑAS is a mobile application designed to help students learn Filipino Sign Language (FSL) through interactive lessons, gesture recognition, and gamified learning experiences.
+          </Text>
+
+          <View style={styles.aboutDivider} />
+
+          <Text style={styles.aboutVersion}>Version 2.0.0</Text>
+          <Text style={styles.aboutCopyright}>© 2026 SEÑAS. All rights reserved.</Text>
+          <Text style={styles.aboutDevelopers}>
+            Developed by Team SEÑAS
+          </Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 // ── Main Profile Screen ─────────────────────────────────────────────────
 export default function Profile() {
@@ -239,26 +381,42 @@ export default function Profile() {
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [showPromotionModal, setShowPromotionModal] = useState(false);
 
-  // Settings state
+  // Settings state - only what works
   const [notifs, setNotifs] = useState(true);
   const [sound, setSound] = useState(true);
-  const [haptic, setHaptic] = useState(false);
-  const [largeText, setLargeText] = useState(false);
+
+  // Modal states
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+
+  const [selectedAvatar, setSelectedAvatar] = useState('senya');
 
 
+
+  // ── Settings Items (only working features) ──
   const settingsItems = [
-    { label: 'Daily Reminders', sub: 'Get notified to practice', val: notifs, set: setNotifs, Icon: BellIcon },
-    { label: 'Sound Effects', sub: 'Play sounds during lessons', val: sound, set: setSound, Icon: SoundIcon },
-    { label: 'Haptic Feedback', sub: 'Vibrate on interactions', val: haptic, set: setHaptic, Icon: HapticIcon },
-    { label: 'Large Text Mode', sub: 'Bigger text for readability', val: largeText, set: setLargeText, Icon: TextSizeIcon },
+    {
+      label: 'Daily Reminders',
+      sub: 'Get notified to practice',
+      val: notifs,
+      set: setNotifs,
+      Icon: BellIcon
+    },
+    {
+      label: 'Sound Effects',
+      sub: 'Play sounds during lessons',
+      val: sound,
+      set: setSound,
+      Icon: SoundIcon
+    },
   ];
 
+  // ── Account Items ──
   const accountItems = [
-    { label: 'Language Preference', Icon: LanguageIcon },
-    { label: 'Help & Support', Icon: HelpIcon },
-    { label: 'About SEÑAS', Icon: InfoIcon },
+    { label: 'Help & Support', Icon: HelpIcon, route: '/help' },
+    { label: 'About SEÑAS', Icon: InfoIcon, route: '/about' },
   ];
 
   // ── Fetch profile data ──
@@ -270,7 +428,6 @@ export default function Profile() {
     try {
       setLoading(true);
 
-      // Get user data from AsyncStorage
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
         const user = JSON.parse(userData);
@@ -278,9 +435,12 @@ export default function Profile() {
         const fullName = `${student?.first_name || ''} ${student?.last_name || ''}`.trim();
         setUserName(fullName || 'Student');
         setStudentLevel(student?.fsl_mastery_level || 'Beginner');
+
+        // ✅ Load avatar from stored data
+        const avatar = student?.profile_picture || 'senya';
+        setSelectedAvatar(avatar);
       }
 
-      // Fetch latest data from API
       const response = await api.getStudentLessons();
       if (response.success) {
         const student = response.student;
@@ -291,7 +451,11 @@ export default function Profile() {
           setStudentLevel(student.fsl_mastery_level);
         }
 
-        // 🔥 FIX: Count completed lessons from modules
+        // ✅ Also check if avatar came from the API response
+        if (student?.profile_picture) {
+          setSelectedAvatar(student.profile_picture);
+        }
+
         let completedCount = 0;
         if (response.modules && Array.isArray(response.modules)) {
           response.modules.forEach((module: any) => {
@@ -303,8 +467,6 @@ export default function Profile() {
         }
         setTotalLessons(completedCount);
 
-        // Alternative: If response has a 'lessons' property directly (for getAllLessons)
-        // You can also check for that
         if (response.lessons && Array.isArray(response.lessons) && completedCount === 0) {
           const completed = response.lessons.filter((l: any) => l.status === 'completed');
           setTotalLessons(completed.length);
@@ -313,7 +475,6 @@ export default function Profile() {
         const earnedBadges = Math.min(Math.floor((student?.total_xp || 0) / 50) + 1, 8);
         setTotalBadges(earnedBadges > 0 ? Math.min(earnedBadges, 8) : 0);
 
-        // ── FIXED: Set recent badges ──
         const badgeData = [
           { xp: 0, label: 'First Step', src: require('../../assets/images/img/first_step.png') },
           { xp: 50, label: 'Alphabet Star', src: require('../../assets/images/img/alphabet_star.png') },
@@ -325,7 +486,6 @@ export default function Profile() {
           .filter(b => (student?.total_xp || 0) >= b.xp)
           .slice(0, 4);
 
-        // Add locked badges as placeholders if needed
         const placeholderBadges: { xp: number; label: string; src: any }[] = [
           { xp: 200, label: 'Quiz Whiz', src: require('../../assets/images/img/locked.png') },
           { xp: 250, label: 'Sign Detective', src: require('../../assets/images/img/locked.png') },
@@ -339,17 +499,14 @@ export default function Profile() {
         setRecentBadges(earnedBadgeList);
       }
 
-      // Fetch promotion history
       try {
         const promoResponse = await api.getPromotionHistory();
         const promotions = promoResponse?.history || [];
         setDocuments(promotions);
-        console.log('✅ Documents set:', promotions.length);
       } catch (error) {
         console.log('No promotion history found');
       }
 
-      // Get learning path
       try {
         const pathResponse = await api.getLearningPath();
         if (pathResponse && pathResponse.learning_path) {
@@ -367,22 +524,13 @@ export default function Profile() {
       setLoading(false);
     }
   };
-
   const handleOpenDocument = async (promotion: any) => {
     try {
-      console.log('📜 Opening document:', promotion);
-
-      // Fetch full promotion details with summary
       const response = await api.getPromotionDetails(promotion.id);
-      console.log('📜 Full promotion details:', response);
-
-      // The API returns the promotion data directly
       const fullPromotion = response?.promotion || response;
 
-      // Ensure we have all required fields
       const promotionWithSummary = {
         ...fullPromotion,
-        // Use the summary from the API if available
         summary: fullPromotion.summary || {
           quizzes_taken: 0,
           quizzes_passed: 0,
@@ -392,7 +540,6 @@ export default function Profile() {
           total_xp: promotion.xp_at_promotion || 0,
           accuracy: 0
         },
-        // Ensure we have all the fields the modal expects
         id: fullPromotion.id || promotion.id,
         from_level: fullPromotion.from_level || promotion.from_level,
         to_level: fullPromotion.to_level || promotion.to_level,
@@ -407,9 +554,7 @@ export default function Profile() {
       setSelectedPromotion(promotionWithSummary);
       setShowPromotionModal(true);
     } catch (error) {
-      console.error('❌ Error fetching promotion details:', error);
-
-      // Fallback: Use basic data with default summary
+      console.error('Error fetching promotion details:', error);
       const promotionWithSummary = {
         ...promotion,
         summary: {
@@ -427,7 +572,6 @@ export default function Profile() {
         badge_icon: '🎓',
         promotion_date: promotion.promoted_at || new Date().toISOString()
       };
-
       setSelectedPromotion(promotionWithSummary);
       setShowPromotionModal(true);
     }
@@ -452,23 +596,35 @@ export default function Profile() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Modals */}
       <EditProfileModal
         visible={showEditModal}
         onClose={() => setShowEditModal(false)}
         userName={userName}
         onSave={setUserName}
+        currentAvatar={selectedAvatar}
+        onAvatarChange={setSelectedAvatar}
       />
+
       <SignOutModal
         visible={showSignOutModal}
         onClose={() => setShowSignOutModal(false)}
         onConfirm={() => { setShowSignOutModal(false); router.replace('/onboarding'); }}
+      />
+      <HelpSupportModal
+        visible={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+      />
+      <AboutModal
+        visible={showAboutModal}
+        onClose={() => setShowAboutModal(false)}
       />
       {selectedPromotion && (
         <PromotionModal
           visible={showPromotionModal}
           promotionData={selectedPromotion}
           onClose={() => setShowPromotionModal(false)}
-          studentName={userName}  // ✅ Use the actual student name from state
+          studentName={userName}
         />
       )}
 
@@ -481,7 +637,12 @@ export default function Profile() {
           <View style={styles.avatarWrapper}>
             <View style={styles.avatarRing}>
               <Image
-                source={require('../../assets/images/img/senya_blue.png')}
+                source={
+                  selectedAvatar === 'senya' ? require('../../assets/images/img/senya_blue.png') :
+                    selectedAvatar === 'boy' ? require('../../assets/characters/boy.png') :
+                      selectedAvatar === 'girl' ? require('../../assets/characters/girl.png') :
+                        require('../../assets/characters/catto.png')
+                }
                 style={styles.avatarImg}
                 contentFit="cover"
               />
@@ -490,7 +651,6 @@ export default function Profile() {
               <Text style={styles.editAvatarIcon}>✎</Text>
             </Pressable>
           </View>
-
           <Text style={styles.headerName}>{userName}</Text>
           <Text style={styles.headerRole}>FSL {studentLevel} Learner</Text>
 
@@ -631,7 +791,7 @@ export default function Profile() {
           </GlassCard>
         </View>
 
-        {/* ── Settings ── */}
+        {/* ── Settings (Only Working Features) ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <GlassCard style={styles.settingsCard}>
@@ -658,8 +818,12 @@ export default function Profile() {
         {/* ── Account ── */}
         <View style={styles.section}>
           <GlassCard style={styles.settingsCard}>
-            {accountItems.map(({ label, Icon }, i) => (
-              <Pressable key={i} style={[styles.accountRow, i < accountItems.length - 1 && styles.settingBorder]}>
+            {accountItems.map(({ label, Icon, route }, i) => (
+              <Pressable
+                key={i}
+                style={[styles.accountRow, i < accountItems.length - 1 && styles.settingBorder]}
+                onPress={() => router.push(route as any)}
+              >
                 <View style={styles.settingIconBox}>
                   <Icon size={20} />
                 </View>
@@ -879,4 +1043,140 @@ const styles = StyleSheet.create({
     shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 8,
   },
   saveBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+
+  // Help & Support Modal
+  helpModal: {
+    width: '90%', maxWidth: 380,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 32, padding: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.2, shadowRadius: 40, elevation: 24,
+  },
+  helpSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  messageInput: {
+    minHeight: 120,
+    paddingTop: 12,
+  },
+  sendBtn: {
+    backgroundColor: '#2563EB',
+    borderRadius: 40,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 8,
+    marginTop: 8,
+  },
+  sendBtnDisabled: {
+    opacity: 0.7,
+  },
+  sendBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // About Modal
+  aboutModal: {
+    width: '90%', maxWidth: 380,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 32, padding: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.2, shadowRadius: 40, elevation: 24,
+    alignItems: 'center',
+  },
+  aboutLogo: {
+    width: 80,
+    height: 80,
+    marginBottom: 12,
+  },
+  aboutTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#0f3172',
+    letterSpacing: 2,
+  },
+  aboutSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 16,
+  },
+  aboutDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(15,49,114,0.08)',
+    marginVertical: 16,
+  },
+  aboutText: {
+    fontSize: 14,
+    color: '#1F2937',
+    fontWeight: '500',
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  aboutVersion: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f3172',
+  },
+  aboutCopyright: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  aboutDevelopers: {
+    fontSize: 12,
+    color: '#2563EB',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  avatarEditLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  characterGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  characterOption: {
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(15,49,114,0.04)',
+    minWidth: 60,
+  },
+  characterOptionSelected: {
+    borderColor: '#2563EB',
+    backgroundColor: 'rgba(37,99,235,0.10)',
+  },
+  characterImage: {
+    width: 50,
+    height: 50,
+  },
+  characterLabel: {
+    fontSize: 10,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  characterLabelSelected: {
+    color: '#2563EB',
+    fontWeight: '700',
+  },
+
+
 });

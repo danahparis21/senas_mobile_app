@@ -1,21 +1,22 @@
 // app/components/PromotionModal.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    Modal,
-    Pressable,
-    Dimensions,
-    Animated,
-    Alert,
-    Image,
-    ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  Pressable,
+  Dimensions,
+  Animated,
+  Alert,
+  Image,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Audio } from 'expo-av'; // ← ADD THIS
 
 const { width, height } = Dimensions.get('window');
 
@@ -24,178 +25,210 @@ const SENYA_TEACHING_IMAGE = require('../assets/images/img/senya_teaching.png');
 const SENYA_BLUE_IMAGE = require('../assets/images/img/senya_blue.png');
 
 interface PromotionData {
-    id: number;
-    from_level: string;
-    to_level: string;
-    promotion_date: string;
-    title: string;
-    subtitle: string;
-    message: string;
-    badge_icon: string;
-    was_forced: boolean;
-    gradient?: [string, string, string];
-    summary: {
-        quizzes_taken: number;
-        quizzes_passed: number;
-        avg_quiz_score: number;
-        lessons_completed: number;
-        gestures_attempted: number;
-        total_xp: number;
-        accuracy: number;
-    };
+  id: number;
+  from_level: string;
+  to_level: string;
+  promotion_date: string;
+  title: string;
+  subtitle: string;
+  message: string;
+  badge_icon: string;
+  was_forced: boolean;
+  gradient?: [string, string, string];
+  summary: {
+    quizzes_taken: number;
+    quizzes_passed: number;
+    avg_quiz_score: number;
+    lessons_completed: number;
+    gestures_attempted: number;
+    total_xp: number;
+    accuracy: number;
+  };
 }
 
 interface PromotionModalProps {
-    visible: boolean;
-    promotionData: PromotionData | null;
-    onClose: () => void;
-    studentName?: string;
+  visible: boolean;
+  promotionData: PromotionData | null;
+  onClose: () => void;
+  studentName?: string;
 }
 
 const DEFAULT_GRADIENT: [string, string, string] = ['#0f3172', '#1a4f8a', '#2563eb'];
 
 const getAssetUriForPrint = (moduleRequire: any): string => {
-    try {
-        const resolved = Image.resolveAssetSource(moduleRequire);
-        return resolved?.uri || '';
-    } catch (e) {
-        console.warn('Could not resolve asset source for print:', e);
-        return '';
-    }
+  try {
+    const resolved = Image.resolveAssetSource(moduleRequire);
+    return resolved?.uri || '';
+  } catch (e) {
+    console.warn('Could not resolve asset source for print:', e);
+    return '';
+  }
 };
 
 // Builds the point list for a scalloped/starburst medal edge (alternating outer/inner radius).
 const buildScallopPoints = (cx: number, cy: number, outerR: number, innerR: number, spikes: number): string => {
-    const pts: string[] = [];
-    for (let i = 0; i < spikes * 2; i++) {
-        const angle = (Math.PI * i) / spikes - Math.PI / 2;
-        const r = i % 2 === 0 ? outerR : innerR;
-        const x = cx + r * Math.cos(angle);
-        const y = cy + r * Math.sin(angle);
-        pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
-    }
-    return pts.join(' ');
+  const pts: string[] = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const angle = (Math.PI * i) / spikes - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    const x = cx + r * Math.cos(angle);
+    const y = cy + r * Math.sin(angle);
+    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  return pts.join(' ');
 };
 
 // Builds a ring of small star studs around the medal face.
 const buildStarRing = (cx: number, cy: number, r: number, count: number, color: string): string => {
-    return Array.from({ length: count }).map((_, i) => {
-        const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-        const x = (cx + r * Math.cos(angle)).toFixed(1);
-        const y = (cy + r * Math.sin(angle)).toFixed(1);
-        return `<circle cx="${x}" cy="${y}" r="1.3" fill="${color}" opacity="0.6" />`;
-    }).join('');
+  return Array.from({ length: count }).map((_, i) => {
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    const x = (cx + r * Math.cos(angle)).toFixed(1);
+    const y = (cy + r * Math.sin(angle)).toFixed(1);
+    return `<circle cx="${x}" cy="${y}" r="1.3" fill="${color}" opacity="0.6" />`;
+  }).join('');
 };
 
 export default function PromotionModal({ visible, promotionData, onClose, studentName }: PromotionModalProps) {
-    const [scaleAnim] = useState(new Animated.Value(0.88));
-    const [fadeAnim] = useState(new Animated.Value(0));
-    const [frontPaper, setFrontPaper] = useState<'certificate' | 'report'>('certificate');
-    const swapAnim = useRef(new Animated.Value(0)).current;
-    const envelopeAnim = useRef(new Animated.Value(0)).current;
+  const [scaleAnim] = useState(new Animated.Value(0.88));
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [frontPaper, setFrontPaper] = useState<'certificate' | 'report'>('certificate');
+  const swapAnim = useRef(new Animated.Value(0)).current;
+  const envelopeAnim = useRef(new Animated.Value(0)).current;
 
-    useEffect(() => {
-        if (visible) {
-            Animated.parallel([
-                Animated.spring(scaleAnim, {
-                    toValue: 1,
-                    friction: 8,
-                    tension: 40,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 280,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        } else {
-            Animated.parallel([
-                Animated.timing(scaleAnim, {
-                    toValue: 0.88,
-                    duration: 200,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(fadeAnim, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        }
-    }, [visible]);
+  // 🎵 Sound Effect
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
 
-    useEffect(() => {
-        if (visible) {
-            setFrontPaper('certificate');
-            swapAnim.setValue(0);
-            envelopeAnim.setValue(0);
-            Animated.sequence([
-                Animated.delay(100),
-                Animated.spring(envelopeAnim, {
-                    toValue: 1,
-                    friction: 7,
-                    tension: 42,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        } else {
-            envelopeAnim.setValue(0);
-        }
-    }, [visible]);
-
-    if (!visible || !promotionData) {
-        return null;
+  // ─── Play Sound When Modal Opens ──────────────────────────────────────
+  useEffect(() => {
+    async function playSound() {
+      try {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          require('../assets/music/certificate.mp3'),
+          {
+            shouldPlay: true,
+            isLooping: false,
+            volume: 0.8,
+          }
+        );
+        setSound(newSound);
+      } catch (error) {
+        console.error('Failed to play certificate sound:', error);
+      }
     }
 
+    if (visible) {
+      playSound();
+    }
 
-    const toLevelLower = (promotionData.to_level || '').toLowerCase();
-    const fromLevelLower = (promotionData.from_level || '').toLowerCase();
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, [visible]);
 
-    const isGraduation =
-        toLevelLower === 'graduated' ||
-        toLevelLower === 'completed' ||
-        toLevelLower === 'completion' ||
-        fromLevelLower === 'advanced';
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(scaleAnim, {
+          toValue: 0.88,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
 
-    const promotionDateFormatted = promotionData.promotion_date
-        ? new Date(promotionData.promotion_date).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        })
-        : new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
+  useEffect(() => {
+    if (visible) {
+      setFrontPaper('certificate');
+      swapAnim.setValue(0);
+      envelopeAnim.setValue(0);
+      Animated.sequence([
+        Animated.delay(100),
+        Animated.spring(envelopeAnim, {
+          toValue: 1,
+          friction: 7,
+          tension: 42,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      envelopeAnim.setValue(0);
+    }
+  }, [visible]);
 
-    const recipientName = studentName || 'Learner';
-    const teacherName = '';  // Teacher signature line — pass in via prop later if needed
+  if (!visible || !promotionData) {
+    return null;
+  }
 
-    const targetLevelUpper = promotionData.to_level.toUpperCase();
-    const formattedPillText = targetLevelUpper.includes('LEVEL')
-        ? targetLevelUpper
-        : `${targetLevelUpper} LEVEL`;
 
-    const handleDownloadLetter = async () => {
-        try {
-            const logoUri = getAssetUriForPrint(LOGO_IMAGE);
-            const senyaUri = getAssetUriForPrint(SENYA_TEACHING_IMAGE);
+  const toLevelLower = (promotionData.to_level || '').toLowerCase();
+  const fromLevelLower = (promotionData.from_level || '').toLowerCase();
 
-            const certTitle = isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT';
-            const certBodyText = isGraduation
-                ? `for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels of Filipino Sign Language. Congratulations on this remarkable achievement!`
-                : `for successfully completing the <span class="level-highlight">${promotionData.from_level} Level</span> of the SEÑAS Filipino Sign Language Learning Platform and demonstrating the knowledge and skills required to advance to the next stage.`;
+  const isGraduation =
+    toLevelLower === 'graduated' ||
+    toLevelLower === 'completed' ||
+    toLevelLower === 'completion' ||
+    fromLevelLower === 'advanced';
 
-            // Medal geometry: gold scalloped seal (cx,cy = 70,120) hanging from a two-tail navy ribbon.
-            const medalCx = 89, medalCy = 148;
-            const medalScallop = buildScallopPoints(medalCx, medalCy, 66, 56, 14);
-            const medalStarRing = buildStarRing(medalCx, medalCy, 52, 20, '#92400e');
-            const medalTopArc = `M ${medalCx - 34},${medalCy} A 34,34 0 1,1 ${medalCx + 34},${medalCy}`;
-            const medalBottomArc = `M ${medalCx + 34},${medalCy + 5} A 34,34 0 1,1 ${medalCx - 34},${medalCy + 5}`;
+  const promotionDateFormatted = promotionData.promotion_date
+    ? new Date(promotionData.promotion_date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+    : new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
 
-            const htmlContent = `
+  const recipientName = studentName || 'Learner';
+  const teacherName = '';  // Teacher signature line — pass in via prop later if needed
+
+  const targetLevelUpper = promotionData.to_level.toUpperCase();
+  const formattedPillText = targetLevelUpper.includes('LEVEL')
+    ? targetLevelUpper
+    : `${targetLevelUpper} LEVEL`;
+
+  const handleDownloadLetter = async () => {
+    try {
+      const logoUri = getAssetUriForPrint(LOGO_IMAGE);
+      const senyaUri = getAssetUriForPrint(SENYA_TEACHING_IMAGE);
+
+      const certTitle = isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT';
+      const certBodyText = isGraduation
+        ? `for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels of Filipino Sign Language. Congratulations on this remarkable achievement!`
+        : `for successfully completing the <span class="level-highlight">${promotionData.from_level} Level</span> of the SEÑAS Filipino Sign Language Learning Platform and demonstrating the knowledge and skills required to advance to the next stage.`;
+
+      // Medal geometry: gold scalloped seal (cx,cy = 70,120) hanging from a two-tail navy ribbon.
+      const medalCx = 89, medalCy = 148;
+      const medalScallop = buildScallopPoints(medalCx, medalCy, 66, 56, 14);
+      const medalStarRing = buildStarRing(medalCx, medalCy, 52, 20, '#92400e');
+      const medalTopArc = `M ${medalCx - 34},${medalCy} A 34,34 0 1,1 ${medalCx + 34},${medalCy}`;
+      const medalBottomArc = `M ${medalCx + 34},${medalCy + 5} A 34,34 0 1,1 ${medalCx - 34},${medalCy + 5}`;
+
+      const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -584,29 +617,29 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 </body>
 </html>
             `;
-            const { uri } = await Print.printToFileAsync({ html: htmlContent });
-            await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Download Official Certificate' });
-        } catch (error) {
-            console.error('Error generating PDF Certificate:', error);
-            Alert.alert('Error', 'Failed to generate PDF Certificate. Please try again.');
-        }
-    };
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Download Official Certificate' });
+    } catch (error) {
+      console.error('Error generating PDF Certificate:', error);
+      Alert.alert('Error', 'Failed to generate PDF Certificate. Please try again.');
+    }
+  };
 
-    const handleDownloadReportCard = async () => {
-        try {
-            const logoUri = getAssetUriForPrint(LOGO_IMAGE);
-            const senyaBlueUri = getAssetUriForPrint(SENYA_BLUE_IMAGE);
+  const handleDownloadReportCard = async () => {
+    try {
+      const logoUri = getAssetUriForPrint(LOGO_IMAGE);
+      const senyaBlueUri = getAssetUriForPrint(SENYA_BLUE_IMAGE);
 
-            // Compact gold seal (no ribbon tails) reused from the certificate's medal styling.
-            const sealCx = 50, sealCy = 50;
-            const sealScallop = buildScallopPoints(sealCx, sealCy, 38, 32, 12);
-            const sealStarRing = buildStarRing(sealCx, sealCy, 29.5, 16, '#92400e');
-            const sealTopArc = `M ${sealCx - 19},${sealCy} A 19,19 0 1,1 ${sealCx + 19},${sealCy}`;
-            const sealBottomArc = `M ${sealCx + 19},${sealCy + 3} A 19,19 0 1,1 ${sealCx - 19},${sealCy + 3}`;
+      // Compact gold seal (no ribbon tails) reused from the certificate's medal styling.
+      const sealCx = 50, sealCy = 50;
+      const sealScallop = buildScallopPoints(sealCx, sealCy, 38, 32, 12);
+      const sealStarRing = buildStarRing(sealCx, sealCy, 29.5, 16, '#92400e');
+      const sealTopArc = `M ${sealCx - 19},${sealCy} A 19,19 0 1,1 ${sealCx + 19},${sealCy}`;
+      const sealBottomArc = `M ${sealCx + 19},${sealCy + 3} A 19,19 0 1,1 ${sealCx - 19},${sealCy + 3}`;
 
-            const accuracy = promotionData.summary.accuracy;
+      const accuracy = promotionData.summary.accuracy;
 
-            const htmlContent = `
+      const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -905,853 +938,853 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 </body>
 </html>
             `;
-            const { uri } = await Print.printToFileAsync({ html: htmlContent });
-            await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Download Grade Report' });
-        } catch (error) {
-            console.error('Error generating PDF Report:', error);
-            Alert.alert('Error', 'Failed to generate PDF Report. Please try again.');
-        }
-    };
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Download Grade Report' });
+    } catch (error) {
+      console.error('Error generating PDF Report:', error);
+      Alert.alert('Error', 'Failed to generate PDF Report. Please try again.');
+    }
+  };
 
-    const bringToFront = (paper: 'certificate' | 'report') => {
-        if (paper === frontPaper) return;
-        setFrontPaper(paper);
-        Animated.spring(swapAnim, {
-            toValue: paper === 'certificate' ? 0 : 1,
-            friction: 9,
-            tension: 60,
-            useNativeDriver: true,
-        }).start();
-    };
+  const bringToFront = (paper: 'certificate' | 'report') => {
+    if (paper === frontPaper) return;
+    setFrontPaper(paper);
+    Animated.spring(swapAnim, {
+      toValue: paper === 'certificate' ? 0 : 1,
+      friction: 9,
+      tension: 60,
+      useNativeDriver: true,
+    }).start();
+  };
 
-    const paperEntranceOpacity = envelopeAnim.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 0.4, 1] });
-    const paperEntranceTranslateY = envelopeAnim.interpolate({ inputRange: [0, 1], outputRange: [125, 0] });
-    const paperEntranceScale = envelopeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
+  const paperEntranceOpacity = envelopeAnim.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 0.4, 1] });
+  const paperEntranceTranslateY = envelopeAnim.interpolate({ inputRange: [0, 1], outputRange: [125, 0] });
+  const paperEntranceScale = envelopeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
 
-    const certTransform = {
-        opacity: paperEntranceOpacity,
-        transform: [
-            { translateY: paperEntranceTranslateY },
-            { scale: paperEntranceScale },
-            { translateX: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -18] }) },
-            { translateY: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -8] }) },
-            { rotate: swapAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-6deg'] }) },
-            { scale: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] }) },
-        ],
-    };
+  const certTransform = {
+    opacity: paperEntranceOpacity,
+    transform: [
+      { translateY: paperEntranceTranslateY },
+      { scale: paperEntranceScale },
+      { translateX: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -18] }) },
+      { translateY: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -8] }) },
+      { rotate: swapAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-6deg'] }) },
+      { scale: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] }) },
+    ],
+  };
 
-    const reportTransform = {
-        opacity: paperEntranceOpacity,
-        transform: [
-            { translateY: paperEntranceTranslateY },
-            { scale: paperEntranceScale },
-            { translateX: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
-            { translateY: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
-            { rotate: swapAnim.interpolate({ inputRange: [0, 1], outputRange: ['6deg', '0deg'] }) },
-            { scale: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
-        ],
-    };
+  const reportTransform = {
+    opacity: paperEntranceOpacity,
+    transform: [
+      { translateY: paperEntranceTranslateY },
+      { scale: paperEntranceScale },
+      { translateX: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) },
+      { translateY: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+      { rotate: swapAnim.interpolate({ inputRange: [0, 1], outputRange: ['6deg', '0deg'] }) },
+      { scale: swapAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+    ],
+  };
 
-    return (
-        <Modal transparent visible={visible} animationType="none" statusBarTranslucent>
-            <View style={styles.overlay}>
-                <Animated.View style={[styles.modalContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
-                    <View style={styles.envelopeMainContainer}>
-                        {/* Envelope Body - Rectangle with rounded bottom */}
-                        <View style={styles.envelopeBody}>
-                            <LinearGradient
-                                colors={['#1e3a8a', '#1d4ed8', '#0f3172'] as const}
-                                style={StyleSheet.absoluteFill}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 0, y: 1 }}
-                            />
-                            <View style={styles.envelopeBackHighlight} />
-                        </View>
-
-                        {/* Envelope Top Flap - Triangle that connects to body */}
-                        <View style={styles.envelopeTriangleFlap} />
-                        <View style={styles.envelopeTriangleFlapShade} />
-
-                        {/* Close Button */}
-                        <Pressable style={styles.closeIconButton} onPress={onClose} hitSlop={12}>
-                            <Ionicons name="close" size={20} color="#FFFFFF" />
-                        </Pressable>
-
-                        {/* Papers Container - Positioned to emerge from envelope */}
-                        <View style={styles.papersContainer}>
-                            {/* Grade Report Card - WITHOUT download button inside */}
-                            <Animated.View style={[styles.paperCard, reportTransform, { zIndex: frontPaper === 'report' ? 2 : 1 }]}>
-                                <Pressable style={styles.paperTapArea} onPress={() => bringToFront('report')}>
-                                    <Text style={styles.paperEyebrow}>OFFICIAL TRANSCRIPT</Text>
-                                    <Text style={styles.paperTitleReport}>Grade Report Card</Text>
-                                    <View style={styles.paperRule} />
-
-                                    <View style={styles.statsGrid}>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="help-circle" size={16} color="#2563EB" />
-                                            <Text style={styles.statValue}>{promotionData.summary.quizzes_taken}</Text>
-                                            <Text style={styles.statLabel}>Quizzes</Text>
-                                        </View>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
-                                            <Text style={styles.statValue}>{promotionData.summary.quizzes_passed}</Text>
-                                            <Text style={styles.statLabel}>Passed</Text>
-                                        </View>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="trophy" size={16} color="#D97706" />
-                                            <Text style={styles.statValue}>{promotionData.summary.avg_quiz_score}%</Text>
-                                            <Text style={styles.statLabel}>Avg Score</Text>
-                                        </View>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="book" size={16} color="#2563EB" />
-                                            <Text style={styles.statValue}>{promotionData.summary.lessons_completed}</Text>
-                                            <Text style={styles.statLabel}>Lessons</Text>
-                                        </View>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="hand-left" size={16} color="#2563EB" />
-                                            <Text style={styles.statValue}>{promotionData.summary.gestures_attempted}</Text>
-                                            <Text style={styles.statLabel}>Gestures</Text>
-                                        </View>
-                                        <View style={styles.statItem}>
-                                            <Ionicons name="analytics" size={16} color="#2563EB" />
-                                            <Text style={styles.statValue}>{promotionData.summary.accuracy}%</Text>
-                                            <Text style={styles.statLabel}>Accuracy</Text>
-                                        </View>
-                                    </View>
-
-                                    <View style={styles.xpRow}>
-                                        <Ionicons name="star" size={16} color="#D97706" style={{ marginRight: 4 }} />
-                                        <Text style={styles.xpRowText}>{promotionData.summary.total_xp} XP Earned</Text>
-                                    </View>
-                                </Pressable>
-                            </Animated.View>
-
-                            {/* Certificate Card - WITHOUT download button inside */}
-                            <Animated.View style={[styles.paperCard, certTransform, { zIndex: frontPaper === 'certificate' ? 2 : 1 }]}>
-                                <Pressable style={styles.paperTapArea} onPress={() => bringToFront('certificate')}>
-                                    <View style={styles.canvaCertFrame}>
-                                        <View style={styles.canvaRibbonBanner}>
-                                            <Text style={styles.canvaRibbonTitle}>OFFICIAL{'\n'}CERTIFICATE</Text>
-                                            <View style={styles.canvaRibbonStamp}>
-                                                <Text style={styles.canvaStampTop}>FSL PLATFORM</Text>
-                                                <Text style={styles.canvaStampCenter}>SEÑAS</Text>
-                                            </View>
-                                        </View>
-
-                                        <View style={styles.canvaHeaderLeft}>
-                                            <Image source={LOGO_IMAGE} style={styles.canvaLogo} resizeMode="contain" />
-                                        </View>
-
-                                        <View style={styles.canvaContent}>
-                                            <Text style={styles.canvaTitle}>{isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT'}</Text>
-                                            <Text style={styles.canvaPresentedTo}>Presented to</Text>
-                                            <Text style={styles.canvaRecipientName} numberOfLines={1}>{recipientName}</Text>
-                                            <View style={styles.canvaStarDivider}>
-                                                <View style={styles.canvaDividerLine} />
-                                                <Text style={styles.canvaStarIcon}>✦</Text>
-                                                <View style={styles.canvaDividerLine} />
-                                            </View>
-                                            {isGraduation ? (
-                                                <Text style={styles.canvaBodyText}>for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels. Congratulations!</Text>
-                                            ) : (
-                                                <Text style={styles.canvaBodyText}>for successfully completing the <Text style={styles.canvaBoldText}>{promotionData.from_level} Level</Text> of the SEÑAS Filipino Sign Language Learning Platform and demonstrating the knowledge and skills required to advance to the next stage.</Text>
-                                            )}
-                                            {!isGraduation && (
-                                                <View style={styles.canvaPromotedSection}>
-                                                    <Text style={styles.canvaPromotedLabel}>PROMOTED TO</Text>
-                                                    <View style={styles.canvaPromotedPill}>
-                                                        <Ionicons name="star" size={11} color="#F59E0B" />
-                                                        <Text style={styles.canvaPromotedText}>{formattedPillText}</Text>
-                                                        <Ionicons name="star" size={11} color="#F59E0B" />
-                                                    </View>
-                                                </View>
-                                            )}
-                                            <Text style={styles.canvaQuote}>"Keep learning, keep signing, and continue making communication more inclusive."</Text>
-                                        </View>
-                                        <View style={styles.canvaFooter}>
-                                            <View style={styles.canvaDateGroup}>
-                                                <View style={styles.canvaDateIconBox}>
-                                                    <Ionicons name="calendar-outline" size={14} color="#2563EB" />
-                                                </View>
-                                                <View>
-                                                    <Text style={styles.canvaDateLabel}>DATE</Text>
-                                                    <Text style={styles.canvaDateValue}>{promotionDateFormatted}</Text>
-                                                </View>
-                                            </View>
-                                            <View style={styles.canvaSigsGroup}>
-                                                <View style={styles.canvaSigCol}>
-                                                    <View style={styles.canvaSigLine} />
-                                                    <Text style={styles.canvaSigTitle}>SEÑAS Team</Text>
-                                                </View>
-                                                <View style={styles.canvaSigVertLine} />
-                                                <View style={styles.canvaSigCol}>
-                                                    <View style={styles.canvaSigLine} />
-                                                    <Text style={styles.canvaSigTitle}>FSL Academic Committee</Text>
-                                                </View>
-                                            </View>
-                                        </View>
-                                        <Image source={SENYA_TEACHING_IMAGE} style={styles.canvaSenyaMascot} resizeMode="contain" />
-                                    </View>
-                                </Pressable>
-                            </Animated.View>
-                        </View>
-
-                        {/* Download Buttons - Positioned independently ABOVE the paper cards */}
-                        <View style={styles.downloadButtonsContainer}>
-                            {frontPaper === 'certificate' && (
-                                <Pressable style={styles.paperDownloadBtn} onPress={handleDownloadLetter}>
-                                    <Ionicons name="download-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                                    <Text style={styles.paperDownloadBtnText}>Download Certificate</Text>
-                                </Pressable>
-                            )}
-                            {frontPaper === 'report' && (
-                                <Pressable style={styles.paperDownloadBtn} onPress={handleDownloadReportCard}>
-                                    <Ionicons name="download-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                                    <Text style={styles.paperDownloadBtnText}>Download Report Card</Text>
-                                </Pressable>
-                            )}
-                        </View>
-
-                        {/* Envelope Front Pocket - Covers bottom of papers */}
-                        <View style={styles.envelopeFrontPocket} pointerEvents="none">
-                            <LinearGradient
-                                colors={['#2563eb', '#1d4ed8', '#0f3172'] as const}
-                                style={StyleSheet.absoluteFill}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 0, y: 1 }}
-                            />
-                            <View style={styles.envelopeFrontVSeam} />
-                            <View style={styles.envelopeFoldLeft} />
-                            <View style={styles.envelopeFoldRight} />
-                        </View>
-
-                        {/* Wax Seal */}
-                        <View style={styles.envelopeWaxSeal} pointerEvents="none">
-                            <LinearGradient
-                                colors={['#b45309', '#d97706', '#f59e0b'] as const}
-                                style={StyleSheet.absoluteFill}
-                                start={{ x: 0.2, y: 0.1 }}
-                                end={{ x: 0.8, y: 0.9 }}
-                            />
-                            <View style={styles.envelopeWaxInner}>
-                                <Ionicons name="ribbon" size={20} color="#FEF3C7" />
-                            </View>
-                        </View>
-
-                        {/* Tab Buttons - Now directly below wax seal */}
-                        <View style={styles.tabRow}>
-                            <Pressable
-                                style={[styles.tabButton, frontPaper === 'certificate' && styles.tabButtonActive]}
-                                onPress={() => bringToFront('certificate')}
-                            >
-                                <Ionicons name="ribbon-outline" size={16} color={frontPaper === 'certificate' ? '#2563EB' : '#64748B'} style={{ marginRight: 6 }} />
-                                <Text style={[styles.tabButtonText, frontPaper === 'certificate' && styles.tabButtonTextActive]}>Certificate</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[styles.tabButton, frontPaper === 'report' && styles.tabButtonActive]}
-                                onPress={() => bringToFront('report')}
-                            >
-                                <Ionicons name="stats-chart-outline" size={16} color={frontPaper === 'report' ? '#2563EB' : '#64748B'} style={{ marginRight: 6 }} />
-                                <Text style={[styles.tabButtonText, frontPaper === 'report' && styles.tabButtonTextActive]}>Grade Report</Text>
-                            </Pressable>
-                        </View>
-
-                        {/* Continue Button - Raised higher, envelope shorter */}
-                        <Pressable style={styles.closeButton} onPress={onClose}>
-                            <LinearGradient colors={['#2563eb', '#1d4ed8'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.closeButtonGradient} />
-                            <View style={styles.closeButtonContent}>
-                                <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                                <Text style={styles.closeButtonText}>{isGraduation ? 'Awesome, Continue' : 'Continue Learning'}</Text>
-                            </View>
-                        </Pressable>
-                    </View>
-                </Animated.View>
+  return (
+    <Modal transparent visible={visible} animationType="none" statusBarTranslucent>
+      <View style={styles.overlay}>
+        <Animated.View style={[styles.modalContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+          <View style={styles.envelopeMainContainer}>
+            {/* Envelope Body - Rectangle with rounded bottom */}
+            <View style={styles.envelopeBody}>
+              <LinearGradient
+                colors={['#1e3a8a', '#1d4ed8', '#0f3172'] as const}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+              />
+              <View style={styles.envelopeBackHighlight} />
             </View>
-        </Modal>
-    );
+
+            {/* Envelope Top Flap - Triangle that connects to body */}
+            <View style={styles.envelopeTriangleFlap} />
+            <View style={styles.envelopeTriangleFlapShade} />
+
+            {/* Close Button */}
+            <Pressable style={styles.closeIconButton} onPress={onClose} hitSlop={12}>
+              <Ionicons name="close" size={20} color="#FFFFFF" />
+            </Pressable>
+
+            {/* Papers Container - Positioned to emerge from envelope */}
+            <View style={styles.papersContainer}>
+              {/* Grade Report Card - WITHOUT download button inside */}
+              <Animated.View style={[styles.paperCard, reportTransform, { zIndex: frontPaper === 'report' ? 2 : 1 }]}>
+                <Pressable style={styles.paperTapArea} onPress={() => bringToFront('report')}>
+                  <Text style={styles.paperEyebrow}>OFFICIAL TRANSCRIPT</Text>
+                  <Text style={styles.paperTitleReport}>Grade Report Card</Text>
+                  <View style={styles.paperRule} />
+
+                  <View style={styles.statsGrid}>
+                    <View style={styles.statItem}>
+                      <Ionicons name="help-circle" size={16} color="#2563EB" />
+                      <Text style={styles.statValue}>{promotionData.summary.quizzes_taken}</Text>
+                      <Text style={styles.statLabel}>Quizzes</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                      <Text style={styles.statValue}>{promotionData.summary.quizzes_passed}</Text>
+                      <Text style={styles.statLabel}>Passed</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Ionicons name="trophy" size={16} color="#D97706" />
+                      <Text style={styles.statValue}>{promotionData.summary.avg_quiz_score}%</Text>
+                      <Text style={styles.statLabel}>Avg Score</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Ionicons name="book" size={16} color="#2563EB" />
+                      <Text style={styles.statValue}>{promotionData.summary.lessons_completed}</Text>
+                      <Text style={styles.statLabel}>Lessons</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Ionicons name="hand-left" size={16} color="#2563EB" />
+                      <Text style={styles.statValue}>{promotionData.summary.gestures_attempted}</Text>
+                      <Text style={styles.statLabel}>Gestures</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Ionicons name="analytics" size={16} color="#2563EB" />
+                      <Text style={styles.statValue}>{promotionData.summary.accuracy}%</Text>
+                      <Text style={styles.statLabel}>Accuracy</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.xpRow}>
+                    <Ionicons name="star" size={16} color="#D97706" style={{ marginRight: 4 }} />
+                    <Text style={styles.xpRowText}>{promotionData.summary.total_xp} XP Earned</Text>
+                  </View>
+                </Pressable>
+              </Animated.View>
+
+              {/* Certificate Card - WITHOUT download button inside */}
+              <Animated.View style={[styles.paperCard, certTransform, { zIndex: frontPaper === 'certificate' ? 2 : 1 }]}>
+                <Pressable style={styles.paperTapArea} onPress={() => bringToFront('certificate')}>
+                  <View style={styles.canvaCertFrame}>
+                    <View style={styles.canvaRibbonBanner}>
+                      <Text style={styles.canvaRibbonTitle}>OFFICIAL{'\n'}CERTIFICATE</Text>
+                      <View style={styles.canvaRibbonStamp}>
+                        <Text style={styles.canvaStampTop}>FSL PLATFORM</Text>
+                        <Text style={styles.canvaStampCenter}>SEÑAS</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.canvaHeaderLeft}>
+                      <Image source={LOGO_IMAGE} style={styles.canvaLogo} resizeMode="contain" />
+                    </View>
+
+                    <View style={styles.canvaContent}>
+                      <Text style={styles.canvaTitle}>{isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT'}</Text>
+                      <Text style={styles.canvaPresentedTo}>Presented to</Text>
+                      <Text style={styles.canvaRecipientName} numberOfLines={1}>{recipientName}</Text>
+                      <View style={styles.canvaStarDivider}>
+                        <View style={styles.canvaDividerLine} />
+                        <Text style={styles.canvaStarIcon}>✦</Text>
+                        <View style={styles.canvaDividerLine} />
+                      </View>
+                      {isGraduation ? (
+                        <Text style={styles.canvaBodyText}>for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels. Congratulations!</Text>
+                      ) : (
+                        <Text style={styles.canvaBodyText}>for successfully completing the <Text style={styles.canvaBoldText}>{promotionData.from_level} Level</Text> of the SEÑAS Filipino Sign Language Learning Platform and demonstrating the knowledge and skills required to advance to the next stage.</Text>
+                      )}
+                      {!isGraduation && (
+                        <View style={styles.canvaPromotedSection}>
+                          <Text style={styles.canvaPromotedLabel}>PROMOTED TO</Text>
+                          <View style={styles.canvaPromotedPill}>
+                            <Ionicons name="star" size={11} color="#F59E0B" />
+                            <Text style={styles.canvaPromotedText}>{formattedPillText}</Text>
+                            <Ionicons name="star" size={11} color="#F59E0B" />
+                          </View>
+                        </View>
+                      )}
+                      <Text style={styles.canvaQuote}>"Keep learning, keep signing, and continue making communication more inclusive."</Text>
+                    </View>
+                    <View style={styles.canvaFooter}>
+                      <View style={styles.canvaDateGroup}>
+                        <View style={styles.canvaDateIconBox}>
+                          <Ionicons name="calendar-outline" size={14} color="#2563EB" />
+                        </View>
+                        <View>
+                          <Text style={styles.canvaDateLabel}>DATE</Text>
+                          <Text style={styles.canvaDateValue}>{promotionDateFormatted}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.canvaSigsGroup}>
+                        <View style={styles.canvaSigCol}>
+                          <View style={styles.canvaSigLine} />
+                          <Text style={styles.canvaSigTitle}>SEÑAS Team</Text>
+                        </View>
+                        <View style={styles.canvaSigVertLine} />
+                        <View style={styles.canvaSigCol}>
+                          <View style={styles.canvaSigLine} />
+                          <Text style={styles.canvaSigTitle}>FSL Academic Committee</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Image source={SENYA_TEACHING_IMAGE} style={styles.canvaSenyaMascot} resizeMode="contain" />
+                  </View>
+                </Pressable>
+              </Animated.View>
+            </View>
+
+            {/* Download Buttons - Positioned independently ABOVE the paper cards */}
+            <View style={styles.downloadButtonsContainer}>
+              {frontPaper === 'certificate' && (
+                <Pressable style={styles.paperDownloadBtn} onPress={handleDownloadLetter}>
+                  <Ionicons name="download-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.paperDownloadBtnText}>Download Certificate</Text>
+                </Pressable>
+              )}
+              {frontPaper === 'report' && (
+                <Pressable style={styles.paperDownloadBtn} onPress={handleDownloadReportCard}>
+                  <Ionicons name="download-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.paperDownloadBtnText}>Download Report Card</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Envelope Front Pocket - Covers bottom of papers */}
+            <View style={styles.envelopeFrontPocket} pointerEvents="none">
+              <LinearGradient
+                colors={['#2563eb', '#1d4ed8', '#0f3172'] as const}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+              />
+              <View style={styles.envelopeFrontVSeam} />
+              <View style={styles.envelopeFoldLeft} />
+              <View style={styles.envelopeFoldRight} />
+            </View>
+
+            {/* Wax Seal */}
+            <View style={styles.envelopeWaxSeal} pointerEvents="none">
+              <LinearGradient
+                colors={['#b45309', '#d97706', '#f59e0b'] as const}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0.2, y: 0.1 }}
+                end={{ x: 0.8, y: 0.9 }}
+              />
+              <View style={styles.envelopeWaxInner}>
+                <Ionicons name="ribbon" size={20} color="#FEF3C7" />
+              </View>
+            </View>
+
+            {/* Tab Buttons - Now directly below wax seal */}
+            <View style={styles.tabRow}>
+              <Pressable
+                style={[styles.tabButton, frontPaper === 'certificate' && styles.tabButtonActive]}
+                onPress={() => bringToFront('certificate')}
+              >
+                <Ionicons name="ribbon-outline" size={16} color={frontPaper === 'certificate' ? '#2563EB' : '#64748B'} style={{ marginRight: 6 }} />
+                <Text style={[styles.tabButtonText, frontPaper === 'certificate' && styles.tabButtonTextActive]}>Certificate</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tabButton, frontPaper === 'report' && styles.tabButtonActive]}
+                onPress={() => bringToFront('report')}
+              >
+                <Ionicons name="stats-chart-outline" size={16} color={frontPaper === 'report' ? '#2563EB' : '#64748B'} style={{ marginRight: 6 }} />
+                <Text style={[styles.tabButtonText, frontPaper === 'report' && styles.tabButtonTextActive]}>Grade Report</Text>
+              </Pressable>
+            </View>
+
+            {/* Continue Button - Raised higher, envelope shorter */}
+            <Pressable style={styles.closeButton} onPress={onClose}>
+              <LinearGradient colors={['#2563eb', '#1d4ed8'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.closeButtonGradient} />
+              <View style={styles.closeButtonContent}>
+                <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.closeButtonText}>{isGraduation ? 'Awesome, Continue' : 'Continue Learning'}</Text>
+              </View>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
 }
 
 const styles = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(15, 23, 42, 0.72)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 12,
-    },
-    modalContainer: {
-        width: width * 0.94,
-        maxHeight: height * 0.95,
-    },
-    envelopeMainContainer: {
-        width: '100%',
-        minHeight: 560,
-        padding: 0,
-        paddingTop: 0,
-        paddingBottom: 12,
-        backgroundColor: 'transparent',
-        position: 'relative',
-        overflow: 'visible',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-    },
-    envelopeBody: {
-        width: '100%',
-        height: 400,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24,
-        overflow: 'hidden',
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.35,
-        shadowRadius: 20,
-        elevation: 10,
-        zIndex: 0,
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-    },
-    envelopeBackHighlight: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 90,
-        backgroundColor: 'rgba(255,255,255,0.06)',
-    },
-    envelopeTriangleFlap: {
-        position: 'absolute',
-        top: 20,
-        alignSelf: 'center',
-        width: 0,
-        height: 0,
-        borderStyle: 'solid',
-        borderLeftWidth: width * 0.46,
-        borderRightWidth: width * 0.46,
-        borderBottomWidth: 150,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderBottomColor: '#1e3a8a',
-        zIndex: 1,
-    },
-    envelopeTriangleFlapShade: {
-        position: 'absolute',
-        top: 10,
-        alignSelf: 'center',
-        width: 0,
-        height: 0,
-        borderStyle: 'solid',
-        borderLeftWidth: width * 0.46,
-        borderRightWidth: width * 0.46,
-        borderBottomWidth: 150,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderBottomColor: '#1e40af',
-        zIndex: 1,
-    },
-    closeIconButton: {
-        position: 'absolute',
-        top: 10,
-        right: 14,
-        zIndex: 99,
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-    },
-    papersContainer: {
-        position: 'relative',
-        width: '92%',
-        height: 330,
-        marginTop: 0,
-        marginBottom: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2,
-    },
-    downloadButtonsContainer: {
-        position: 'absolute',
-        top: 340, // Changed from 280 to 300
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        zIndex: 6,
-        paddingHorizontal: 16,
-    },
-    envelopeFrontPocket: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 170,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24,
-        overflow: 'hidden',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        shadowColor: '#0F3172',
-        shadowOffset: { width: 0, height: -6 },
-        shadowOpacity: 0.30,
-        shadowRadius: 10,
-        elevation: 8,
-        zIndex: 3,
-    },
-    envelopeFrontVSeam: {
-        position: 'absolute',
-        top: 0,
-        alignSelf: 'center',
-        width: 0,
-        height: 0,
-        borderStyle: 'solid',
-        borderLeftWidth: width * 0.44,
-        borderRightWidth: width * 0.44,
-        borderTopWidth: 80,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderTopColor: 'rgba(255,255,255,0.10)',
-    },
-    envelopeFoldLeft: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        width: 1.5,
-        height: 180,
-        backgroundColor: 'rgba(255,255,255,0.18)',
-        transform: [{ rotate: '-62deg' }],
-        transformOrigin: 'bottom left',
-    },
-    envelopeFoldRight: {
-        position: 'absolute',
-        bottom: 0,
-        right: 0,
-        width: 1.5,
-        height: 180,
-        backgroundColor: 'rgba(255,255,255,0.18)',
-        transform: [{ rotate: '62deg' }],
-        transformOrigin: 'bottom right',
-    },
-    envelopeWaxSeal: {
-        position: 'absolute',
-        bottom: 140,
-        alignSelf: 'center',
-        width: 46,
-        height: 46,
-        borderRadius: 23,
-        overflow: 'hidden',
-        borderWidth: 2,
-        borderColor: '#FDE68A',
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.4,
-        shadowRadius: 5,
-        elevation: 8,
-        zIndex: 20,
-    },
-    envelopeWaxInner: {
-        width: '100%',
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    paperCard: {
-        position: 'absolute',
-        top: -50,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 18,
-        shadowColor: '#0F3172',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.12,
-        shadowRadius: 14,
-        elevation: 6,
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-        overflow: 'hidden',
-    },
-    paperTapArea: {
-        flex: 1,
-        padding: 12,
-    },
-    paperEyebrow: {
-        fontSize: 9,
-        fontWeight: '800',
-        letterSpacing: 1.2,
-        color: '#64748B',
-        textAlign: 'center',
-        marginBottom: 2,
-    },
-    paperTitleReport: {
-        fontSize: 18,
-        fontWeight: '900',
-        color: '#0F3172',
-        textAlign: 'center',
-        marginBottom: 8,
-    },
-    paperRule: {
-        height: 1,
-        backgroundColor: '#E2E8F0',
-        marginBottom: 10,
-    },
-    statsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        gap: 8,
-    },
-    statItem: {
-        width: '31%',
-        alignItems: 'center',
-        backgroundColor: '#F8FAFC',
-        borderRadius: 12,
-        paddingVertical: 8,
-        paddingHorizontal: 4,
-        borderWidth: 1,
-        borderColor: '#F1F5F9',
-    },
-    statValue: {
-        fontSize: 16,
-        fontWeight: '900',
-        color: '#0F3172',
-        marginTop: 2,
-    },
-    statLabel: {
-        fontSize: 9,
-        color: '#64748B',
-        fontWeight: '600',
-        textAlign: 'center',
-        marginTop: 1,
-    },
-    xpRow: {
-        marginTop: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#FEF3C7',
-        paddingVertical: 6,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#FDE68A',
-    },
-    xpRowText: {
-        fontSize: 13,
-        fontWeight: '800',
-        color: '#92400E',
-    },
-    paperDownloadBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 20,
-        borderRadius: 12,
-        backgroundColor: '#2563EB',
-        shadowColor: '#2563EB',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.2,
-        shadowRadius: 6,
-        elevation: 3,
-        width: '85%',
-    },
-    paperDownloadBtnText: {
-        fontSize: 12,
-        fontWeight: '800',
-        color: '#FFFFFF',
-    },
-    canvaCertFrame: {
-        flex: 1,
-        borderRadius: 14,
-        borderWidth: 1.5,
-        borderColor: '#BFDBFE',
-        padding: 10,
-        backgroundColor: '#F0F7FF',
-        position: 'relative',
-        justifyContent: 'space-between',
-        overflow: 'hidden',
-    },
-    canvaHeaderLeft: {
-        position: 'absolute',
-        top: 8,
-        left: 10,
-        zIndex: 2,
-    },
-    canvaLogo: {
-        width: 95,
-        height: 26,
-    },
-    canvaRibbonBanner: {
-        position: 'absolute',
-        top: 0,
-        right: 14,
-        width: 66,
-        backgroundColor: '#1E40AF',
-        borderBottomLeftRadius: 6,
-        borderBottomRightRadius: 6,
-        paddingVertical: 5,
-        paddingHorizontal: 2,
-        alignItems: 'center',
-        zIndex: 10,
-        shadowColor: '#1E40AF',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    canvaRibbonTitle: {
-        fontSize: 5.5,
-        fontWeight: '900',
-        color: '#FFFFFF',
-        textAlign: 'center',
-        letterSpacing: 0.5,
-        marginBottom: 3,
-    },
-    canvaRibbonStamp: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#FFFFFF',
-        borderStyle: 'dashed',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    canvaStampTop: {
-        fontSize: 3,
-        fontWeight: '700',
-        color: '#FFFFFF',
-        textAlign: 'center',
-    },
-    canvaStampCenter: {
-        fontSize: 7,
-        fontWeight: '900',
-        color: '#FFFFFF',
-        marginVertical: 1,
-    },
-    canvaContent: {
-        alignItems: 'center',
-        marginTop: 26,
-        paddingHorizontal: 6,
-    },
-    canvaTitle: {
-        fontSize: 12.5,
-        fontWeight: '900',
-        color: '#0F3172',
-        letterSpacing: 0.8,
-        textAlign: 'center',
-        marginBottom: 2,
-    },
-    canvaPresentedTo: {
-        fontSize: 8.5,
-        color: '#64748B',
-        fontWeight: '500',
-        marginBottom: 1,
-    },
-    canvaRecipientName: {
-        fontSize: 19,
-        fontWeight: '900',
-        color: '#0F3172',
-        textAlign: 'center',
-        marginBottom: 2,
-    },
-    canvaStarDivider: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        width: '65%',
-        marginVertical: 2,
-    },
-    canvaDividerLine: {
-        flex: 1,
-        height: 1,
-        backgroundColor: '#93C5FD',
-    },
-    canvaStarIcon: {
-        fontSize: 8,
-        color: '#2563EB',
-        marginHorizontal: 4,
-    },
-    canvaBodyText: {
-        fontSize: 9,
-        color: '#334155',
-        textAlign: 'center',
-        lineHeight: 13,
-        marginVertical: 3,
-        paddingHorizontal: 2,
-    },
-    canvaBoldText: {
-        fontWeight: '800',
-        color: '#2563EB',
-    },
-    canvaPromotedSection: {
-        alignItems: 'center',
-        marginVertical: 2,
-    },
-    canvaPromotedLabel: {
-        fontSize: 6,
-        fontWeight: '800',
-        color: '#64748B',
-        letterSpacing: 1,
-    },
-    canvaPromotedPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        backgroundColor: '#EFF6FF',
-        borderWidth: 1,
-        borderColor: '#BFDBFE',
-        paddingHorizontal: 10,
-        paddingVertical: 2.5,
-        borderRadius: 12,
-        marginTop: 1,
-    },
-    canvaPromotedText: {
-        fontSize: 9,
-        fontWeight: '900',
-        color: '#2563EB',
-    },
-    canvaQuote: {
-        fontSize: 8,
-        fontStyle: 'italic',
-        color: '#475569',
-        textAlign: 'center',
-        marginTop: 2,
-    },
-    canvaFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-end',
-        marginTop: 4,
-        paddingRight: 65,
-    },
-    canvaDateGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-    },
-    canvaDateIconBox: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: '#EFF6FF',
-        borderWidth: 1,
-        borderColor: '#BFDBFE',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    canvaDateLabel: {
-        fontSize: 6,
-        fontWeight: '800',
-        color: '#64748B',
-        letterSpacing: 0.5,
-    },
-    canvaDateValue: {
-        fontSize: 8,
-        fontWeight: '700',
-        color: '#0F3172',
-    },
-    canvaSigsGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    canvaSigCol: {
-        alignItems: 'center',
-    },
-    canvaSigLine: {
-        width: 60,
-        height: 1,
-        backgroundColor: '#CBD5E1',
-        marginBottom: 2,
-    },
-    canvaSigTitle: {
-        fontSize: 7,
-        fontWeight: '700',
-        color: '#0F3172',
-    },
-    canvaSigVertLine: {
-        width: 1,
-        height: 14,
-        backgroundColor: '#CBD5E1',
-    },
-    canvaSenyaMascot: {
-        position: 'absolute',
-        bottom: 60,
-        right: 4,
-        width: 68,
-        height: 80,
-        zIndex: 10,
-    },
-    tabRow: {
-        flexDirection: 'row',
-        gap: 8,
-        width: '76%',
-        marginTop: -40,
-        marginBottom: 70,
-        zIndex: 5,
-        paddingHorizontal: 0,
-        alignSelf: 'center',
-    },
-    tabButton: {
-        flex: 1,
-        flexDirection: 'row',
-        paddingVertical: 8,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.85)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
-    },
-    tabButtonActive: {
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderColor: '#2563EB',
-        shadowColor: '#2563EB',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
-        elevation: 2,
-    },
-    tabButtonText: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#64748B',
-    },
-    tabButtonTextActive: {
-        color: '#2563EB',
-    },
-    closeButton: {
-        width: '90%',
-        borderRadius: 14,
-        overflow: 'hidden',
-        shadowColor: '#2563EB',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-        elevation: 5,
-        zIndex: 7,
-        marginHorizontal: 0,
-        marginTop: 0,
-    },
-    closeButtonGradient: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 14,
-    },
-    closeButtonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-    },
-    closeButtonText: {
-        fontSize: 16,
-        fontWeight: '800',
-        color: '#FFFFFF',
-    },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  modalContainer: {
+    width: width * 0.94,
+    maxHeight: height * 0.95,
+  },
+  envelopeMainContainer: {
+    width: '100%',
+    minHeight: 560,
+    padding: 0,
+    paddingTop: 0,
+    paddingBottom: 12,
+    backgroundColor: 'transparent',
+    position: 'relative',
+    overflow: 'visible',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  envelopeBody: {
+    width: '100%',
+    height: 400,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 10,
+    zIndex: 0,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  envelopeBackHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  envelopeTriangleFlap: {
+    position: 'absolute',
+    top: 20,
+    alignSelf: 'center',
+    width: 0,
+    height: 0,
+    borderStyle: 'solid',
+    borderLeftWidth: width * 0.46,
+    borderRightWidth: width * 0.46,
+    borderBottomWidth: 150,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#1e3a8a',
+    zIndex: 1,
+  },
+  envelopeTriangleFlapShade: {
+    position: 'absolute',
+    top: 10,
+    alignSelf: 'center',
+    width: 0,
+    height: 0,
+    borderStyle: 'solid',
+    borderLeftWidth: width * 0.46,
+    borderRightWidth: width * 0.46,
+    borderBottomWidth: 150,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#1e40af',
+    zIndex: 1,
+  },
+  closeIconButton: {
+    position: 'absolute',
+    top: 10,
+    right: 14,
+    zIndex: 99,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  papersContainer: {
+    position: 'relative',
+    width: '92%',
+    height: 330,
+    marginTop: 0,
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  downloadButtonsContainer: {
+    position: 'absolute',
+    top: 340, // Changed from 280 to 300
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 6,
+    paddingHorizontal: 16,
+  },
+  envelopeFrontPocket: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 170,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    shadowColor: '#0F3172',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.30,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 3,
+  },
+  envelopeFrontVSeam: {
+    position: 'absolute',
+    top: 0,
+    alignSelf: 'center',
+    width: 0,
+    height: 0,
+    borderStyle: 'solid',
+    borderLeftWidth: width * 0.44,
+    borderRightWidth: width * 0.44,
+    borderTopWidth: 80,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: 'rgba(255,255,255,0.10)',
+  },
+  envelopeFoldLeft: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: 1.5,
+    height: 180,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    transform: [{ rotate: '-62deg' }],
+    transformOrigin: 'bottom left',
+  },
+  envelopeFoldRight: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 1.5,
+    height: 180,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    transform: [{ rotate: '62deg' }],
+    transformOrigin: 'bottom right',
+  },
+  envelopeWaxSeal: {
+    position: 'absolute',
+    bottom: 140,
+    alignSelf: 'center',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
+    elevation: 8,
+    zIndex: 20,
+  },
+  envelopeWaxInner: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paperCard: {
+    position: 'absolute',
+    top: -50,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    shadowColor: '#0F3172',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  paperTapArea: {
+    flex: 1,
+    padding: 12,
+  },
+  paperEyebrow: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  paperTitleReport: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F3172',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  paperRule: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  statItem: {
+    width: '31%',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F3172',
+    marginTop: 2,
+  },
+  statLabel: {
+    fontSize: 9,
+    color: '#64748B',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 1,
+  },
+  xpRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  xpRowText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  paperDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+    width: '85%',
+  },
+  paperDownloadBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  canvaCertFrame: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    padding: 10,
+    backgroundColor: '#F0F7FF',
+    position: 'relative',
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  canvaHeaderLeft: {
+    position: 'absolute',
+    top: 8,
+    left: 10,
+    zIndex: 2,
+  },
+  canvaLogo: {
+    width: 95,
+    height: 26,
+  },
+  canvaRibbonBanner: {
+    position: 'absolute',
+    top: 0,
+    right: 14,
+    width: 66,
+    backgroundColor: '#1E40AF',
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 2,
+    alignItems: 'center',
+    zIndex: 10,
+    shadowColor: '#1E40AF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  canvaRibbonTitle: {
+    fontSize: 5.5,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  canvaRibbonStamp: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  canvaStampTop: {
+    fontSize: 3,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  canvaStampCenter: {
+    fontSize: 7,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginVertical: 1,
+  },
+  canvaContent: {
+    alignItems: 'center',
+    marginTop: 26,
+    paddingHorizontal: 6,
+  },
+  canvaTitle: {
+    fontSize: 12.5,
+    fontWeight: '900',
+    color: '#0F3172',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  canvaPresentedTo: {
+    fontSize: 8.5,
+    color: '#64748B',
+    fontWeight: '500',
+    marginBottom: 1,
+  },
+  canvaRecipientName: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#0F3172',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  canvaStarDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '65%',
+    marginVertical: 2,
+  },
+  canvaDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#93C5FD',
+  },
+  canvaStarIcon: {
+    fontSize: 8,
+    color: '#2563EB',
+    marginHorizontal: 4,
+  },
+  canvaBodyText: {
+    fontSize: 9,
+    color: '#334155',
+    textAlign: 'center',
+    lineHeight: 13,
+    marginVertical: 3,
+    paddingHorizontal: 2,
+  },
+  canvaBoldText: {
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  canvaPromotedSection: {
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  canvaPromotedLabel: {
+    fontSize: 6,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 1,
+  },
+  canvaPromotedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 10,
+    paddingVertical: 2.5,
+    borderRadius: 12,
+    marginTop: 1,
+  },
+  canvaPromotedText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#2563EB',
+  },
+  canvaQuote: {
+    fontSize: 8,
+    fontStyle: 'italic',
+    color: '#475569',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  canvaFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginTop: 4,
+    paddingRight: 65,
+  },
+  canvaDateGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  canvaDateIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  canvaDateLabel: {
+    fontSize: 6,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
+  canvaDateValue: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#0F3172',
+  },
+  canvaSigsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  canvaSigCol: {
+    alignItems: 'center',
+  },
+  canvaSigLine: {
+    width: 60,
+    height: 1,
+    backgroundColor: '#CBD5E1',
+    marginBottom: 2,
+  },
+  canvaSigTitle: {
+    fontSize: 7,
+    fontWeight: '700',
+    color: '#0F3172',
+  },
+  canvaSigVertLine: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#CBD5E1',
+  },
+  canvaSenyaMascot: {
+    position: 'absolute',
+    bottom: 60,
+    right: 4,
+    width: 68,
+    height: 80,
+    zIndex: 10,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '76%',
+    marginTop: -40,
+    marginBottom: 70,
+    zIndex: 5,
+    paddingHorizontal: 0,
+    alignSelf: 'center',
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  tabButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  tabButtonTextActive: {
+    color: '#2563EB',
+  },
+  closeButton: {
+    width: '90%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 7,
+    marginHorizontal: 0,
+    marginTop: 0,
+  },
+  closeButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 14,
+  },
+  closeButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
 });
