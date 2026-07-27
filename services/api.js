@@ -1093,4 +1093,42 @@ export const api = {
         }
     },
 
+    /**
+     * Award XP for custom/input mode (1 XP per letter, no cap)
+     */
+    awardCustomXp: async (moduleName, xpEarned, starRating) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📝 Awarding Custom XP for ${moduleName}: ${xpEarned} XP`);
+
+            const response = await fetch(`${API_URL}/student/award-custom-xp`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    module_name: moduleName,
+                    xp_earned: xpEarned,
+                    star_rating: starRating,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to award custom XP');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error awarding custom XP:', error);
+            throw error;
+        }
+    },
 };

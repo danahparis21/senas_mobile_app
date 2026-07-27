@@ -31,7 +31,7 @@ const SNAP_INTERVAL = CARD_WIDTH + CARD_MARGIN * 2;
 const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH - CARD_MARGIN * 2) / 2;
 
 const DEFAULT_MODULES = [
-  // 1. Alphabet Part 1 (keep as is)
+  // 1. Alphabet Part 1
   {
     id: 'alphabet_part1',
     title: 'Alphabet Part 1',
@@ -49,7 +49,7 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Alphabet Part 1 (A-M)',
   },
-  // 2. Alphabet Part 2 (keep as is)
+  // 2. Alphabet Part 2
   {
     id: 'alphabet_part2',
     title: 'Alphabet Part 2',
@@ -67,25 +67,7 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Alphabet Part 2 (N-Z)',
   },
-  // 3. Numbers (NEW - replacing the old fingerspelling position)
-  {
-    id: 'level1_numbers',
-    title: 'Numbers 1-10',
-    subtitle: 'Learn to count',
-    category: 'numbers', // NEW category
-    color: ['#34D399', '#10B981'] as const,
-    icon: 'grid',
-    description: 'Learn numbers 1 to 10 in FSL',
-    progress: 0,
-    xp: 40,
-    locked: true, // Locked until alphabets are done
-    route: '/gesture/level3-gestures',
-    image: require('../../assets/images/img/numbers.png'),
-    lessons: 10,
-    isCompleted: false,
-    display_name: 'Level 1 Numbers',
-  },
-  // 4. Greetings (renamed from 'greetings' to 'level2_greetings')
+  // 3. Greetings (moved up)
   {
     id: 'level2_greetings',
     title: 'Greetings',
@@ -96,59 +78,38 @@ const DEFAULT_MODULES = [
     description: 'Learn common greetings and phrases',
     progress: 0,
     xp: 50,
-    locked: true, // Locked until numbers are done
+    locked: true,
     route: '/gesture/webview-greetings',
     image: require('../../assets/images/img/greetings.png'),
     lessons: 5,
     isCompleted: false,
     display_name: 'Level 2 Greetings',
   },
-  // 5. Survival (NEW)
+  // 4. Survival
   {
     id: 'level3_survival',
     title: 'Survival Phrases',
     subtitle: 'Essential Signs',
-    category: 'survival', // NEW category
+    category: 'survival',
     color: ['#F87171', '#EF4444'] as const,
     icon: 'shield-checkmark',
     description: 'Essential survival phrases for everyday situations',
     progress: 0,
     xp: 60,
-    locked: true, // Locked until greetings are done
+    locked: true,
     route: '/gesture/level2-gestures',
     image: require('../../assets/images/img/greetings.png'),
     lessons: 10,
     isCompleted: false,
     display_name: 'Level 3 Survival',
   },
-
-  {
-    id: 'fingerspelling',
-    title: 'Fingerspelling',
-    subtitle: 'Practice spelling words',
-    category: 'practice',
-    color: ['#A8E6CF', '#88D8B0'] as const,
-    icon: 'hand-left',
-    description: 'Spell words using signs',
-    progress: 0,
-    xp: 40,
-    locked: true,
-    route: '/gesture/fingerspelling',
-    image: require('../../assets/images/img/senya_magnify.png'),
-    lessons: 10,
-    isCompleted: false,
-    display_name: 'Fingerspelling',
-  },
 ];
 
-// UPDATE CATEGORIES to include the new ones
 const CATEGORIES = [
   { id: 'all', title: 'All', icon: 'grid-outline' },
   { id: 'alphabet', title: 'Alphabet', icon: 'text-outline' },
-  { id: 'numbers', title: 'Numbers', icon: 'grid-outline' }, // NEW
   { id: 'greetings', title: 'Greetings', icon: 'chatbubbles-outline' },
-  { id: 'survival', title: 'Survival', icon: 'shield-outline' }, // NEW
-  { id: 'practice', title: 'Practice', icon: 'hand-left-outline' },
+  { id: 'survival', title: 'Survival', icon: 'shield-outline' },
 ];
 
 // Individual module card component
@@ -430,7 +391,6 @@ function ChallengeModal({
   );
 }
 
-
 export default function GestureMain() {
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -525,14 +485,12 @@ export default function GestureMain() {
       if (unlockedModules.length === 0) {
         setChallengeLoading(false);
         setChallengeModalVisible(false);
-        // Show alert
         Alert.alert('No Modules', 'Complete at least one module to start a challenge!');
         return;
       }
 
       // Determine which module to use
-      // Priority: alphabet → numbers → greetings → survival
-      const priorityOrder = ['alphabet', 'numbers', 'greetings', 'survival'];
+      const priorityOrder = ['alphabet', 'greetings', 'survival'];
       let selectedModule = unlockedModules.find(m => m.category === 'alphabet');
 
       if (!selectedModule) {
@@ -549,7 +507,6 @@ export default function GestureMain() {
         selectedModule = unlockedModules[0];
       }
 
-      // Navigate to challenge screen
       router.push({
         pathname: '/gesture/challenge',
         params: {
@@ -566,6 +523,7 @@ export default function GestureMain() {
       setChallengeLoading(false);
     }
   };
+
   // Filter modules based on category
   const filteredModules = selectedCategory === 'all'
     ? modules
@@ -727,8 +685,9 @@ export default function GestureMain() {
             )}
           </View>
 
+          {/* Quick Access - ONLY Challenge + Fingerspelling */}
           <View style={styles.quickAccess}>
-            <Text style={styles.sectionTitle}>Quick Start</Text>
+            <Text style={styles.sectionTitle}>Quick Access</Text>
             <View style={styles.quickAccessGrid}>
               {/* Challenge Button */}
               <TouchableOpacity
@@ -744,40 +703,16 @@ export default function GestureMain() {
                 </View>
               </TouchableOpacity>
 
-              {/* First unlocked non-alphabet module */}
-              {modules
-                .filter(m => !m.locked && m.category !== 'alphabet')
-                .slice(0, 1)
-                .map((module) => (
-                  <TouchableOpacity
-                    key={module.id}
-                    style={styles.quickAccessItem}
-                    onPress={() => router.push(module.route as any)}
-                  >
-                    <View style={[styles.quickAccessIconContainer, { backgroundColor: `${module.color[0]}20` }]}>
-                      <Ionicons name={module.icon as any} size={24} color={module.color[0]} />
-                    </View>
-                    <Text style={styles.quickAccessText}>{module.title}</Text>
-                  </TouchableOpacity>
-                ))}
-
-              {/* Next locked module */}
-              {modules
-                .filter(m => m.locked)
-                .slice(0, 1)
-                .map((module) => (
-                  <TouchableOpacity
-                    key={module.id}
-                    style={[styles.quickAccessItem, styles.quickAccessItemLocked]}
-                    disabled
-                  >
-                    <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(156, 163, 175, 0.1)' }]}>
-                      <Ionicons name={module.icon as any} size={24} color="#9CA3AF" />
-                    </View>
-                    <Text style={styles.quickAccessText}>{module.title}</Text>
-                    <Ionicons name="lock-closed" size={12} color="#9CA3AF" style={styles.quickAccessLock} />
-                  </TouchableOpacity>
-                ))}
+              {/* Fingerspelling Button */}
+              <TouchableOpacity
+                style={styles.quickAccessItem}
+                onPress={() => router.push('/gesture/fingerspelling')}
+              >
+                <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(168, 230, 207, 0.3)' }]}>
+                  <Ionicons name="hand-left" size={28} color="#10B981" />
+                </View>
+                <Text style={styles.quickAccessText}>Fingerspelling</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1408,7 +1343,6 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '600',
   },
-
   // Quick Access - Challenge Button
   challengeButton: {
     borderWidth: 2,
@@ -1436,5 +1370,4 @@ const styles = StyleSheet.create({
     color: '#FFF',
     letterSpacing: 0.5,
   },
-
 });
