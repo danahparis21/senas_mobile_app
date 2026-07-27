@@ -140,6 +140,9 @@ export default function Level3GesturesScreen() {
     const [lastProcessedGesture, setLastProcessedGesture] = useState<string>('');
     const [gestureStableCount, setGestureStableCount] = useState(0);
 
+    const [showStartupAnimation, setShowStartupAnimation] = useState(true);
+
+    const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
     // Senya message cooldown
     const senyaMsgCooldownRef = useRef<number>(0);
     const SENYA_COOLDOWN_MS = 3000;
@@ -151,6 +154,7 @@ export default function Level3GesturesScreen() {
 
     const [modelLoading, setModelLoading] = useState(true);
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
+
 
     // ── Play gesture sound ──
     async function playGestureSound() {
@@ -225,6 +229,15 @@ export default function Level3GesturesScreen() {
         return null;
     };
 
+    // Force the loading overlay to show for exactly 10 seconds
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setShowLoadingOverlay(false);
+        }, 9000); // 9 seconds
+
+        return () => clearTimeout(timer);
+    }, []);
+
     // Initialize gesture tracking
     useEffect(() => {
         const initial: Record<string, GestureAttempt> = {};
@@ -281,6 +294,25 @@ export default function Level3GesturesScreen() {
             }, 1500);
         }
     }, [completedGestures]);
+
+    useEffect(() => {
+        // Show startup animation for at least 3 seconds, max 10 seconds
+        const startupTimer = setTimeout(() => {
+            setShowStartupAnimation(false);
+        }, 3000);
+
+        // Safety timeout - force hide after 10 seconds even if not ready
+        const safetyTimer = setTimeout(() => {
+            setShowStartupAnimation(false);
+            setModelLoading(false);
+            setLoading(false);
+        }, 10000);
+
+        return () => {
+            clearTimeout(startupTimer);
+            clearTimeout(safetyTimer);
+        };
+    }, []);
 
     // Animate stars when results are shown
     useEffect(() => {
@@ -759,29 +791,22 @@ export default function Level3GesturesScreen() {
                     setModelLoading(false);
                     setLoading(false);
                     setIsConnected(true);
+                    setShowStartupAnimation(false);
                 }
-                return;
-            }
-
-            // Handle model errors
-            if (data.type === 'model_error') {
-                console.error('❌ Model error:', data.error);
-                setModelLoading(false);
-                setLoading(false);
-                setSenyaMessage(`Error: ${data.error}`);
                 return;
             }
 
             // Handle model ready signal from HTML
             if (data.type === 'model_ready' || data.status === 'all_loaded') {
                 setIsConnected(true);
-                setLoading(false);
                 setModelLoading(false);
+                setShowStartupAnimation(false);
                 return;
             }
 
             // Handle MediaPipe ready
             if (data.type === 'mediapipe_ready') {
+                setShowStartupAnimation(false);
                 return;
             }
 
@@ -790,14 +815,14 @@ export default function Level3GesturesScreen() {
                 setIsConnected(true);
                 setLoading(false);
                 setModelLoading(false);
+                setShowStartupAnimation(false);
                 return;
             }
 
-            // Handle detection data
+            // Handle detection data (existing code)
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
 
-            // 🔥 MINIMAL LOGGING: Only log when a new gesture is learned (match)
             if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
                 console.log(`🎯 Learned: ${detectedValue}`);
             }
@@ -807,16 +832,14 @@ export default function Level3GesturesScreen() {
                 return;
             }
 
-            // 🔥 FIX: Map the WebView greeting to database name BEFORE checking
             const dbGestureName = GESTURE_TO_DB_MAP[detectedValue] || detectedValue;
 
-            // ✅ Now check against LEVEL3_GESTURES (which has '1', '2', etc.)
             if (LEVEL3_GESTURES.includes(dbGestureName)) {
                 setDetectedGesture(dbGestureName);
                 setConfidence(confidenceValue);
                 setIsConnected(true);
                 setShowBrowserButton(false);
-                // ✅ Pass the data with the mapped name
+                setShowStartupAnimation(false);
                 handleDetection({ ...data, greeting: dbGestureName });
             } else {
                 setDetectedGesture(detectedValue);
@@ -827,6 +850,7 @@ export default function Level3GesturesScreen() {
             console.error('❌ Message error:', error);
         }
     };
+
 
     // ─── RESULTS ──────────────────────────────────────────────────────────
     const getResults = () => {
@@ -906,6 +930,17 @@ export default function Level3GesturesScreen() {
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
 
+            // Fetch the actual streak from the API instead of hardcoding it
+            let streakDays = 0;
+            try {
+                const streakData = await api.getStreak();
+                streakDays = streakData.streak_days || 0;
+                console.log('📊 Fetched streak from API:', streakDays);
+            } catch (error) {
+                console.error('Error fetching streak:', error);
+                streakDays = 0;
+            }
+
             router.push({
                 pathname: '/lesson/xp-progress',
                 params: {
@@ -916,14 +951,13 @@ export default function Level3GesturesScreen() {
                     previousXp: String(previousXp),
                     nextLevelXp: String(nextLevelXp),
                     showStreak: 'true',
-                    streakDays: String(0),
+                    streakDays: String(streakDays),
                 },
             });
         } else {
             router.back();
         }
     };
-
     // ─── PERMISSION CHECK ──────────────────────────────────────────────────
     if (!permission) {
         return (
@@ -1058,20 +1092,24 @@ export default function Level3GesturesScreen() {
                     onLoadStart={() => {
                         setLoading(true);
                         setModelLoading(true);
+                        setShowStartupAnimation(true);
                     }}
                     onLoadProgress={({ nativeEvent }) => {
                         if (nativeEvent.progress >= 0.9 && modelLoading) {
-                            // Silently wait for models
+                            // Still waiting for models to initialize
                         }
                     }}
                     onLoadEnd={() => {
-                        // WebView HTML loaded - waiting for models to initialize
+                        setIsConnected(true);
+                        // Don't set loading false here - let the timer handle it
                     }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
                         setLoading(false);
+                        setShowStartupAnimation(false);
                     }}
                     onMessage={handleMessage}
+
                     injectedJavaScript={injectedJavaScript}
                     mediaPlaybackRequiresUserAction={false}
                     allowsInlineMediaPlayback={true}
@@ -1091,7 +1129,7 @@ export default function Level3GesturesScreen() {
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
-                {loading && (
+                {showLoadingOverlay && (
                     <View style={styles.loadingOverlay}>
                         <ActivityIndicator size="large" color="#8B5CF6" />
                         <Text style={styles.loadingOverlayText}>Loading Numbers 1-10...</Text>

@@ -700,8 +700,19 @@ export default function WebViewGreetingsScreen() {
             const totalXp = xpResult.total_xp || 0;
             const xpEarned = xpResult.xp_earned || 0;
             const previousXp = totalXp - xpEarned;
-            const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
+            const levelName = getLevelName(level);
+
+            // Fetch the actual streak from the API instead of hardcoding it
+            let streakDays = 0;
+            try {
+                const streakData = await api.getStreak();
+                streakDays = streakData.streak_days || 0;
+                console.log('📊 Fetched streak from API:', streakDays);
+            } catch (error) {
+                console.error('Error fetching streak:', error);
+                streakDays = 0;
+            }
 
             router.push({
                 pathname: '/lesson/xp-progress',
@@ -713,14 +724,13 @@ export default function WebViewGreetingsScreen() {
                     previousXp: String(previousXp),
                     nextLevelXp: String(nextLevelXp),
                     showStreak: 'true',
-                    streakDays: String(0),
+                    streakDays: String(streakDays),
                 },
             });
         } else {
             router.back();
         }
     };
-
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
     const GREETINGS_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
 

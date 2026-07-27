@@ -122,76 +122,6 @@ const getCategoryIcon = (category: string, color: string, size: number = 24) => 
   }
 };
 
-// ── MOCK DATA ──────────────────────────────────────────────────────────
-// Default Baseline Lessons (Tab 0)
-const defaultLessonsData = [
-  {
-    id: 1,
-    category: "Greetings",
-    title: "Hello & Goodbye",
-    desc: "Essential everyday greetings in FSL",
-    color: "#FF6B6B",
-    iconBg: "#FFEBEB",
-    duration: "4 min",
-    xp: 15,
-    done: true,
-    active: false,
-    locked: false
-  },
-  {
-    id: 2,
-    category: "Alphabet",
-    title: "Letters A–E",
-    desc: "Learn the first 5 letters of the FSL alphabet",
-    color: "#8B5CF6",
-    iconBg: "#F5F3FF",
-    duration: "5 min",
-    xp: 20,
-    done: true,
-    active: false,
-    locked: false
-  },
-  {
-    id: 3,
-    category: "Greetings",
-    title: "Thank You & Please",
-    desc: "Polite expressions used in everyday conversations",
-    color: "#10B981",
-    iconBg: "#ECFDF5",
-    duration: "4 min",
-    xp: 15,
-    done: false,
-    active: true,
-    locked: false
-  },
-  {
-    id: 4,
-    category: "Numbers",
-    title: "Numbers 1–5",
-    desc: "Count from one to five in FSL",
-    color: "#F59E0B",
-    iconBg: "#FEF3C7",
-    duration: "6 min",
-    xp: 25,
-    done: false,
-    active: false,
-    locked: true
-  },
-  {
-    id: 5,
-    category: "Alphabet",
-    title: "Letters F–J",
-    desc: "Continue with the next 5 alphabet signs",
-    color: "#EC4899",
-    iconBg: "#FDF2F8",
-    duration: "5 min",
-    xp: 20,
-    done: false,
-    active: false,
-    locked: true
-  },
-];
-
 // ── MODULE/LESSON DATA STRUCTURE ──────────────────────────────────────
 interface Lesson {
   id: number;
@@ -203,6 +133,7 @@ interface Lesson {
   total_steps?: number;
   has_quiz?: boolean;
   module_id?: number;
+  recommended_reason?: string;
   // Display properties
   category: string;
   desc: string;
@@ -234,6 +165,12 @@ export default function Lessons() {
   // Teacher modules state
   const [modules, setModules] = useState<Module[]>([]);
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
+
+  // My Learning Path state (Tab 0) — personalized, adaptive lesson picks.
+  // This is fetched and locked independently of the module map above.
+  const [learningPathLessons, setLearningPathLessons] = useState<Lesson[]>([]);
+  const [loadingLearningPath, setLoadingLearningPath] = useState<boolean>(false);
+  const [goalMastered, setGoalMastered] = useState<boolean>(false);
 
   // Current module index for tab navigation
   const [currentModuleIndex, setCurrentModuleIndex] = useState<number>(0);
@@ -445,14 +382,61 @@ export default function Lessons() {
       setLoadingModules(false);
     }
   };
+  // Loads the personalized "My Learning Path" lessons for Tab 0.
+  // Locking/ordering here comes straight from the backend's own
+  // sequencing for this curated list — it never touches or reads
+  // the module lesson lock state above.
+  const loadLearningPathData = async () => {
+    try {
+      setLoadingLearningPath(true);
+      const response = await api.getRecommendedLessons();
+
+      if (response.success && response.lessons) {
+        const transformed: Lesson[] = response.lessons.map((lesson: any, index: number) => {
+          const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
+
+          return {
+            id: lesson.lesson_id,
+            lesson_id: lesson.lesson_id,
+            title: lesson.title,
+            description: lesson.description,
+            difficulty: lesson.difficulty,
+            status: lesson.status,
+            total_steps: lesson.total_steps,
+            has_quiz: lesson.has_quiz,
+            module_id: lesson.module_id,
+            recommended_reason: lesson.recommended_reason,
+            category: lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson",
+            desc: lesson.recommended_reason || lesson.description || "Picked for you based on your learning path.",
+            color: color,
+            iconBg: color + '18',
+            duration: lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min",
+            xp: lesson.has_quiz ? 30 : 20,
+            done: !!lesson.done,
+            active: !!lesson.active,
+            locked: !!lesson.locked,
+          };
+        });
+
+        setLearningPathLessons(transformed);
+        setGoalMastered(!!response.learning_path?.goal_mastered);
+      }
+    } catch (error) {
+      console.error('Error fetching learning path lessons:', error);
+    } finally {
+      setLoadingLearningPath(false);
+    }
+  };
+
   useEffect(() => {
     loadModulesData();
+    loadLearningPathData();
   }, []);
 
   // Compute current lessons based on active tab
   const getCurrentLessons = (): Lesson[] => {
     if (activeTab === 0) {
-      return defaultLessonsData;
+      return learningPathLessons;
     }
 
     // Teacher's Modules
@@ -470,7 +454,7 @@ export default function Lessons() {
   // Get module name for display
   const getModuleDisplayName = (): string => {
     if (activeTab === 0) {
-      return "Unit 1: Basics";
+      return "My Learning Path";
     }
 
     if (modules.length === 0 || currentModuleIndex >= modules.length) {
@@ -482,7 +466,10 @@ export default function Lessons() {
 
   const getModuleDescription = (): string => {
     if (activeTab === 0) {
-      return "Master the alphabet and essential greetings";
+      if (goalMastered) {
+        return "🎉 You've completed your goal lessons! Here's more to keep practicing";
+      }
+      return "Lessons picked just for you, based on your goals and progress";
     }
 
     if (modules.length === 0 || currentModuleIndex >= modules.length) {
@@ -767,10 +754,12 @@ export default function Lessons() {
 
         {/* Main Scroll Content */}
         <Animated.View style={[styles.mapContainer, { opacity: tabFadeAnim }]}>
-          {activeTab === 1 && loadingModules ? (
+          {(activeTab === 1 && loadingModules) || (activeTab === 0 && loadingLearningPath) ? (
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.loaderText}>Loading modules...</Text>
+              <Text style={styles.loaderText}>
+                {activeTab === 0 ? "Building your learning path..." : "Loading modules..."}
+              </Text>
             </View>
           ) : totalNodes === 0 ? (
             <View style={styles.emptyContainer}>
@@ -782,14 +771,15 @@ export default function Lessons() {
               </Text>
               <Text style={styles.emptySubText}>
                 {activeTab === 0
-                  ? "Your teacher hasn't uploaded any lessons yet. Check back later!"
+                  ? "We don't have enough info to build your path yet. Try a few lessons first!"
                   : "This module doesn't have any lessons assigned yet."}
               </Text>
-              {activeTab === 1 && (
-                <Pressable style={styles.emptyRefreshBtn} onPress={loadModulesData}>
-                  <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
-                </Pressable>
-              )}
+              <Pressable
+                style={styles.emptyRefreshBtn}
+                onPress={activeTab === 0 ? loadLearningPathData : loadModulesData}
+              >
+                <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
+              </Pressable>
             </View>
           ) : (
             <ScrollView

@@ -703,6 +703,17 @@ export default function WebViewSurvivalScreen() {
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
 
+            // Fetch the actual streak from the API
+            let streakDays = 0;
+            try {
+                const streakData = await api.getStreak();
+                streakDays = streakData.streak_days || 0;
+                console.log('📊 Fetched streak from API:', streakDays);
+            } catch (error) {
+                console.error('Error fetching streak:', error);
+                streakDays = 0;
+            }
+
             router.push({
                 pathname: '/lesson/xp-progress',
                 params: {
@@ -713,7 +724,7 @@ export default function WebViewSurvivalScreen() {
                     previousXp: String(previousXp),
                     nextLevelXp: String(nextLevelXp),
                     showStreak: 'true',
-                    streakDays: String(0),
+                    streakDays: String(streakDays),
                 },
             });
         } else {

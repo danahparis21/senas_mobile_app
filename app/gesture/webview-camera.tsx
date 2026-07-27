@@ -126,17 +126,23 @@ export default function WebViewCameraScreen() {
     const starAnim2 = useRef(new Animated.Value(0)).current;
     const starAnim3 = useRef(new Animated.Value(0)).current;
 
+    const detectionCooldownRef = useRef<number>(0);
+    const DETECTION_COOLDOWN_MS = 1200;
+
+    const soundCooldownRef = useRef<number>(0);
+    const SOUND_COOLDOWN_MS = 800;
+
     // ── Play correct gesture sound ──
     async function playGestureSound() {
         try {
-            // Don't play if a sound is already playing
+            // Quick check - if sound is already playing, skip
             if (isSoundPlaying) return;
 
             setIsSoundPlaying(true);
 
             // Unload any existing sound
             if (gestureSound) {
-                await gestureSound.unloadAsync();
+                await gestureSound.unloadAsync().catch(() => { });
             }
 
             const { sound } = await Audio.Sound.createAsync(
@@ -144,7 +150,7 @@ export default function WebViewCameraScreen() {
                 {
                     shouldPlay: true,
                     isLooping: false,
-                    volume: 0.8, // 80% volume for pleasant feedback
+                    volume: 0.8,
                 }
             );
 
@@ -153,7 +159,7 @@ export default function WebViewCameraScreen() {
             // Auto-cleanup after playback
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {
-                    sound.unloadAsync();
+                    sound.unloadAsync().catch(() => { });
                     setGestureSound(null);
                     setIsSoundPlaying(false);
                 }
@@ -370,9 +376,19 @@ export default function WebViewCameraScreen() {
 
                 if (letter === target) {
                     // CORRECT!
-                    if (!completedLetters.has(letter)) {
-                        // ── Play the gesture sound on correct detection ──
-                        await playGestureSound();
+                    const now = Date.now();
+                    const isCooldownOver = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
+
+                    if (!completedLetters.has(letter) && isCooldownOver) {
+                        // Update cooldown timestamp
+                        detectionCooldownRef.current = now;
+
+                        // ── Play the gesture sound with cooldown ──
+                        const isSoundReady = now - soundCooldownRef.current >= SOUND_COOLDOWN_MS;
+                        if (isSoundReady) {
+                            soundCooldownRef.current = now;
+                            await playGestureSound();
+                        }
 
                         const newCompleted = new Set(completedLetters);
                         newCompleted.add(letter);
@@ -423,7 +439,13 @@ export default function WebViewCameraScreen() {
                     setConsecutiveWrong(0);
                 } else {
                     // Wrong letter - only count if stable AND it's a new attempt
-                    if (letterStableCount >= 2 && (isNewLetter || isTimeForNewAttempt)) {
+                    const now = Date.now();
+                    const isNewAttempt = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
+
+                    if (letterStableCount >= 2 && isNewAttempt) {
+                        // Update cooldown for wrong attempts too, but shorter
+                        detectionCooldownRef.current = now;
+
                         const newWrong = consecutiveWrong + 1;
                         setConsecutiveWrong(newWrong);
                         setTotalWrongAttempts(prev => prev + 1);
@@ -442,7 +464,6 @@ export default function WebViewCameraScreen() {
                         }
 
                         // Throttled struggle messages
-                        const now = Date.now();
                         if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
                             senyaMsgCooldownRef.current = now;
                             if (newWrong >= 4) {
@@ -459,6 +480,7 @@ export default function WebViewCameraScreen() {
                         }
                     }
                 }
+
             } else {
                 // Letter not in A-M - throttled message
                 const target = getCurrentTarget();
@@ -610,9 +632,6 @@ export default function WebViewCameraScreen() {
 
         setShowResults(false);
 
-        // ─── NAVIGATE TO XP PROGRESS OR STREAK ──────────────────────────────
-
-        // If we have XP data from the award, show XP Progress
         if (xpResult && xpResult.xp_earned > 0) {
             const level = xpResult.level || 1;
             const totalXp = xpResult.total_xp || 0;
@@ -621,15 +640,17 @@ export default function WebViewCameraScreen() {
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
 
-            console.log('🔍 Navigation Debug:', {
-                xpEarned,
-                totalXp,
-                level,
-                previousXp,
-                nextLevelXp,
-            });
+            // Fetch the actual streak from the API
+            let streakDays = 0;
+            try {
+                const streakData = await api.getStreak();
+                streakDays = streakData.streak_days || 0;
+                console.log('📊 Fetched streak from API:', streakDays);
+            } catch (error) {
+                console.error('Error fetching streak:', error);
+                streakDays = 0;
+            }
 
-            // Navigate to XP Progress
             router.push({
                 pathname: '/lesson/xp-progress',
                 params: {
@@ -639,13 +660,11 @@ export default function WebViewCameraScreen() {
                     levelName: levelName,
                     previousXp: String(previousXp),
                     nextLevelXp: String(nextLevelXp),
-                    // Show streak after XP progress
                     showStreak: 'true',
-                    streakDays: String(0), // You can fetch actual streak if needed
+                    streakDays: String(streakDays),
                 },
             });
         } else {
-            // No XP earned - go back to gesture screen
             router.back();
         }
     };

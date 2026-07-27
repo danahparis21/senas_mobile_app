@@ -204,6 +204,42 @@ export const api = {
         }
     },
 
+    // NEW: Get personalized "My Learning Path" lessons (adaptive, based on
+    // learning_goal/fsl_level/performance). Sequencing/locking here is
+    // separate from getStudentLessons() and does not affect module locks.
+    getRecommendedLessons: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🎯 Fetching My Learning Path lessons...');
+
+            const response = await fetch(`${API_URL}/student/learning-path/lessons`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('✅ Get learning path lessons response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch learning path lessons');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching learning path lessons:', error);
+            throw error;
+        }
+    },
+
     // NEW: Get all lessons as flat list for dashboard
     getAllLessons: async () => {
         try {

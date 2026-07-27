@@ -606,6 +606,7 @@ export default function ChallengeScreen() {
     const showRoundResults = () => {
         stopTimer();
 
+
         // 🔥 FIX: Don't auto-show results in infinite mode on round completion
         if (mode === 'infinite') {
             if (currentIndex >= currentRoundSigns.length - 1) {
@@ -623,8 +624,8 @@ export default function ChallengeScreen() {
             return;
         }
 
-        // Master mode: show results
         const mastered = Array.from(masteredSigns);
+        // 🔥 Use weakSigns as the total count, not allSigns
         const remaining = weakSigns.filter(s => !mastered.includes(s));
         setRemainingSigns(remaining);
 
@@ -640,8 +641,11 @@ export default function ChallengeScreen() {
             }
         });
 
+        // 🔥 FIX: Use weakSigns.length as total
+        const totalSigns = weakSigns.length || allSigns.length;
+
         const result: ChallengeResult = {
-            totalSigns: allSigns.length,
+            totalSigns: totalSigns, // 🔥 Use weakSigns.length
             masteredSigns: mastered,
             remainingSigns: remaining,
             attempts: attemptsData,
@@ -649,8 +653,7 @@ export default function ChallengeScreen() {
         };
 
         const masteredCount = mastered.length;
-        const totalInRound = weakSigns.length;
-        // ✅ Use calculateXP instead of manual calculation
+        const totalInRound = weakSigns.length; // 🔥 Use weakSigns.length
         const { xp, starRating: calculatedStars } = calculateXP(masteredCount, totalInRound);
 
         setStarRating(calculatedStars);
@@ -660,7 +663,6 @@ export default function ChallengeScreen() {
         setResultsData(result);
         setShowResults(true);
     };
-
 
     // ─── HANDLE CONTINUE AFTER RESULTS (for infinite mode) ──────────────────────────
     const handleContinueAfterResults = async () => {
@@ -975,8 +977,10 @@ export default function ChallengeScreen() {
         const totalCorrect = resultsData.masteredSigns.length;
         const totalWrong = Object.values(resultsData.attempts).reduce((sum, a) => sum + a.wrong, 0);
 
-        // 🔥 FIX: Use resultsData.totalSigns (which is infiniteSignCount)
-        const totalCount = resultsData.totalSigns;
+        // 🔥 FIX: Use weakSigns.length for total, not allSigns.length
+        const totalCount = mode === 'infinite'
+            ? resultsData.totalSigns
+            : weakSigns.length || resultsData.totalSigns;
 
         return {
             totalTime: timeDisplay,
@@ -1108,6 +1112,8 @@ export default function ChallengeScreen() {
                 // Success!
                 setIsProcessing(true);
                 stopTimer();
+                playGestureSound();
+
 
                 // ─── GAMIFIED BONUS SYSTEM ──────────────────────────────
                 const timeTaken = 10 - timeLeft;
@@ -1115,34 +1121,31 @@ export default function ChallengeScreen() {
                 let timeBonus = 0;
                 let bonusType: 'lightning' | 'fire' | 'great' | 'none' = 'none';
 
+                // 🔥 EXTREME BONUS VALUES
                 if (timeTaken <= 3) {
-                    timeBonus = 3;
+                    timeBonus = 100;  // Lightning: +100
                     bonusType = 'lightning';
                 } else if (timeTaken <= 6) {
-                    timeBonus = 2;
+                    timeBonus = 60;   // Fire: +60
                     bonusType = 'fire';
                 } else if (timeTaken <= 9) {
-                    timeBonus = 1;
+                    timeBonus = 30;   // Great: +30
                     bonusType = 'great';
                 }
 
-                const confidenceBonus = confidence > 0.85 ? 1 : 0;
-                const totalBonus = 1 + timeBonus + confidenceBonus;
+                const confidenceBonus = confidence > 0.85 ? 20 : 0;  // Confidence bonus
+                const totalBonus = 10 + timeBonus + confidenceBonus;  // Base 10 + bonuses
 
-                console.log(`🎯 ${matchValue} - Time: ${timeTaken.toFixed(1)}s, Bonus: +${timeBonus}, Total: ${totalBonus} attempts`);
+                console.log(`🎯 ${matchValue} - Time: ${timeTaken.toFixed(1)}s, Bonus: +${timeBonus}, Total: ${totalBonus} XP`);
 
-                // Play sound and animate
-                playGestureSound();
-                animateSenyaBounce();
-
-                // ─── SHOW BONUS POPUP ──────────────────────────────────────
-                let bonusDisplayMessage = `+${totalBonus} attempts!`;
+                // ─── SHOW BONUS POPUP ──────────────────────────────────────────────────────
+                let bonusDisplayMessage = `+${totalBonus} XP!`;
                 if (bonusType === 'lightning') {
-                    bonusDisplayMessage = `⚡ LIGHTNING FAST! +${totalBonus} attempts!`;
+                    bonusDisplayMessage = `⚡ LIGHTNING FAST! +${totalBonus} XP!`;
                 } else if (bonusType === 'fire') {
-                    bonusDisplayMessage = `🔥 FAST! +${totalBonus} attempts!`;
+                    bonusDisplayMessage = `🔥 ON FIRE! +${totalBonus} XP!`;
                 } else if (bonusType === 'great') {
-                    bonusDisplayMessage = `💪 Great! +${totalBonus} attempts!`;
+                    bonusDisplayMessage = `💪 GREAT JOB! +${totalBonus} XP!`;
                 }
 
                 // Show the bonus popup ONLY (no duplicate success popup)
@@ -1180,7 +1183,7 @@ export default function ChallengeScreen() {
         bonusOpacityAnim.setValue(0);
         particleAnims.forEach(anim => anim.setValue(0));
 
-        // Only 3 particles
+        // 🔥 Force a re-render to ensure popup appears
         const particleSprings = particleAnims.map((anim, idx) => {
             return Animated.sequence([
                 Animated.delay(idx * 100),
@@ -1208,6 +1211,7 @@ export default function ChallengeScreen() {
             ...particleSprings,
         ]).start();
 
+        // 🔥 Show popup for longer (was 1500ms)
         setTimeout(() => {
             const particleFades = particleAnims.map(anim => {
                 return Animated.timing(anim, {
@@ -1232,7 +1236,7 @@ export default function ChallengeScreen() {
             ]).start(() => {
                 setShowBonusPopup(false);
             });
-        }, 1500);
+        }, 2000); // 🔥 Was 1500ms, now 2000ms for better visibility
     };
 
 

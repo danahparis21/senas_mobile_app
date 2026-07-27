@@ -67,7 +67,26 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Alphabet Part 2 (N-Z)',
   },
-  // 3. Greetings (moved up)
+  // 3. Numbers (NEW - replacing the old fingerspelling position)
+  {
+    id: 'level1_numbers',
+    title: 'Numbers 1-10',
+    subtitle: 'Learn to count',
+    category: 'numbers', // NEW category
+    color: ['#34D399', '#10B981'] as const,
+    icon: 'grid',
+    description: 'Learn numbers 1 to 10 in FSL',
+    progress: 0,
+    xp: 40,
+    locked: true, // Locked until alphabets are done
+    route: '/gesture/level3-gestures',
+    image: require('../../assets/images/img/numbers.png'),
+    lessons: 10,
+    isCompleted: false,
+    display_name: 'Level 1 Numbers',
+  },
+
+  // 4. Greetings (renamed from 'greetings' to 'level2_greetings')
   {
     id: 'level2_greetings',
     title: 'Greetings',
@@ -85,7 +104,7 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Level 2 Greetings',
   },
-  // 4. Survival
+  // 5. Survival (NEW)
   {
     id: 'level3_survival',
     title: 'Survival Phrases',
