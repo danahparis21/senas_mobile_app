@@ -173,7 +173,7 @@ export default function Achievements() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Top Bar */}
+        {/* Top Bar
         <View style={styles.topBar}>
           <Text style={styles.logoText}>SEÑAS</Text>
           <View style={styles.topBarRight}>
@@ -184,7 +184,7 @@ export default function Achievements() {
               <Text style={styles.streakText}>{streakDays}</Text>
             </View>
           </View>
-        </View>
+        </View> */}
 
         {/* Hero */}
         <View style={styles.section}>

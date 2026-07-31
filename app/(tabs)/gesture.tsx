@@ -72,21 +72,20 @@ const DEFAULT_MODULES = [
     id: 'level1_numbers',
     title: 'Numbers 1-10',
     subtitle: 'Learn to count',
-    category: 'numbers', // NEW category
+    category: 'numbers',
     color: ['#34D399', '#10B981'] as const,
     icon: 'grid',
     description: 'Learn numbers 1 to 10 in FSL',
     progress: 0,
     xp: 40,
-    locked: true, // Locked until alphabets are done
+    locked: true,
     route: '/gesture/level3-gestures',
     image: require('../../assets/images/img/numbers.png'),
     lessons: 10,
     isCompleted: false,
     display_name: 'Level 1 Numbers',
   },
-
-  // 4. Greetings (renamed from 'greetings' to 'level2_greetings')
+  // 4. Greetings
   {
     id: 'level2_greetings',
     title: 'Greetings',
@@ -104,7 +103,7 @@ const DEFAULT_MODULES = [
     isCompleted: false,
     display_name: 'Level 2 Greetings',
   },
-  // 5. Survival (NEW)
+  // 5. Survival
   {
     id: 'level3_survival',
     title: 'Survival Phrases',
@@ -415,7 +414,6 @@ export default function GestureMain() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [modules, setModules] = useState(DEFAULT_MODULES);
-  const [totalXp, setTotalXp] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
@@ -433,8 +431,6 @@ export default function GestureMain() {
 
       const response = await api.getGestureProgress();
       if (response && response.success) {
-        setTotalXp(response.student?.total_xp || 0);
-
         // Map API data to module format
         const updatedModules = DEFAULT_MODULES.map(defaultModule => {
           const apiModule = response.modules?.find((m: any) => m.name === defaultModule.id);
@@ -577,23 +573,13 @@ export default function GestureMain() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {/* Header */}
+          {/* Header - Reduced spacing to blend with AppHeader */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.greeting}>Let's Practice</Text>
+            <View style={styles.headerTitleRow}>
+              <Text style={styles.greeting}>Let's Practice </Text>
               <Text style={styles.title}>Gestures</Text>
             </View>
-            <View style={styles.headerRight}>
-              <View style={styles.xpBadge}>
-                <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 4 }} />
-                <Text style={styles.xpBadgeText}>{totalXp} XP</Text>
-              </View>
-              <TouchableOpacity style={styles.settingsButton}>
-                <Ionicons name="options-outline" size={22} color="#0F3172" />
-              </TouchableOpacity>
-            </View>
           </View>
-
           {/* Category Filters */}
           <View style={styles.categoriesContainer}>
             <ScrollView
@@ -789,8 +775,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingTop: 4, // Reduced from 16 to blend with AppHeader
+    paddingBottom: 4, // Reduced from 8
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline', // Aligns text baselines
+    gap: 8, // Space between texts
   },
   greeting: {
     fontSize: 14,
@@ -805,48 +796,9 @@ const styles = StyleSheet.create({
     color: '#0F3172',
     marginTop: 2,
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  xpBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.15)',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  xpBadgeText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F3172',
-  },
-  settingsButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.15)',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  // REMOVED: headerRight, xpBadge, xpBadgeText, settingsButton
   categoriesContainer: {
-    marginVertical: 12,
+    marginVertical: 8, // Reduced from 12
   },
   categoriesContent: {
     paddingHorizontal: 20,
@@ -886,7 +838,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   carouselSection: {
-    marginVertical: 12,
+    marginVertical: 8, // Reduced from 12
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1139,9 +1091,9 @@ const styles = StyleSheet.create({
     width: 18,
   },
   quickAccess: {
-    marginTop: 12,
+    marginTop: 8, // Reduced from 12
     paddingHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 8, // Reduced from 12
   },
   quickAccessGrid: {
     flexDirection: 'row',
@@ -1189,14 +1141,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     marginHorizontal: 20,
-    marginVertical: 16,
+    marginVertical: 12, // Reduced from 16
     padding: 16,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(15, 49, 114, 0.1)',
     alignItems: 'center',
     gap: 14,
-    marginBottom: 30,
+    marginBottom: 24, // Reduced from 30
     shadowColor: '#0F3172',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,

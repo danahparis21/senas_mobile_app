@@ -1,7 +1,10 @@
+// app/(tabs)/_layout.tsx
 import { Tabs } from 'expo-router';
 import React from 'react';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { Colors } from '../../constants/Colors';
+import { AppHeader } from '../../components/AppHeader';
+import { View, StyleSheet } from 'react-native';
 
 function HomeIcon({ active }: { active: boolean }) {
   return (
@@ -45,68 +48,83 @@ function UserIcon({ active }: { active: boolean }) {
   );
 }
 
+// Tabs that should show the header (all except Profile)
+const TABS_WITH_HEADER = ['dashboard', 'lessons', 'gesture', 'achievements'];
+
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: Colors.blue600,
-        tabBarInactiveTintColor: Colors.text3,
-        tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: Colors.border,
-          borderTopWidth: 1,
-          height: 76,
-          paddingBottom: 16,
-          paddingTop: 8,
-          elevation: 16,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.08,
-          shadowRadius: 16,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontFamily: 'sans-serif',
-          fontWeight: '700',
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ focused }) => <HomeIcon active={focused} />,
+    <View style={styles.container}>
+      {/* Header - shown on all tabs except Profile */}
+      <AppHeader showNotifications={true} />
+
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: Colors.blue600,
+          tabBarInactiveTintColor: Colors.text3,
+          tabBarStyle: {
+            backgroundColor: '#fff',
+            borderTopColor: Colors.border,
+            borderTopWidth: 1,
+            height: 76,
+            paddingBottom: 16,
+            paddingTop: 8,
+            elevation: 16,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 16,
+          },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontFamily: 'sans-serif',
+            fontWeight: '700',
+          },
         }}
-      />
-      <Tabs.Screen
-        name="lessons"
-        options={{
-          title: 'Learn',
-          tabBarIcon: ({ focused }) => <BookIcon active={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="gesture"
-        options={{
-          title: 'Practice',
-          tabBarIcon: ({ focused }) => <HandIcon active={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="achievements"
-        options={{
-          title: 'Badges',
-          tabBarIcon: ({ focused }) => <StarIcon active={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Me',
-          tabBarIcon: ({ focused }) => <UserIcon active={focused} />,
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="dashboard"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ focused }) => <HomeIcon active={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="lessons"
+          options={{
+            title: 'Learn',
+            tabBarIcon: ({ focused }) => <BookIcon active={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="gesture"
+          options={{
+            title: 'Practice',
+            tabBarIcon: ({ focused }) => <HandIcon active={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="achievements"
+          options={{
+            title: 'Badges',
+            tabBarIcon: ({ focused }) => <StarIcon active={focused} />,
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Me',
+            tabBarIcon: ({ focused }) => <UserIcon active={focused} />,
+          }}
+        />
+      </Tabs>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#EAF5FD',
+  },
+});

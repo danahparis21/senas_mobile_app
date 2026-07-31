@@ -1167,4 +1167,146 @@ export const api = {
             throw error;
         }
     },
+    /**
+     * Get all notifications for the student
+     * GET /api/student/notifications
+     */
+    getNotifications: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📬 Fetching notifications...');
+
+            const response = await fetch(`${API_URL}/student/notifications`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📬 Notifications response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch notifications');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching notifications:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Mark a notification as read
+     * POST /api/student/notifications/{id}/read
+     */
+    markNotificationRead: async (notificationId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📬 Marking notification ${notificationId} as read...`);
+
+            const response = await fetch(`${API_URL}/student/notifications/${notificationId}/read`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to mark notification as read');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error marking notification as read:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Mark all notifications as read
+     * POST /api/student/notifications/read-all
+     */
+    markAllNotificationsRead: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📬 Marking all notifications as read...');
+
+            const response = await fetch(`${API_URL}/student/notifications/read-all`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to mark all notifications as read');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error marking all notifications as read:', error);
+            throw error;
+        }
+    },
+
+    /**
+ * Save multiple notifications for the student
+ * POST /api/student/notifications/save
+ */
+    saveNotifications: async (notifications) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📬 Saving notifications...');
+
+            const response = await fetch(`${API_URL}/student/notifications/save`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ notifications }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to save notifications');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error saving notifications:', error);
+            throw error;
+        }
+    },
+
 };

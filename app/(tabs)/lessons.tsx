@@ -654,7 +654,7 @@ export default function Lessons() {
           </Animated.View>
         </View>
 
-        {/* Top Bar */}
+        {/* Top Bar
         <View style={styles.topBar}>
           <Text style={styles.logoText}>SEÑAS</Text>
           <View style={styles.topBarRight}>
@@ -666,7 +666,7 @@ export default function Lessons() {
               <Text style={styles.streakText}>{streak}</Text>
             </View>
           </View>
-        </View>
+        </View> */}
 
         {/* Unit/Module Banner */}
         <View style={styles.unitBanner}>

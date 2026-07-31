@@ -1,5 +1,5 @@
 // app/(tabs)/dashboard.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,10 @@ import {
   ActivityIndicator,
   FlatList,
   Dimensions,
-  Animated
+  Animated,
+  RefreshControl
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
@@ -85,6 +86,7 @@ const getStatusTag = (status: string, progress: any): string => {
 export default function Dashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [studentName, setStudentName] = useState<string>('Student');
   const [studentLevel, setStudentLevel] = useState<string>('Beginner');
   const [xp, setXp] = useState<number>(0);
@@ -110,26 +112,42 @@ export default function Dashboard() {
   const [achievementModalVisible, setAchievementModalVisible] = useState(false);
   const [checkingAchievements, setCheckingAchievements] = useState(false);
 
-
-
-  // Pulsing animation values - using useNativeDriver: false for style properties that don't support native driver
+  // Pulsing animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0.3)).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
+  const refreshAllData = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchStudentData(),
+        fetchTeacherLessons(),
+        checkForPromotion(),
+        checkForNewAchievements()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Initial load
   useEffect(() => {
-    fetchStudentData();
-    fetchTeacherLessons();
-    checkForPromotion();
-
-    setTimeout(() => {
-      checkForNewAchievements();
-    }, 1000);
-
-    // Start pulsing animation
+    refreshAllData();
     startPulseAnimation();
   }, []);
 
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if not already loading
+      if (!loading && !refreshing) {
+        refreshAllData();
+      }
+    }, [])
+  );
   const startPulseAnimation = () => {
     // Pulse animation (scale) - uses native driver
     Animated.loop(
@@ -536,20 +554,20 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <Text style={styles.logoText}>SEÑAS</Text>
-          <View style={styles.topBarRight}>
-            <View style={styles.streakBadge}>
-              <Svg width="15" height="15" viewBox="0 0 24 24" fill="#fb923c">
-                <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
-              </Svg>
-              <Text style={styles.streakText}>{streak}</Text>
-            </View>
-          </View>
-        </View>
-
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshAllData}
+            colors={['#0f3172', '#2563EB']}
+            tintColor="#0f3172"
+            title="Refreshing..."
+            titleColor="#0f3172"
+          />
+        }
+      >
         {/* Hero Card */}
         <View style={styles.section}>
           <View style={styles.heroCard}>
