@@ -16,7 +16,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Audio } from 'expo-av'; // ← ADD THIS
+import { Audio } from 'expo-av';
+import { useSettings } from '../contexts/SettingsContext';
+
 
 const { width, height } = Dimensions.get('window');
 
@@ -98,35 +100,54 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
   // 🎵 Sound Effect
   const [sound, setSound] = useState<Audio.Sound | null>(null);
 
-  // ─── Play Sound When Modal Opens ──────────────────────────────────────
+  const { settings } = useSettings();
+  // ─── Play Sound When Modal Opens OR Settings Change ──────────────────
+  // ─── Handle Sound Based on Settings ──────────────────────────────────
   useEffect(() => {
-    async function playSound() {
-      try {
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          require('../assets/music/certificate.mp3'),
-          {
-            shouldPlay: true,
-            isLooping: false,
-            volume: 0.8,
-          }
-        );
-        setSound(newSound);
-      } catch (error) {
-        console.error('Failed to play certificate sound:', error);
+    const handleSound = async () => {
+      // If sound is disabled, stop and unload any playing sound
+      if (!settings.soundEnabled) {
+        console.log('🔇 Sound disabled, stopping certificate sound');
+        if (sound) {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+          setSound(null);
+        }
+        return;
       }
-    }
 
-    if (visible) {
-      playSound();
-    }
+      // If sound is enabled and modal is visible, play sound
+      if (visible && settings.soundEnabled) {
+        try {
+          // Unload existing sound if any
+          if (sound) {
+            await sound.unloadAsync();
+            setSound(null);
+          }
+
+          const { sound: newSound } = await Audio.Sound.createAsync(
+            require('../assets/music/certificate.mp3'),
+            {
+              shouldPlay: true,
+              isLooping: false,
+              volume: 0.8,
+            }
+          );
+          setSound(newSound);
+        } catch (error) {
+          console.error('Failed to play certificate sound:', error);
+        }
+      }
+    };
+
+    handleSound();
 
     return () => {
       if (sound) {
         sound.unloadAsync();
       }
     };
-  }, [visible]);
-
+  }, [visible, settings.soundEnabled]);
   useEffect(() => {
     if (visible) {
       Animated.parallel([

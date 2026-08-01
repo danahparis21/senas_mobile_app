@@ -1425,5 +1425,107 @@ export const api = {
     },
 
 
+    /**
+  * Get student settings
+  * GET /api/student/settings
+  */
+    getSettings: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('⚙️ Fetching student settings...');
+
+            const response = await fetch(`${API_URL}/student/settings`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('⚙️ Settings response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch settings');
+            }
+
+            // 🔥 Convert snake_case from backend to camelCase for frontend
+            if (data.success && data.settings) {
+                return {
+                    success: data.success,
+                    settings: {
+                        soundEnabled: data.settings.sound_enabled ?? true,
+                        notificationsEnabled: data.settings.notifications_enabled ?? true,
+                    }
+                };
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching settings:', error);
+            // Return default settings on error
+            return {
+                success: false,
+                settings: {
+                    soundEnabled: true,
+                    notificationsEnabled: true,
+                }
+            };
+        }
+    },
+
+    /**
+ * Update student settings
+ * POST /api/student/settings
+ */
+    updateSettings: async (settings) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('⚙️ Updating settings (frontend):', settings);
+
+            // 🔥 Convert camelCase to snake_case for backend
+            const payload = {};
+            if (settings.soundEnabled !== undefined) {
+                payload.sound_enabled = settings.soundEnabled;
+            }
+            if (settings.notificationsEnabled !== undefined) {
+                payload.notifications_enabled = settings.notificationsEnabled;
+            }
+
+            console.log('⚙️ Sending payload (backend):', payload);
+
+            const response = await fetch(`${API_URL}/student/settings`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await response.json();
+            console.log('⚙️ Settings update response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to update settings');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error updating settings:', error);
+            throw error;
+        }
+    },
+
 
 };

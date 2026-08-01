@@ -25,7 +25,7 @@ interface Notification {
     title: string;
     message: string;
     type: 'achievement' | 'promotion' | 'lesson' | 'streak' | 'system';
-    is_read: boolean;  // ✅ Changed from 'read' to 'is_read'
+    is_read: boolean;
     created_at: string;
     data?: any;
 }
@@ -34,22 +34,18 @@ interface AppHeaderProps {
     showNotifications?: boolean;
 }
 
-interface Lesson {
-    lesson_id: number;
-    title: string;
-    status: string;
-    assigned_at?: string;
-    [key: string]: any;
-}
-
-interface LessonStatusMap {
-    [lessonId: number]: string;
-}
-
 // Keys for AsyncStorage
 const STORAGE_KEYS = {
     LAST_STREAK_MILESTONE: 'lastStreakMilestone',
     LAST_PRACTICE_REMINDER: 'lastPracticeReminder',
+    NOTIFICATIONS_CACHE: 'notificationsCache',
+    NOTIFICATIONS_TIMESTAMP: 'notificationsTimestamp',
+};
+
+// ✅ Helper function to get student-specific keys
+const getStudentStorageKey = (baseKey: string, studentId?: string): string => {
+    if (!studentId) return baseKey;
+    return `${baseKey}_${studentId}`;
 };
 
 export function AppHeader({ showNotifications = true }: AppHeaderProps) {
@@ -65,6 +61,14 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
     const [loading, setLoading] = useState(false);
     const [fetchingData, setFetchingData] = useState(true);
     const [isFirstLoad, setIsFirstLoad] = useState(true);
+    const [currentStudentId, setCurrentStudentId] = useState<string | null>(null);
+
+    const lastFetchTimeRef = useRef<number>(0);
+    const isFetchingRef = useRef<boolean>(false);
+    const fetchErrorCountRef = useRef<number>(0);
+    const MIN_FETCH_INTERVAL = 10000; // 10 seconds minimum between fetches
+    const MAX_ERROR_COUNT = 3; // Max errors before backing off
+
 
     // Animation for notification badge
     const badgeScale = useRef(new Animated.Value(1)).current;
@@ -80,204 +84,228 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
         return 'transparent';
     };
 
-    // Fetch all notification data
-    const fetchNotifications = async () => {
+    // ✅ Get current student ID from AsyncStorage
+    const getStudentId = async (): Promise<string | null> => {
+        try {
+            const userData = await AsyncStorage.getItem('userData');
+            if (userData) {
+                const user = JSON.parse(userData);
+                const studentId = user?.student?.id || user?.student?.student_id;
+                if (studentId) {
+                    return String(studentId);
+                }
+            }
+            return null;
+        } catch (error) {
+            console.error('Error getting student ID:', error);
+            return null;
+        }
+    };
+
+    const fetchNotifications = async (forceRefresh: boolean = false) => {
+        // 🔥 Prevent multiple simultaneous calls
+        if (isFetchingRef.current) {
+            console.log('⏳ Already fetching notifications, skipping...');
+            return;
+        }
+
+        // 🔥 Rate limiting - don't fetch too frequently
+        const now = Date.now();
+        if (!forceRefresh && (now - lastFetchTimeRef.current) < MIN_FETCH_INTERVAL) {
+            console.log(`⏳ Skipping notifications fetch - rate limited (${Math.round((MIN_FETCH_INTERVAL - (now - lastFetchTimeRef.current)) / 1000)}s remaining)`);
+            return;
+        }
+
+        // 🔥 If too many errors, back off
+        if (fetchErrorCountRef.current >= MAX_ERROR_COUNT) {
+            console.log('⚠️ Too many errors, backing off...');
+            setTimeout(() => {
+                fetchErrorCountRef.current = 0;
+                console.log('🔄 Resetting error count, retrying...');
+            }, 30000); // Wait 30 seconds before trying again
+            return;
+        }
+
+        isFetchingRef.current = true;
+        lastFetchTimeRef.current = now;
+
         try {
             setLoading(true);
 
-            // 1. Fetch all notifications from database
+            // ✅ Get current student ID
+            let studentId = currentStudentId;
+            if (!studentId) {
+                studentId = await getStudentId();
+                if (studentId) {
+                    setCurrentStudentId(studentId);
+                }
+            }
+
+            // 🔥 If forceRefresh is true, bypass cache
+            if (forceRefresh) {
+                console.log('🔄 Force refreshing notifications...');
+                await AsyncStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP);
+            }
+
+            // 1. Check cache first (unless force refresh)
+            let currentNotifications: Notification[] = [];
+            const cacheTimestamp = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP);
+            const cacheAge = cacheTimestamp ? Date.now() - parseInt(cacheTimestamp) : Infinity;
+            const isCacheValid = cacheAge < 5000; // 5 seconds cache validity
+
+            if (!forceRefresh && isCacheValid) {
+                const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
+                if (cachedData) {
+                    currentNotifications = JSON.parse(cachedData);
+                    console.log('📦 Using cached notifications:', currentNotifications.length);
+                }
+            }
+
+            // 2. Fetch fresh notifications from database
+            let fetchSuccess = false;
             try {
                 const response = await api.getNotifications();
                 if (response.success) {
-                    setNotifications(response.notifications || []);
-                    setUnreadCount(response.unread_count || 0);
-                    if (response.unread_count > 0) {
+                    currentNotifications = response.notifications || [];
+                    setNotifications(currentNotifications);
+                    const unread = response.unread_count || 0;
+                    setUnreadCount(unread);
+
+                    await AsyncStorage.setItem(
+                        STORAGE_KEYS.NOTIFICATIONS_CACHE,
+                        JSON.stringify(currentNotifications)
+                    );
+                    await AsyncStorage.setItem(
+                        STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP,
+                        String(Date.now())
+                    );
+
+                    if (unread > 0) {
                         animateBadge();
                     }
+                    console.log('📬 Fetched fresh notifications:', currentNotifications.length, 'Unread:', unread);
+                    fetchSuccess = true;
+                    fetchErrorCountRef.current = 0; // Reset error count on success
                 }
-            } catch (error) {
-                console.log('Could not fetch notifications from database');
-            }
+            } catch (error: any) {
+                // 🔥 Check if it's a rate limit error
+                if (error.message?.includes('Too Many Attempts') ||
+                    error.message?.includes('429') ||
+                    error.message?.includes('rate limit')) {
 
-            // 2. Check for new events and create notifications in database
-            const newNotificationData: any[] = [];
+                    fetchErrorCountRef.current += 1;
+                    console.warn(`⏳ Rate limited! (Error ${fetchErrorCountRef.current}/${MAX_ERROR_COUNT})`);
 
-            // 2a. Check for new achievements
-            try {
-                const achievementsResponse = await api.checkAchievements();
-                if (achievementsResponse.success && achievementsResponse.newly_unlocked) {
-                    for (const ach of achievementsResponse.newly_unlocked) {
-                        newNotificationData.push({
-                            type: 'achievement',
-                            title: `🏆 New Achievement Unlocked!`,
-                            message: `You earned "${ach.name}"! ${ach.description || ''}`,
-                            data: ach,
-                            action_url: '/(tabs)/achievements',
-                        });
-                    }
-                }
-            } catch (error) {
-                console.log('No new achievements');
-            }
-
-            // 2b. Check for promotion
-            try {
-                const promotionResponse = await api.checkPromotion();
-                if (promotionResponse.has_promotion && promotionResponse.promotion) {
-                    const promo = promotionResponse.promotion;
-                    newNotificationData.push({
-                        type: 'promotion',
-                        title: `⭐ Level Up!`,
-                        message: `You've reached ${promo.new_level_name || 'Level ' + promo.new_level}! Keep up the great work!`,
-                        data: promo,
-                        action_url: '/(tabs)/profile',
-                    });
-                }
-            } catch (error) {
-                console.log('No promotions');
-            }
-
-            // 2c. Check for streak milestones AND keep going notifications
-            try {
-                const streakResponse = await api.getStreak();
-                if (streakResponse.success) {
-                    const currentStreak = streakResponse.streak_days || 0;
-
-                    // Check for major milestones (7, 14, 21, 30)
-                    const milestones = [7, 14, 21, 30];
-                    const lastMilestone = await AsyncStorage.getItem(STORAGE_KEYS.LAST_STREAK_MILESTONE);
-                    const lastMilestoneNum = lastMilestone ? parseInt(lastMilestone) : 0;
-
-                    for (const milestone of milestones) {
-                        if (currentStreak >= milestone && milestone > lastMilestoneNum) {
-                            newNotificationData.push({
-                                type: 'streak',
-                                title: `🔥 ${milestone}-Day Streak!`,
-                                message: `Amazing! You've been learning for ${milestone} days straight. Keep going!`,
-                                data: { streak_days: currentStreak },
-                                action_url: '/(tabs)/dashboard',
-                            });
-                            await AsyncStorage.setItem(STORAGE_KEYS.LAST_STREAK_MILESTONE, String(milestone));
-                            break;
+                    // If we have cached data, use it
+                    if (currentNotifications.length === 0) {
+                        const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
+                        if (cachedData) {
+                            currentNotifications = JSON.parse(cachedData);
+                            setNotifications(currentNotifications);
+                            console.log('📦 Using cached notifications (fallback):', currentNotifications.length);
                         }
                     }
-
-                    // ✅ ADDED: "Keep Going" notifications at day 8, 15, 22, 29
-                    const keepGoingDays = [8, 15, 22, 29];
-                    const lastKeepGoing = await AsyncStorage.getItem('lastKeepGoingNotification');
-                    const lastKeepGoingNum = lastKeepGoing ? parseInt(lastKeepGoing) : 0;
-
-                    for (const day of keepGoingDays) {
-                        if (currentStreak >= day && day > lastKeepGoingNum) {
-                            newNotificationData.push({
-                                type: 'streak',
-                                title: `💪 ${day} Days and Going Strong!`,
-                                message: `You're on a ${currentStreak}-day streak! Keep up the great work! 🌟`,
-                                data: { streak_days: currentStreak },
-                                action_url: '/(tabs)/dashboard',
-                            });
-                            await AsyncStorage.setItem('lastKeepGoingNotification', String(day));
-                            break;
+                } else {
+                    console.log('Could not fetch notifications from database:', error);
+                    // Use cache if available
+                    if (currentNotifications.length === 0) {
+                        const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
+                        if (cachedData) {
+                            currentNotifications = JSON.parse(cachedData);
+                            setNotifications(currentNotifications);
+                            console.log('📦 Using cached notifications (fallback):', currentNotifications.length);
                         }
                     }
                 }
-            } catch (error) {
-                console.log('Could not fetch streak');
             }
 
-            // 2d. Check for new lessons
-            try {
-                const response = await api.getAllLessons();
-                if (response.success && response.lessons) {
-                    const lessons: Lesson[] = response.lessons;
+            // 3. Daily practice reminder (only if not force refreshing and no errors)
+            if (!forceRefresh && studentId && fetchSuccess) {
+                try {
+                    const reminderKey = getStudentStorageKey(STORAGE_KEYS.LAST_PRACTICE_REMINDER, studentId);
+                    const lastReminderDate = await AsyncStorage.getItem(reminderKey);
+                    const today = new Date().toDateString();
 
-                    const seenLessonIds = await AsyncStorage.getItem('seenLessonIds');
-                    const seenIds: number[] = seenLessonIds ? JSON.parse(seenLessonIds) : [];
-
-                    const newLessons = lessons.filter((lesson: Lesson) => {
-                        if (seenIds.includes(lesson.lesson_id)) return false;
-                        if (lesson.status === 'completed') return false;
-                        return true;
-                    });
-
-                    if (newLessons.length > 0) {
-                        const firstLesson = newLessons[0];
-                        const count = newLessons.length;
-                        newNotificationData.push({
-                            type: 'lesson',
-                            title: `📚 ${count} New Lesson${count > 1 ? 's' : ''} Available!`,
-                            message: count === 1
-                                ? `"${firstLesson.title}" is ready for you to start! 🎓`
-                                : `Your teacher assigned ${count} new lessons. Start learning now! 🎓`,
-                            data: { lessons: newLessons },
-                            action_url: '/lessons',
-                        });
-
-                        const allIds = [...new Set([...seenIds, ...newLessons.map(l => l.lesson_id)])];
-                        await AsyncStorage.setItem('seenLessonIds', JSON.stringify(allIds));
-                    }
-                }
-            } catch (error) {
-                console.log('Could not check for new lessons:', error);
-            }
-
-            // 2e. Daily practice reminder
-            try {
-                const lastReminderDate = await AsyncStorage.getItem(STORAGE_KEYS.LAST_PRACTICE_REMINDER);
-                const today = new Date().toDateString();
-
-                if (lastReminderDate !== today) {
-                    let practiceMessage = 'Practice your gestures today! 🖐️';
-                    try {
-                        const learningPath = await api.getLearningPath();
-                        if (learningPath.success && learningPath.learning_goal) {
-                            const goal = learningPath.learning_goal;
-                            practiceMessage = `Practice your "${goal}" gestures today! 🖐️ 10 minutes is all it takes.`;
+                    if (lastReminderDate !== today) {
+                        let practiceMessage = 'Practice your gestures today! 🖐️';
+                        try {
+                            const learningPath = await api.getLearningPath();
+                            if (learningPath.success && learningPath.learning_goal) {
+                                const goal = learningPath.learning_goal;
+                                practiceMessage = `Practice your "${goal}" gestures today! 🖐️ 10 minutes is all it takes.`;
+                            }
+                        } catch (e) {
+                            // Use default message
                         }
-                    } catch (e) {
-                        // Use default message
+
+                        console.log(`📅 Creating daily reminder for student ${studentId}...`);
+
+                        const saveResult = await api.saveNotifications([{
+                            type: 'system',
+                            title: '💪 Practice Reminder',
+                            message: practiceMessage,
+                            data: null,
+                            action_url: '/(tabs)/gesture',
+                        }]);
+
+                        console.log('📅 Reminder save result:', saveResult);
+
+                        await AsyncStorage.setItem(reminderKey, today);
+
+                        const updatedResponse = await api.getNotifications();
+                        if (updatedResponse.success) {
+                            const freshNotifications = updatedResponse.notifications || [];
+                            setNotifications(freshNotifications);
+                            setUnreadCount(updatedResponse.unread_count || 0);
+                            if (updatedResponse.unread_count > 0) {
+                                animateBadge();
+                            }
+                            await AsyncStorage.setItem(
+                                STORAGE_KEYS.NOTIFICATIONS_CACHE,
+                                JSON.stringify(freshNotifications)
+                            );
+                            await AsyncStorage.setItem(
+                                STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP,
+                                String(Date.now())
+                            );
+                        }
+                    } else {
+                        console.log(`⏭️ Reminder already sent today for student ${studentId}`);
                     }
-
-                    newNotificationData.push({
-                        type: 'system',
-                        title: `💪 Practice Reminder`,
-                        message: practiceMessage,
-                        data: null,
-                        action_url: '/(tabs)/gesture',
-                    });
-
-                    await AsyncStorage.setItem(STORAGE_KEYS.LAST_PRACTICE_REMINDER, today);
+                } catch (error) {
+                    console.log('Could not set practice reminder:', error);
                 }
-            } catch (error) {
-                console.log('Could not set practice reminder');
             }
 
-            if (newNotificationData.length > 0) {
-                // First, get existing notifications to check for duplicates
-                const existingResponse = await api.getNotifications();
-                const existingNotifs = existingResponse.success ? existingResponse.notifications : [];
+            // 4. Check for new notifications (only if not rate limited)
+            if (fetchSuccess) {
+                try {
+                    const checkResponse = await api.getNotifications();
+                    if (checkResponse.success) {
+                        const newNotifs: Notification[] = checkResponse.notifications || [];
+                        const currentIds = new Set(notifications.map(n => n.id));
 
-                // Filter out notifications that already exist
-                const uniqueNotifications = newNotificationData.filter(newNotif => {
-                    return !existingNotifs.some((existing: Notification) => {
-                        // Check if same type, title, and message
-                        return existing.type === newNotif.type &&
-                            existing.title === newNotif.title &&
-                            existing.message === newNotif.message;
-                    });
-                });
+                        const hasNew = newNotifs.some((n: Notification) => !currentIds.has(n.id));
 
-                if (uniqueNotifications.length > 0) {
-                    await api.saveNotifications(uniqueNotifications);
-
-                    const updatedResponse = await api.getNotifications();
-                    if (updatedResponse.success) {
-                        setNotifications(updatedResponse.notifications || []);
-                        setUnreadCount(updatedResponse.unread_count || 0);
-                        if (updatedResponse.unread_count > 0) {
-                            animateBadge();
+                        if (hasNew) {
+                            console.log('🆕 New notifications detected:', newNotifs.length);
+                            setNotifications(newNotifs);
+                            setUnreadCount(checkResponse.unread_count || 0);
+                            if (checkResponse.unread_count > 0) {
+                                animateBadge();
+                            }
+                            await AsyncStorage.setItem(
+                                STORAGE_KEYS.NOTIFICATIONS_CACHE,
+                                JSON.stringify(newNotifs)
+                            );
+                            await AsyncStorage.setItem(
+                                STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP,
+                                String(Date.now())
+                            );
                         }
                     }
+                } catch (error) {
+                    console.log('Could not check for new notifications:', error);
                 }
             }
 
@@ -285,10 +313,11 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
             console.error('Error fetching notifications:', error);
         } finally {
             setLoading(false);
+            isFetchingRef.current = false;
         }
     };
 
-    // Updated markAsRead function for database
+
     const markAsRead = async (notificationId: string) => {
         try {
             await api.markNotificationRead(notificationId);
@@ -298,17 +327,32 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
                 )
             );
             setUnreadCount(prev => Math.max(0, prev - 1));
+
+            const updatedNotifications = notifications.map(n =>
+                n.id === notificationId ? { ...n, is_read: true } : n
+            );
+            await AsyncStorage.setItem(
+                STORAGE_KEYS.NOTIFICATIONS_CACHE,
+                JSON.stringify(updatedNotifications)
+            );
         } catch (error) {
             console.error('Error marking notification as read:', error);
         }
     };
+
     const markAllAsRead = async () => {
         try {
             await api.markAllNotificationsRead();
             setNotifications(prev =>
-                prev.map(n => ({ ...n, read: true }))
+                prev.map(n => ({ ...n, is_read: true }))
             );
             setUnreadCount(0);
+
+            const updatedNotifications = notifications.map(n => ({ ...n, is_read: true }));
+            await AsyncStorage.setItem(
+                STORAGE_KEYS.NOTIFICATIONS_CACHE,
+                JSON.stringify(updatedNotifications)
+            );
         } catch (error) {
             console.error('Error marking all as read:', error);
         }
@@ -323,6 +367,12 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
             if (userData) {
                 const user = JSON.parse(userData);
                 const student = user.student;
+
+                // ✅ Update current student ID
+                if (student?.id || student?.student_id) {
+                    const studentId = String(student?.id || student?.student_id);
+                    setCurrentStudentId(studentId);
+                }
 
                 if (student?.total_xp !== undefined && student?.total_xp !== null) {
                     setXp(student.total_xp);
@@ -373,17 +423,23 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
     // Refresh data when screen comes into focus
     useFocusEffect(
         useCallback(() => {
-            if (!isFirstLoad) {
+            // 🔥 Check if enough time has passed since last fetch
+            const now = Date.now();
+            if (now - lastFetchTimeRef.current > MIN_FETCH_INTERVAL) {
+                fetchNotifications(true);
+            } else {
+                console.log('⏳ Skipping focus fetch - too soon');
+                // Still refresh user data
                 fetchUserData();
-                fetchNotifications();
             }
-        }, [isFirstLoad])
+        }, [])
     );
+
 
     // Initial load
     useEffect(() => {
         fetchUserData();
-        fetchNotifications();
+        fetchNotifications(false);
     }, []);
 
     const handleNotificationPress = (notification: Notification) => {
@@ -457,7 +513,6 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
     };
 
     const renderNotification = ({ item }: { item: Notification }) => {
-        // ✅ FIX: Use is_read instead of read
         const isRead = item.is_read === true;
         const iconColor = getNotificationColor(item.type);
 
@@ -506,12 +561,10 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
                         {item.message}
                     </Text>
                 </View>
-                {/* ✅ Only show dot for unread */}
                 {!isRead && <View style={styles.unreadDot} />}
             </TouchableOpacity>
         );
     };
-
 
     const headerBackground = getHeaderBackground();
 

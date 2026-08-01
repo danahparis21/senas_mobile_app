@@ -11,6 +11,7 @@ import {
   FlatList,
   Dimensions,
   Animated,
+  Easing,
   RefreshControl,
   StatusBar,
 } from 'react-native';
@@ -76,6 +77,43 @@ interface DailyChallengeData {
     xp_earned_so_far: number;
     bonus_xp_available: number;
   };
+}
+
+// ── DAILY CHALLENGE GOAL ICONS ──────────────────────────────────────
+// One real image per goal type instead of the backend's emoji field.
+// Swap any path below to change an icon — nothing else needs to change.
+const GOAL_ICONS: Record<string, any> = {
+  time_spent: require('../../assets/images/img/time.png'),
+  gesture_practice: require('../../assets/images/img/greet.png'),
+  bonus_practice: require('../../assets/images/img/few.png'),
+  lesson_completion: require('../../assets/images/img/lesson.png'),
+  quiz_attempt: require('../../assets/images/img/badges.png'),
+};
+// Used for any goal type the map above doesn't recognize.
+const DEFAULT_GOAL_ICON = require('../../assets/images/img/everything.png');
+// Shown on the "all goals complete" bonus banner.
+const CHALLENGE_COMPLETE_ICON = require('../../assets/images/img/experienced.png');
+
+const getGoalIcon = (type: string) => GOAL_ICONS[type] ?? DEFAULT_GOAL_ICON;
+
+// ── SMALL ICONS (no emoji) ───────────────────────────────────────────
+function CheckIcon({ size = 11, color = '#FFFFFF' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 13l4 4L19 7" stroke={color} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function SparkleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2 L14.3 9.7 L22 12 L14.3 14.3 L12 22 L9.7 14.3 L2 12 L9.7 9.7 Z"
+        fill="#FBBF24"
+      />
+    </Svg>
+  );
 }
 
 
@@ -201,6 +239,32 @@ export default function Dashboard() {
   const challengeProgressAnim = useRef(new Animated.Value(0)).current;
   const bonusXpAnim = useRef(new Animated.Value(0)).current;
 
+  // ── XP COUNT-UP + GOAL-COMPLETION SPARKLE EFFECT ──
+  // Smoothly counts the "Today's Goal" XP number up instead of snapping,
+  // and remembers each goal's last-known completion state so we only
+  // celebrate the moment a goal actually finishes (not on every refresh).
+  const [displayXp, setDisplayXp] = useState<number>(0);
+  const displayXpAnim = useRef(new Animated.Value(0)).current;
+  const prevXpRef = useRef<number | null>(null);
+  const xpPopAnim = useRef(new Animated.Value(1)).current;
+  const xpDisplayRef = useRef<View | null>(null);
+  const goalIconRefs = useRef<Record<string, View | null>>({});
+  const goalCheckAnims = useRef<Record<string, Animated.Value>>({});
+  const prevGoalCompletionRef = useRef<Record<string, boolean>>({});
+  const [sparkles, setSparkles] = useState<Array<{
+    key: string;
+    anim: Animated.Value;
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+  }>>([]);
+
+  const getGoalCheckAnim = (goalId: string, isCompleted: boolean) => {
+    if (!goalCheckAnims.current[goalId]) {
+      goalCheckAnims.current[goalId] = new Animated.Value(isCompleted ? 1 : 0);
+    }
+    return goalCheckAnims.current[goalId];
+  };
+
   const [promotionVisible, setPromotionVisible] = useState(false);
   const [promotionData, setPromotionData] = useState<any>(null);
   const [checkingPromotion, setCheckingPromotion] = useState(false);
@@ -274,6 +338,72 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Drives the animated {displayXp} number shown in "Today's Goal".
+  useEffect(() => {
+    const id = displayXpAnim.addListener(({ value }) => setDisplayXp(Math.round(value)));
+    return () => displayXpAnim.removeListener(id);
+  }, []);
+
+  // Whenever the real xp value changes: snap instantly on first load, but
+  // count up smoothly afterwards (e.g. after a goal awards XP).
+  useEffect(() => {
+    if (prevXpRef.current === null) {
+      displayXpAnim.setValue(xp);
+      setDisplayXp(xp);
+    } else if (xp !== prevXpRef.current) {
+      Animated.timing(displayXpAnim, {
+        toValue: xp,
+        duration: 700,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }
+    prevXpRef.current = xp;
+  }, [xp]);
+
+  // Small bounce on the XP number when a sparkle lands.
+  const triggerXpPop = () => {
+    Animated.sequence([
+      Animated.spring(xpPopAnim, { toValue: 1.18, friction: 4, useNativeDriver: true }),
+      Animated.spring(xpPopAnim, { toValue: 1, friction: 4, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // Flies a few sparkles from a completed goal's icon to the XP display,
+  // then pops the XP number once they land.
+  const fireSparkleForGoal = (goalId: string) => {
+    const sourceNode = goalIconRefs.current[goalId];
+    const destNode = xpDisplayRef.current;
+    if (!sourceNode || !destNode) return;
+
+    sourceNode.measureInWindow((sx, sy, sw, sh) => {
+      destNode.measureInWindow((dx, dy, dw, dh) => {
+        const from = { x: sx + sw / 2, y: sy + sh / 2 };
+        const to = { x: dx + dw / 2, y: dy + dh / 2 };
+
+        const sparkleCount = 3;
+        for (let i = 0; i < sparkleCount; i++) {
+          const anim = new Animated.Value(0);
+          const key = `${goalId}_${Date.now()}_${i}`;
+          const jitteredFrom = { x: from.x + (i - 1) * 8, y: from.y + (i - 1) * 4 };
+
+          setTimeout(() => {
+            setSparkles((prev) => [...prev, { key, anim, from: jitteredFrom, to }]);
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 700,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }).start(() => {
+              setSparkles((prev) => prev.filter((s) => s.key !== key));
+              if (i === sparkleCount - 1) triggerXpPop();
+            });
+          }, i * 90);
+        }
+      });
+    });
+  };
+
   // ── ADD DAILY CHALLENGE FETCH FUNCTION ──
   const fetchDailyChallenge = async () => {
     try {
@@ -282,6 +412,28 @@ export default function Dashboard() {
 
       if (response.success) {
         setDailyChallenge(response.challenge);
+
+        // Celebrate any goal that just flipped from incomplete to complete
+        // since our last known state — not goals that were already done
+        // (e.g. finished yesterday, or already done before this screen
+        // first loaded today).
+        const goals: ChallengeGoal[] = response.challenge.goals || [];
+        const nextCompletionMap: Record<string, boolean> = {};
+        goals.forEach((goal) => {
+          const wasCompleted = prevGoalCompletionRef.current[goal.id];
+          nextCompletionMap[goal.id] = goal.is_completed;
+
+          if (goal.is_completed && wasCompleted === false) {
+            Animated.spring(getGoalCheckAnim(goal.id, false), {
+              toValue: 1,
+              friction: 5,
+              tension: 140,
+              useNativeDriver: true,
+            }).start();
+            fireSparkleForGoal(goal.id);
+          }
+        });
+        prevGoalCompletionRef.current = nextCompletionMap;
 
         // Animate progress if challenge is partially completed
         const progress = response.challenge.summary.progress_percentage;
@@ -380,12 +532,24 @@ export default function Dashboard() {
   const renderChallengeGoal = (goal: ChallengeGoal, index: number) => {
     const progress = goal.target > 0 ? Math.min((goal.current / goal.target) * 100, 100) : 0;
     const isCompleted = goal.is_completed;
+    const checkAnim = getGoalCheckAnim(goal.id, isCompleted);
 
     return (
       <View key={goal.id} style={styles.challengeGoalItem}>
         <View style={styles.challengeGoalRow}>
-          <View style={styles.challengeGoalIcon}>
-            <Text style={styles.challengeGoalIconText}>{goal.icon}</Text>
+          <View
+            ref={(el) => { goalIconRefs.current[goal.id] = el; }}
+            style={[styles.challengeGoalIcon, isCompleted && styles.challengeGoalIconCompleted]}
+          >
+            <Image source={getGoalIcon(goal.type)} style={styles.challengeGoalIconImg} contentFit="contain" />
+            <Animated.View
+              style={[
+                styles.goalCheckBadge,
+                { transform: [{ scale: checkAnim }], opacity: checkAnim },
+              ]}
+            >
+              <CheckIcon />
+            </Animated.View>
           </View>
           <View style={styles.challengeGoalContent}>
             <View style={styles.challengeGoalHeader}>
@@ -407,8 +571,8 @@ export default function Dashboard() {
                   ]}
                 />
               </View>
-              <Text style={styles.challengeGoalProgressText}>
-                {isCompleted ? '✅ Done' : `${Math.round(progress)}%`}
+              <Text style={[styles.challengeGoalProgressText, isCompleted && styles.challengeGoalProgressTextDone]}>
+                {isCompleted ? 'Done' : `${Math.round(progress)}%`}
               </Text>
             </View>
           </View>
@@ -813,8 +977,10 @@ export default function Dashboard() {
 
               <View style={styles.goalInfo}>
                 <Text style={styles.goalTitle}>Today's Goal</Text>
-                <View style={styles.goalXpRow}>
-                  <Text style={styles.goalXpBig}>{xp}</Text>
+                <View style={styles.goalXpRow} ref={xpDisplayRef}>
+                  <Animated.Text style={[styles.goalXpBig, { transform: [{ scale: xpPopAnim }] }]}>
+                    {displayXp}
+                  </Animated.Text>
                   <Text style={styles.goalXpSmall}> / {xpMax} XP</Text>
                 </View>
                 <View style={styles.progressTrack}>
@@ -957,157 +1123,159 @@ export default function Dashboard() {
 
 
 
-          {/* ── DAILY CHALLENGE ── */}
+          {/* ── DAILY CHALLENGE (hero + goals list as one connected card) ── */}
           <View style={styles.section}>
-            <Pressable
-              style={styles.dailyCard}
-              onPress={() => {
-                // Navigate to gesture practice or challenge view
-                router.push('/(tabs)/gesture');
-              }}
-            >
-              <ExpoLinearGradient
-                colors={['#2F86D8', '#1E63B8'] as const}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
+            <View style={styles.dailyChallengeCard}>
+              <Pressable
+                style={styles.dailyCardTop}
+                onPress={() => {
+                  // Navigate to gesture practice or challenge view
+                  router.push('/(tabs)/gesture');
+                }}
+              >
+                <ExpoLinearGradient
+                  colors={['#2F86D8', '#1E63B8'] as const}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
 
-              <View style={styles.dailyHeader}>
-                <View style={styles.dailyIconBox}>
-                  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <Circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2" />
-                    <Circle cx="12" cy="12" r="6" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
-                    <Circle cx="12" cy="12" r="2" fill="#fff" />
-                  </Svg>
+                <View style={styles.dailyHeader}>
+                  <View style={styles.dailyIconBox}>
+                    <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <Circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2" />
+                      <Circle cx="12" cy="12" r="6" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
+                      <Circle cx="12" cy="12" r="2" fill="#fff" />
+                    </Svg>
+                  </View>
+                  <Text style={styles.dailyLabel}>DAILY CHALLENGE</Text>
+
+                  {/* Dynamic XP Badge */}
+                  {dailyChallenge && dailyChallenge.summary.bonus_xp_available > 0 ? (
+                    <Animated.View style={[
+                      styles.dailyXpBadge,
+                      {
+                        transform: [{
+                          scale: bonusXpAnim.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [1, 1.3, 1],
+                          }),
+                        }],
+                      },
+                    ]}>
+                      <Image source={CHALLENGE_COMPLETE_ICON} style={styles.dailyXpBadgeIcon} contentFit="contain" />
+                      <Text style={styles.dailyXpText}>+{dailyChallenge.summary.bonus_xp_available} Bonus!</Text>
+                    </Animated.View>
+                  ) : (
+                    <View style={styles.dailyXpBadge}>
+                      <Text style={styles.dailyXpText}>
+                        {(dailyChallenge?.summary?.xp_earned_so_far ?? 0) > 0
+                          ? `+${dailyChallenge?.summary?.xp_earned_so_far ?? 0} XP`
+                          : '+50 XP'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.dailyLabel}>DAILY CHALLENGE</Text>
 
-                {/* Dynamic XP Badge */}
-                {dailyChallenge && dailyChallenge.summary.bonus_xp_available > 0 ? (
-                  <Animated.View style={[
-                    styles.dailyXpBadge,
-                    {
-                      transform: [{
-                        scale: bonusXpAnim.interpolate({
-                          inputRange: [0, 0.5, 1],
-                          outputRange: [1, 1.3, 1],
-                        }),
-                      }],
-                    },
-                  ]}>
-                    <Text style={styles.dailyXpText}>🎉 +{dailyChallenge.summary.bonus_xp_available} Bonus!</Text>
-                  </Animated.View>
-                ) : (
-                  <View style={styles.dailyXpBadge}>
-                    <Text style={styles.dailyXpText}>
-                      {(dailyChallenge?.summary?.xp_earned_so_far ?? 0) > 0
-                        ? `+${dailyChallenge?.summary?.xp_earned_so_far ?? 0} XP`
-                        : '+50 XP'}
+                <View style={styles.dailyContent}>
+                  <View style={styles.dailyTextContent}>
+                    {/* Dynamic Title based on challenge */}
+                    <Text style={styles.dailyTitle}>
+                      {dailyChallenge?.theme
+                        ? `Practice ${dailyChallenge.theme.replace('_', ' & ')}`
+                        : 'Practice Your Signs'}
+                    </Text>
+
+                    {/* Dynamic Description */}
+                    <Text style={styles.dailyDesc}>
+                      {dailyChallenge?.is_completed
+                        ? 'Challenge complete! Amazing work today!'
+                        : (dailyChallenge?.summary?.total ?? 0) > 0
+                          ? `${dailyChallenge?.summary?.completed ?? 0} of ${dailyChallenge?.summary?.total ?? 0} goals completed`
+                          : 'Complete goals to earn XP and build your streak!'}
+                    </Text>
+
+                    {/* Progress Dots - Dynamic based on goals */}
+                    <View style={styles.dailyDots}>
+                      {dailyChallenge ? (
+                        dailyChallenge.goals.map((goal, idx) => (
+                          <View
+                            key={idx}
+                            style={[
+                              styles.dailyDot,
+                              {
+                                backgroundColor: goal.is_completed
+                                  ? '#FBBF24'
+                                  : 'rgba(255,255,255,0.25)'
+                              }
+                            ]}
+                          />
+                        ))
+                      ) : (
+                        // Fallback dots if no challenge data
+                        [1, 2, 3, 4, 5].map((n) => (
+                          <View key={n} style={[styles.dailyDot, { backgroundColor: n <= 2 ? '#FBBF24' : 'rgba(255,255,255,0.25)' }]} />
+                        ))
+                      )}
+                    </View>
+
+                    {/* Status Text */}
+                    <Text style={styles.dailyStatusText}>
+                      {dailyChallenge?.is_completed
+                        ? 'All goals complete! You earned bonus XP!'
+                        : dailyChallenge
+                          ? `${Math.round(dailyChallenge.summary.progress_percentage)}% complete • Tap to practice!`
+                          : 'Practice daily to build your streak!'}
                     </Text>
                   </View>
-                )}
-              </View>
 
-              <View style={styles.dailyContent}>
-                <View style={styles.dailyTextContent}>
-                  {/* Dynamic Title based on challenge */}
-                  <Text style={styles.dailyTitle}>
-                    {dailyChallenge?.theme
-                      ? `Practice ${dailyChallenge.theme.replace('_', ' & ')}`
-                      : 'Practice Your Signs'}
-                  </Text>
-
-                  {/* Dynamic Description */}
-                  <Text style={styles.dailyDesc}>
-                    {dailyChallenge?.is_completed
-                      ? '🎉 Challenge complete! Amazing work today!'
-                      : (dailyChallenge?.summary?.total ?? 0) > 0
-                        ? `${dailyChallenge?.summary?.completed ?? 0} of ${dailyChallenge?.summary?.total ?? 0} goals completed`
-                        : 'Complete goals to earn XP and build your streak!'}
-                  </Text>
-
-                  {/* Progress Dots - Dynamic based on goals */}
-                  <View style={styles.dailyDots}>
-                    {dailyChallenge ? (
-                      dailyChallenge.goals.map((goal, idx) => (
-                        <View
-                          key={idx}
-                          style={[
-                            styles.dailyDot,
-                            {
-                              backgroundColor: goal.is_completed
-                                ? '#FBBF24'
-                                : 'rgba(255,255,255,0.25)'
-                            }
-                          ]}
-                        />
-                      ))
-                    ) : (
-                      // Fallback dots if no challenge data
-                      [1, 2, 3, 4, 5].map((n) => (
-                        <View key={n} style={[styles.dailyDot, { backgroundColor: n <= 2 ? '#FBBF24' : 'rgba(255,255,255,0.25)' }]} />
-                      ))
-                    )}
+                  <View style={styles.dailyActionBox}>
+                    <View style={styles.dailyStartBtn}>
+                      <Text style={styles.dailyStartText}>
+                        {dailyChallenge?.is_completed ? 'Done!' : 'Start'}
+                      </Text>
+                      {!dailyChallenge?.is_completed && (
+                        <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#78350F" strokeWidth="2.5">
+                          <Line x1="5" y1="12" x2="19" y2="12" />
+                          <Polyline points="12 5 19 12 12 19" />
+                        </Svg>
+                      )}
+                    </View>
                   </View>
-
-                  {/* Status Text */}
-                  <Text style={styles.dailyStatusText}>
-                    {dailyChallenge?.is_completed
-                      ? '🌟 All goals complete! You earned bonus XP! 🎉'
-                      : dailyChallenge
-                        ? `${Math.round(dailyChallenge.summary.progress_percentage)}% complete • Tap to practice!`
-                        : 'Practice daily to build your streak!'}
-                  </Text>
                 </View>
+              </Pressable>
 
-                <View style={styles.dailyActionBox}>
-                  <View style={styles.dailyStartBtn}>
-                    <Text style={styles.dailyStartText}>
-                      {dailyChallenge?.is_completed ? 'Done!' : 'Start'}
+              {/* ── Goals list: an extension of the card above, not a separate one ── */}
+              {dailyChallenge && dailyChallenge.goals.length > 0 && (
+                <View style={styles.challengeGoalsPanel}>
+                  <View style={styles.challengeGoalsHeader}>
+                    <Text style={styles.challengeGoalsTitle}>Today's Goals</Text>
+                    <Text style={styles.challengeGoalsCount}>
+                      {dailyChallenge?.summary?.completed ?? 0}/{dailyChallenge?.summary?.total ?? 0}
                     </Text>
-                    {!dailyChallenge?.is_completed && (
-                      <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#78350F" strokeWidth="2.5">
-                        <Line x1="5" y1="12" x2="19" y2="12" />
-                        <Polyline points="12 5 19 12 12 19" />
-                      </Svg>
-                    )}
                   </View>
+
+                  {/* Animated Progress Bar */}
+                  <View style={styles.challengeGoalsProgressTrack}>
+                    <Animated.View
+                      style={[
+                        styles.challengeGoalsProgressFill,
+                        {
+                          width: challengeProgressAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0%', '100%'],
+                          }),
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  {dailyChallenge.goals.map((goal, index) => renderChallengeGoal(goal, index))}
                 </View>
-              </View>
-            </Pressable>
+              )}
+            </View>
           </View>
 
-          {/* ── CHALLENGE GOALS DETAIL (Collapsible/Expandable) ── */}
-          {dailyChallenge && dailyChallenge.goals.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.challengeGoalsPanel}>
-                <View style={styles.challengeGoalsHeader}>
-                  <Text style={styles.challengeGoalsTitle}>Today's Goals</Text>
-                  <Text style={styles.challengeGoalsCount}>
-                    {dailyChallenge?.summary?.completed ?? 0}/{dailyChallenge?.summary?.total ?? 0}
-                  </Text>
-                </View>
-
-                {/* Animated Progress Bar */}
-                <View style={styles.challengeGoalsProgressTrack}>
-                  <Animated.View
-                    style={[
-                      styles.challengeGoalsProgressFill,
-                      {
-                        width: challengeProgressAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ['0%', '100%'],
-                        }),
-                      },
-                    ]}
-                  />
-                </View>
-
-                {dailyChallenge.goals.map((goal, index) => renderChallengeGoal(goal, index))}
-              </View>
-            </View>
-          )}
           {/* ── Continue Learning / Completed ── */}
           {displayLessons.length > 0 && (
             <View style={styles.section}>
@@ -1223,6 +1391,31 @@ export default function Dashboard() {
           setNewAchievements([]);
         }}
       />
+
+      {/* ── Goal-completion sparkles flying to the XP display ── */}
+      <View style={styles.sparkleOverlay} pointerEvents="none">
+        {sparkles.map((s) => {
+          const translateX = s.anim.interpolate({ inputRange: [0, 1], outputRange: [s.from.x, s.to.x] });
+          const translateY = s.anim.interpolate({
+            inputRange: [0, 0.5, 1],
+            outputRange: [s.from.y, Math.min(s.from.y, s.to.y) - 70, s.to.y],
+          });
+          const scale = s.anim.interpolate({ inputRange: [0, 0.15, 0.85, 1], outputRange: [0.4, 1.15, 1, 0.3] });
+          const opacity = s.anim.interpolate({ inputRange: [0, 0.1, 0.8, 1], outputRange: [0, 1, 1, 0] });
+
+          return (
+            <Animated.View
+              key={s.key}
+              style={[
+                styles.sparkleParticle,
+                { transform: [{ translateX }, { translateY }, { scale }], opacity },
+              ]}
+            >
+              <SparkleIcon />
+            </Animated.View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -1305,11 +1498,11 @@ const styles = StyleSheet.create({
   lessonProgressText: { fontSize: 10, color: C.inkSoft, marginTop: 4, fontWeight: '700' },
 
   // Daily challenge
-  dailyCard: { borderRadius: 26, padding: 20, overflow: 'hidden', shadowColor: '#1E63B8', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 22, elevation: 8 },
+  dailyCardTop: { borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, overflow: 'hidden' },
   dailyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   dailyIconBox: { width: 28, height: 28, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   dailyLabel: { fontSize: 10.5, fontWeight: '900', color: 'rgba(255,255,255,0.85)', letterSpacing: 1.2 },
-  dailyXpBadge: { marginLeft: 'auto', backgroundColor: 'rgba(251,191,36,0.28)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 11 },
+  dailyXpBadge: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(251,191,36,0.28)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 11 },
   dailyXpText: { fontSize: 11, fontWeight: '900', color: '#FDE68A' },
   dailyContent: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   dailyTextContent: { flex: 1, paddingRight: 12 },
@@ -1418,11 +1611,10 @@ const styles = StyleSheet.create({
 
   challengeGoalsPanel: {
     backgroundColor: C.card,
-    borderRadius: 26,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
     padding: 16,
-    borderWidth: 1,
-    borderColor: C.cardLine,
-    ...CARD_SHADOW,
+    paddingTop: 18,
   },
   challengeGoalsHeader: {
     flexDirection: 'row',
@@ -1472,8 +1664,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  challengeGoalIconText: {
-    fontSize: 18,
+  challengeGoalIconCompleted: {
+    backgroundColor: C.mint,
+  },
+  challengeGoalIconImg: {
+    width: 20,
+    height: 20,
+  },
+  goalCheckBadge: {
+    position: 'absolute',
+    bottom: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#34C77B',
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   challengeGoalContent: {
     flex: 1,
@@ -1536,5 +1745,32 @@ const styles = StyleSheet.create({
     minWidth: 40,
     textAlign: 'right',
   },
+  challengeGoalProgressTextDone: {
+    color: '#1E8A5F',
+  },
 
+  // Merged Daily Challenge card (hero + goals as one visual piece)
+  dailyChallengeCard: {
+    borderRadius: 26,
+    backgroundColor: C.card,
+    shadowColor: '#1E63B8',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  dailyXpBadgeIcon: {
+    width: 14,
+    height: 14,
+  },
+
+  // Sparkle flight overlay
+  sparkleOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 999 },
+  sparkleParticle: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    marginLeft: -8,
+    marginTop: -8,
+  },
 });

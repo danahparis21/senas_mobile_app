@@ -1,5 +1,5 @@
 // app/gesture/webview-camera.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
 import {
     View,
     Text,
@@ -18,7 +18,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -27,7 +27,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
-
+import { useSettings } from '../../contexts/SettingsContext';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -76,6 +76,8 @@ interface LetterAttempt {
 export default function WebViewCameraScreen() {
     const router = useRouter();
     usePracticeTimeTracker();
+    const { settings, refreshSettings } = useSettings();
+
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);
@@ -85,10 +87,19 @@ export default function WebViewCameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
 
+    useFocusEffect(
+        useCallback(() => {
+            console.log('🔄 WebView Camera screen focused, refreshing settings...');
+            refreshSettings();
+        }, [refreshSettings])
+    );
+
+
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
     const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
+
 
     // Gamification state
     const [completedLetters, setCompletedLetters] = useState<Set<string>>(new Set());
@@ -134,72 +145,56 @@ export default function WebViewCameraScreen() {
     const soundCooldownRef = useRef<number>(0);
     const SOUND_COOLDOWN_MS = 800;
 
-    // ── Play correct gesture sound ──
     async function playGestureSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
+
         try {
-            // Quick check - if sound is already playing, skip
             if (isSoundPlaying) return;
-
             setIsSoundPlaying(true);
-
-            // Unload any existing sound
-            if (gestureSound) {
-                await gestureSound.unloadAsync().catch(() => { });
-            }
-
+            if (gestureSound) await gestureSound.unloadAsync();
             const { sound } = await Audio.Sound.createAsync(
                 CORRECT_GESTURE_SOUND,
-                {
-                    shouldPlay: true,
-                    isLooping: false,
-                    volume: 0.8,
-                }
+                { shouldPlay: true, isLooping: false, volume: 0.8 }
             );
-
             setGestureSound(sound);
-
-            // Auto-cleanup after playback
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {
-                    sound.unloadAsync().catch(() => { });
+                    sound.unloadAsync();
                     setGestureSound(null);
                     setIsSoundPlaying(false);
                 }
             });
-
         } catch (error) {
             console.error('Failed to play gesture sound:', error);
             setIsSoundPlaying(false);
         }
     }
 
-    // ── Play completion sound ──
+    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
     async function playCompleteSound() {
-        try {
-            // Unload any existing sound
-            if (completeSound) {
-                await completeSound.unloadAsync();
-            }
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping complete sound');
+            return;
+        }
 
+        try {
+            if (completeSound) await completeSound.unloadAsync();
             const { sound } = await Audio.Sound.createAsync(
                 GESTURE_COMPLETE_SOUND,
-                {
-                    shouldPlay: true,
-                    isLooping: false,
-                    volume: 1.0, // Full volume for celebration!
-                }
+                { shouldPlay: true, isLooping: false, volume: 1.0 }
             );
-
             setCompleteSound(sound);
-
-            // Auto-cleanup after playback
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {
                     sound.unloadAsync();
                     setCompleteSound(null);
                 }
             });
-
         } catch (error) {
             console.error('Failed to play complete sound:', error);
         }

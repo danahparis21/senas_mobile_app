@@ -16,6 +16,7 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import { useSettings } from '../contexts/SettingsContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -146,6 +147,9 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
     const [currentIndex, setCurrentIndex] = useState(0);
     const [sound, setSound] = useState<Audio.Sound | null>(null);
 
+    // ✅ Get settings
+    const { settings } = useSettings();
+
     // Animation values
     const scaleAnim = useRef(new Animated.Value(0.8)).current;
     const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -154,8 +158,14 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
     const slideAnim = useRef(new Animated.Value(0)).current;
     const cardOpacity = useRef(new Animated.Value(1)).current;
 
-    // ─── Play Sound Effect ──────────────────────────────────────────────────
+    // ─── Play Sound Effect (only if enabled) ──────────────────────────
     const playAchievementSound = async () => {
+        // ✅ Check if sound is enabled before playing
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping achievement sound');
+            return;
+        }
+
         try {
             if (sound) {
                 await sound.unloadAsync();
@@ -174,6 +184,7 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
         }
     };
 
+    // 🔥 Play sound when modal becomes visible OR when sound setting changes
     useEffect(() => {
         if (visible) {
             playAchievementSound();
@@ -183,7 +194,7 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
                 sound.unloadAsync();
             }
         };
-    }, [visible]);
+    }, [visible, settings.soundEnabled]);
 
     // ─── Animations ─────────────────────────────────────────────────────────
     useEffect(() => {
@@ -253,15 +264,15 @@ const AchievementModal: React.FC<AchievementModalProps> = ({
                     useNativeDriver: true,
                 }),
             ]).start(async () => {
-                // Move to next achievement
                 setCurrentIndex(currentIndex + 1);
                 slideAnim.setValue(SCREEN_WIDTH);
                 cardOpacity.setValue(1);
 
-                // Play sound for next achievement
-                await playAchievementSound();
+                // ✅ Only play sound if enabled
+                if (settings.soundEnabled) {
+                    await playAchievementSound();
+                }
 
-                // Slide in animation
                 Animated.parallel([
                     Animated.timing(slideAnim, {
                         toValue: 0,

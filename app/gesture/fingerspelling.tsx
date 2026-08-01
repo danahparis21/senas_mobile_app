@@ -1,5 +1,5 @@
 // app/gesture/fingerspelling.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
 import {
     View,
     Text,
@@ -20,7 +20,7 @@ import {
     UIManager,
     KeyboardAvoidingView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -29,6 +29,8 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -137,6 +139,8 @@ interface WordResult {
 export default function FingerspellingScreen() {
     const router = useRouter();
     usePracticeTimeTracker();
+    const { settings, refreshSettings } = useSettings();
+
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);
@@ -147,6 +151,13 @@ export default function FingerspellingScreen() {
     const [showBrowserButton, setShowBrowserButton] = useState(true);
     const [studentName, setStudentName] = useState<string>('');
     const [isNameLoaded, setIsNameLoaded] = useState(false);
+
+    useFocusEffect(
+        useCallback(() => {
+            console.log('🔄 Fingerspelling screen focused, refreshing settings...');
+            refreshSettings();
+        }, [refreshSettings])
+    );
 
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
@@ -249,8 +260,14 @@ export default function FingerspellingScreen() {
         fetchStudentName();
     }, []);
 
-    // ─── PLAY SOUNDS ──────────────────────────────────────────────────────────
+    // ─── PLAY GESTURE SOUND (only if enabled) ──────────────────────────────────
     async function playGestureSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -273,7 +290,14 @@ export default function FingerspellingScreen() {
         }
     }
 
+    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
     async function playCompleteSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping complete sound');
+            return;
+        }
+
         try {
             if (completeSound) await completeSound.unloadAsync();
             const { sound } = await Audio.Sound.createAsync(

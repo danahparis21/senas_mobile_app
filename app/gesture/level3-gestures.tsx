@@ -1,5 +1,6 @@
 // app/gesture/level3-gestures.tsx
-import React, { useState, useRef, useEffect } from 'react';
+// app/gesture/level3-gestures.tsx
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
 import {
     View,
     Text,
@@ -18,7 +19,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -27,6 +28,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -101,6 +103,10 @@ interface GestureAttempt {
 export default function Level3GesturesScreen() {
     const router = useRouter();
     usePracticeTimeTracker();
+
+    // ✅ Get settings and refresh function
+    const { settings, refreshSettings } = useSettings();
+
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);
@@ -111,11 +117,17 @@ export default function Level3GesturesScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
 
+    // 🔥 Refresh settings when screen comes into focus
+    useFocusEffect(
+        useCallback(() => {
+            console.log('🔄 Level 3 (Numbers) screen focused, refreshing settings...');
+            refreshSettings();
+        }, [refreshSettings])
+    );
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
     const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
-
     // Gamification state
     const [completedGestures, setCompletedGestures] = useState<Set<string>>(new Set());
     const [currentTarget, setCurrentTarget] = useState(LEVEL3_GESTURES[0] || '1');
@@ -158,8 +170,14 @@ export default function Level3GesturesScreen() {
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
 
 
-    // ── Play gesture sound ──
+    // ─── PLAY GESTURE SOUND (only if enabled) ──────────────────────────────────
     async function playGestureSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -193,8 +211,14 @@ export default function Level3GesturesScreen() {
         }
     }
 
-    // ── Play completion sound ──
+    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
     async function playCompleteSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping complete sound');
+            return;
+        }
+
         try {
             if (completeSound) {
                 await completeSound.unloadAsync();

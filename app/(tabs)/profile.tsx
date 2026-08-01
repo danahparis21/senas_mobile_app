@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
   Pressable, Switch, Modal, Alert, TextInput, ActivityIndicator
 } from 'react-native';
-import { useRouter } from 'expo-router';
+
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { GlassCard } from '../../components/ui/GlassCard';
 import PromotionModal from '../../components/PromotionModal';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useSettings } from '../../contexts/SettingsContext';
 
 // ── SVG Icons ──────────────────────────────────────────────────────────
 function BellIcon({ size = 20 }: { size?: number }) {
@@ -366,6 +368,9 @@ function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => voi
 // ── Main Profile Screen ─────────────────────────────────────────────────
 export default function Profile() {
   const router = useRouter();
+  const { settings, updateSetting, refreshSettings } = useSettings();
+
+
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('Student');
   const [studentLevel, setStudentLevel] = useState('Beginner');
@@ -381,9 +386,6 @@ export default function Profile() {
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [showPromotionModal, setShowPromotionModal] = useState(false);
 
-  // Settings state - only what works
-  const [notifs, setNotifs] = useState(true);
-  const [sound, setSound] = useState(true);
 
   // Modal states
   const [showEditModal, setShowEditModal] = useState(false);
@@ -393,22 +395,45 @@ export default function Profile() {
 
   const [selectedAvatar, setSelectedAvatar] = useState('senya');
 
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
+  const [notifs, setNotifs] = useState(settings.notificationsEnabled);
+  const [sound, setSound] = useState(settings.soundEnabled);
+
+
+
+  // Update the switch handlers
+  const handleSoundToggle = async (value: boolean) => {
+    try {
+      await updateSetting('soundEnabled', value);
+    } catch (error) {
+      console.error('Error updating sound setting:', error);
+    }
+  };
+
+  const handleNotificationToggle = async (value: boolean) => {
+    try {
+      await updateSetting('notificationsEnabled', value);
+    } catch (error) {
+      console.error('Error updating notification setting:', error);
+    }
+  };
 
   // ── Settings Items (only working features) ──
   const settingsItems = [
     {
       label: 'Daily Reminders',
       sub: 'Get notified to practice',
-      val: notifs,
-      set: setNotifs,
+      val: settings.notificationsEnabled,  // ✅ Use context value directly
+      set: handleNotificationToggle,
       Icon: BellIcon
     },
     {
       label: 'Sound Effects',
       sub: 'Play sounds during lessons',
-      val: sound,
-      set: setSound,
+      val: settings.soundEnabled,  // ✅ Use context value directly
+      set: handleSoundToggle,
       Icon: SoundIcon
     },
   ];
@@ -419,10 +444,7 @@ export default function Profile() {
     { label: 'About SEÑAS', Icon: InfoIcon, route: '/about' },
   ];
 
-  // ── Fetch profile data ──
-  useEffect(() => {
-    fetchProfileData();
-  }, []);
+
 
   const fetchProfileData = async () => {
     try {
@@ -576,6 +598,16 @@ export default function Profile() {
       setShowPromotionModal(true);
     }
   };
+
+  // ── Fetch profile data ──
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfileData();
+      // ✅ Use refreshSettings from context instead of fetchSettings
+      refreshSettings();
+    }, [])
+  );
+
 
   // Stats data
   const stats = [

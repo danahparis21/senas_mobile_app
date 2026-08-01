@@ -1,5 +1,5 @@
 // app/gesture/alphabet2.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
 import {
     View,
     Text,
@@ -18,7 +18,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -27,6 +27,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -75,6 +76,9 @@ interface LetterAttempt {
 export default function WebViewCameraScreen() {
     const router = useRouter();
     usePracticeTimeTracker();
+
+    const { settings, refreshSettings } = useSettings();
+
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);
@@ -84,6 +88,13 @@ export default function WebViewCameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
 
+
+    useFocusEffect(
+        useCallback(() => {
+            console.log('🔄 Alphabet Part 2 screen focused, refreshing settings...');
+            refreshSettings();
+        }, [refreshSettings])
+    );
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
@@ -135,15 +146,17 @@ export default function WebViewCameraScreen() {
     const soundCooldownRef = useRef<number>(0);
     const SOUND_COOLDOWN_MS = 800;
 
-    // ── Play correct gesture sound ──
     async function playGestureSound() {
-        try {
-            // Quick check - if sound is already playing, skip
-            if (isSoundPlaying) return;
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
 
+        try {
+            if (isSoundPlaying) return;
             setIsSoundPlaying(true);
 
-            // Unload any existing sound
             if (gestureSound) {
                 await gestureSound.unloadAsync().catch(() => { });
             }
@@ -159,7 +172,6 @@ export default function WebViewCameraScreen() {
 
             setGestureSound(sound);
 
-            // Auto-cleanup after playback
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {
                     sound.unloadAsync().catch(() => { });
@@ -174,8 +186,14 @@ export default function WebViewCameraScreen() {
         }
     }
 
-    // ── Play completion sound ──
+    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
     async function playCompleteSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping complete sound');
+            return;
+        }
+
         try {
             if (completeSound) {
                 await completeSound.unloadAsync();
@@ -203,7 +221,6 @@ export default function WebViewCameraScreen() {
             console.error('Failed to play complete sound:', error);
         }
     }
-
     // Get current target letter (first incomplete)
     const getCurrentTarget = () => {
         for (const letter of ALPHABET_PART2) {

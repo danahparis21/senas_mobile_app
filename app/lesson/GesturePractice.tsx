@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import { useCameraPermissions } from 'expo-camera';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -82,6 +84,7 @@ export default function GesturePractice({
     // ─── CAMERA PERMISSIONS ──────────────────────────────────────────────────
     const [permission, requestPermission] = useCameraPermissions();
 
+    const { settings } = useSettings();
     // Audio state
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [isSoundPlaying, setIsSoundPlaying] = useState(false);
@@ -195,8 +198,14 @@ export default function GesturePractice({
         return GESTURE_URL_ALPHABET;
     };
 
-    // ─── Play gesture sound ──────────────────────────────────────────────────
+    // ─── Play gesture sound (only if enabled) ──
     async function playGestureSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);

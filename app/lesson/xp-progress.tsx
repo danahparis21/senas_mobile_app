@@ -17,6 +17,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -46,6 +48,7 @@ const CONFETTI_PIECES: ConfettiConfig[] = [
 export default function XPProgressScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<Record<string, string>>();
+    const { settings } = useSettings();
 
     const xpEarned = parseInt(params.xpEarned || '0');
     const totalXp = parseInt(params.totalXp || '0');
@@ -65,8 +68,14 @@ export default function XPProgressScreen() {
     const [sound, setSound] = React.useState<Audio.Sound | null>(null);
 
     useEffect(() => {
-        // Play level-up sound when component mounts
+        // Play level-up sound when component mounts (only if enabled)
         async function playSound() {
+            // ✅ Check if sound is enabled
+            if (!settings.soundEnabled) {
+                console.log('🔇 Sound disabled, skipping level-up sound');
+                return;
+            }
+
             try {
                 const { sound: newSound } = await Audio.Sound.createAsync(
                     require('../../assets/music/level-up.mp3'),
@@ -89,7 +98,7 @@ export default function XPProgressScreen() {
                 sound.unloadAsync();
             }
         };
-    }, []);
+    }, [settings.soundEnabled]);
 
     // ─── Animation Values ──────────────────────────────────────────────────
     const progressAnim = useRef(new Animated.Value(0)).current;

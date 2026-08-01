@@ -1,5 +1,5 @@
 // app/gesture/webview-survival.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
 import {
     View,
     Text,
@@ -18,7 +18,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -27,6 +27,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
+import { useSettings } from '../../contexts/SettingsContext';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -99,6 +100,9 @@ interface GestureAttempt {
 export default function WebViewSurvivalScreen() {
     const router = useRouter();
     usePracticeTimeTracker();
+
+    const { settings, refreshSettings } = useSettings();
+
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);
@@ -107,6 +111,13 @@ export default function WebViewSurvivalScreen() {
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
+
+    useFocusEffect(
+        useCallback(() => {
+            console.log('🔄 Survival screen focused, refreshing settings...');
+            refreshSettings();
+        }, [refreshSettings])
+    );
 
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
@@ -153,8 +164,14 @@ export default function WebViewSurvivalScreen() {
     // ── Module Name ──────────────────────────────────────────────────────────
     const MODULE_NAME = 'level3_survival';
 
-    // ── Play gesture sound ──
+    // ─── PLAY GESTURE SOUND (only if enabled) ──────────────────────────────────
     async function playGestureSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -188,8 +205,14 @@ export default function WebViewSurvivalScreen() {
         }
     }
 
-    // ── Play completion sound ──
+    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
     async function playCompleteSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping complete sound');
+            return;
+        }
+
         try {
             if (completeSound) {
                 await completeSound.unloadAsync();

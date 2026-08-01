@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+
 
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
@@ -71,6 +73,8 @@ export default function DragDropQuestion({
     onComplete,
     onBack,
 }: DragDropQuestionProps) {
+    const { settings } = useSettings();
+
     const [leftItems, setLeftItems] = useState<DragDropPair[]>([]);
     const [rightItems, setRightItems] = useState<DragDropPair[]>([]);
     const [matches, setMatches] = useState<Record<number, number>>({});
@@ -104,8 +108,14 @@ export default function DragDropQuestion({
     };
 
 
-    // ── Play correct sound ──
+    // ── Play correct sound (only if enabled) ──
     async function playCorrectSoundEffect() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping correct sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -128,8 +138,14 @@ export default function DragDropQuestion({
         }
     }
 
-    // ── Play wrong sound ──
+    // ── Play wrong sound (only if enabled) ──
     async function playWrongSoundEffect() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping wrong sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -173,8 +189,6 @@ export default function DragDropQuestion({
             Animated.timing(senyaShakeAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
         ]).start();
     };
-
-
 
     // Rotate motivation every ~6s
     useEffect(() => {

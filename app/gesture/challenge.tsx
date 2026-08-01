@@ -14,7 +14,7 @@ import {
     Modal,
     ScrollView,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,7 @@ import { useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
+import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -126,6 +127,8 @@ export default function ChallengeScreen() {
         moduleType?: string;
     }>();
 
+    const { settings, refreshSettings } = useSettings();
+
     const mode = params.mode || 'master';
     const moduleType = params.moduleType || 'alphabet';
 
@@ -134,6 +137,14 @@ export default function ChallengeScreen() {
     const [isConnected, setIsConnected] = useState(false);
     const countdownRef = useRef<number | null>(null);
     const isProcessingRef = useRef(false);
+
+
+    useFocusEffect(
+        React.useCallback(() => {
+            console.log('🔄 Challenge screen focused, refreshing settings...');
+            refreshSettings();
+        }, [refreshSettings])
+    );
 
 
     // ─── CAMERA PERMISSIONS ──────────────────────────────────────────────────
@@ -214,6 +225,12 @@ export default function ChallengeScreen() {
 
     const [totalAttemptedSigns, setTotalAttemptedSigns] = useState(0);
     const [showFinishButton, setShowFinishButton] = useState(false);
+
+
+    const shouldProcessMessages = useRef(true);
+    const isTimeUpProcessingRef = useRef(false);
+    const timeoutRef = useRef<number | null>(null); // ✅ Correct for React Native
+    const isWebViewPaused = useRef(false);
 
 
     // ─── FETCH WEAK SIGNS FROM API ──────────────────────────────────────────
@@ -408,13 +425,20 @@ export default function ChallengeScreen() {
     };
 
     const handleTimeUp = (signs: string[], index: number) => {
-        if (isProcessingRef.current) return; // Prevent overlapping with successful detections
-        setIsProcessing(true);
+        // 🔥 Prevent multiple time-up calls
+        if (isTimeUpProcessingRef.current || isProcessingRef.current) {
+            console.log('⏰ Already processing time-up, skipping...');
+            return;
+        }
+
+        isTimeUpProcessingRef.current = true;
+        isProcessingRef.current = true;
 
         console.log('⏰ Time up! Current index:', index, 'Total:', signs.length);
 
         if (signs.length === 0 || index >= signs.length) {
-            setIsProcessing(false);
+            isTimeUpProcessingRef.current = false;
+            isProcessingRef.current = false;
             return;
         }
 
@@ -430,19 +454,33 @@ export default function ChallengeScreen() {
             }]);
         }
 
-        setTimeout(() => {
+        // Clear any pending timeout
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+
+        timeoutRef.current = setTimeout(() => {
             console.log('⏰ Moving to next sign...');
             moveToNextSign(signs, index, false);
-            setIsProcessing(false); // Unlock processing
+            isTimeUpProcessingRef.current = false;
+            isProcessingRef.current = false;
+            timeoutRef.current = null;
         }, 1000);
     };
-
     const moveToNextSign = (signs: string[], index: number, success: boolean) => {
+        // Reset time-up flag
+        isTimeUpProcessingRef.current = false;
+
         // Safety check
         if (index >= signs.length) {
-            console.log('⚠️ Index out of bounds');
+            console.log('⚠️ Index out of bounds - stopping everything!');
             stopTimer();
-            // 🔥 For infinite mode, don't show results - just start a new round
+
+            // 🔥 STOP THE CAMERA COMPLETELY
+            stopWebViewCamera();
+            shouldProcessMessages.current = false;
+
             if (mode === 'infinite') {
                 const allGestures = MODULE_GESTURES[moduleType] || [];
                 const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
@@ -569,6 +607,12 @@ export default function ChallengeScreen() {
             timerRef.current = null;
         }
         setIsTimerActive(false);
+
+        // Clear any pending timeout
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
     };
 
     // ─── START INFINITE MODE ──────────────────────────────────────────────────────
@@ -1041,8 +1085,95 @@ export default function ChallengeScreen() {
         return 12;
     };
 
-    // ─── HANDLE DETECTION ──────────────────────────────────────────────
+    const stopWebViewCamera = () => {
+        if (webViewRef.current && !isWebViewPaused.current) {
+            console.log('📸 Stopping WebView camera...');
+            isWebViewPaused.current = true;
+
+            webViewRef.current.injectJavaScript(`
+            (function() {
+                console.log('📸 Stopping camera from app');
+                
+                // Stop all media tracks
+                if (window.stream) {
+                    window.stream.getTracks().forEach(track => {
+                        track.stop();
+                        console.log('📸 Stopped track:', track.kind);
+                    });
+                    window.stream = null;
+                }
+                
+                // Clear video feed
+                const video = document.querySelector('video');
+                if (video) {
+                    video.srcObject = null;
+                    video.pause();
+                    video.style.display = 'none';
+                }
+                
+                // Clear canvas
+                const canvas = document.querySelector('canvas');
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+                
+                // Stop any ongoing detection loops
+                if (window.stopDetection) {
+                    window.stopDetection();
+                }
+                
+                // Stop the model status check interval
+                if (window._modelCheckInterval) {
+                    clearInterval(window._modelCheckInterval);
+                    window._modelCheckInterval = null;
+                }
+                
+                console.log('✅ Camera stopped completely');
+                true;
+            })();
+        `);
+        }
+    };
+
+    // ─── RESUME WEBCAM ──────────────────────────────────────────────────────
+    const resumeWebViewCamera = () => {
+        if (webViewRef.current && isWebViewPaused.current) {
+            console.log('📸 Resuming WebView camera...');
+            isWebViewPaused.current = false;
+
+            webViewRef.current.injectJavaScript(`
+            (function() {
+                console.log('📸 Resuming camera from app');
+                
+                // Show video again
+                const video = document.querySelector('video');
+                if (video) {
+                    video.style.display = 'block';
+                }
+                
+                // Re-initialize camera
+                if (window.startCamera) {
+                    window.startCamera();
+                }
+                
+                console.log('✅ Camera resumed');
+                true;
+            })();
+        `);
+        }
+    };
+
+
     const handleMessage = (event: any) => {
+        // 🔥 STOP ALL PROCESSING IF:
+        // 1. We're supposed to stop processing
+        // 2. WebView is paused
+        // 3. Round is complete or showing results
+        if (!shouldProcessMessages.current || isWebViewPaused.current || isComplete || showResults) {
+            return;
+        }
+
         try {
             const data = JSON.parse(event.nativeEvent.data);
 
@@ -1110,7 +1241,7 @@ export default function ChallengeScreen() {
             setLiveConfidence(Math.round(confidence * 100));
 
             // Check if it matches the target - ONLY if timer is active
-            if (matchValue === currentTarget && !isProcessing && !isComplete && isTimerActive) {
+            if (matchValue === currentTarget && !isProcessing && !isComplete && isTimerActive && !isTimeUpProcessingRef.current) {
                 // Success!
                 setIsProcessing(true);
                 stopTimer();
@@ -1244,6 +1375,12 @@ export default function ChallengeScreen() {
 
     // ─── PLAY SOUND ──────────────────────────────────────────────────────
     async function playGestureSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping gesture sound');
+            return;
+        }
+
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -1267,8 +1404,14 @@ export default function ChallengeScreen() {
         }
     }
 
-    // ── Play completion sound ──
+    // ─── Play completion sound (only if enabled) ──
     async function playCompleteSound() {
+        // ✅ Check if sound is enabled
+        if (!settings.soundEnabled) {
+            console.log('🔇 Sound disabled, skipping completion sound');
+            return;
+        }
+
         try {
             if (completeSound) {
                 await completeSound.unloadAsync();
@@ -1279,7 +1422,7 @@ export default function ChallengeScreen() {
                 {
                     shouldPlay: true,
                     isLooping: false,
-                    volume: 1.0, // full volume celebration
+                    volume: 1.0,
                 }
             );
 
@@ -1365,6 +1508,7 @@ export default function ChallengeScreen() {
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
             if (gestureSound) gestureSound.unloadAsync();
+            if (completeSound) completeSound.unloadAsync();
         };
     }, []);
 

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useSettings } from '../contexts/SettingsContext';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -40,6 +41,7 @@ import {
 } from 'lucide-react-native';
 import { api } from '../services/api';
 import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 
 // ─── Design Tokens ───────────────────────────────────────────────────────────
 // Palette lifted from the reference: a bright sky-blue wash melting into white,
@@ -78,19 +80,6 @@ const SENYA_IMG = require('../assets/images/img/senya_blue.png');
 // ─── Sound Effects ───────────────────────────────────────────────────────────
 const CLICK_SOUND = require('../assets/music/assessment_click.wav');
 const LEVEL_UP_SOUND = require('../assets/music/level-up.mp3');
-
-async function playSound(source: any, volume = 0.9) {
-  try {
-    const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: true, volume });
-    sound.setOnPlaybackStatusUpdate(status => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
-      }
-    });
-  } catch (error) {
-    console.error('Failed to play sound:', error);
-  }
-}
 
 // ─── Screen background ───────────────────────────────────────────────────────
 // Sky gradient at the top fading to white, exactly like the reference shot.
@@ -448,6 +437,8 @@ function ThinkingDots({ color = palette.sky, size = 7 }: { color?: string; size?
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function Assessment() {
   const router = useRouter();
+  const { settings } = useSettings();
+
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -483,6 +474,26 @@ export default function Assessment() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const questionAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+
+
+  async function playSound(source: any, volume = 0.9) {
+    // ✅ Check if sound is enabled
+    if (!settings.soundEnabled) {
+      console.log('🔇 Sound disabled, skipping assessment sound');
+      return;
+    }
+
+    try {
+      const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: true, volume });
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.error('Failed to play sound:', error);
+    }
+  }
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 450, useNativeDriver: true }).start();

@@ -1,5 +1,5 @@
 // app/lesson/[id].tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, Pressable,
   ScrollView, Modal, ActivityIndicator, Animated, Dimensions
@@ -14,6 +14,9 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import GesturePractice from './GesturePractice';
 import DragDropQuestion from './DragDropQuestion';
 import Constants from 'expo-constants';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useFocusEffect } from 'expo-router';
+
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
 // Remove /api from the end to get the base URL for images
@@ -379,6 +382,8 @@ export default function LessonViewer() {
   const resultsScrollRef = useRef<any>(null);
 
   // ── Audio state ──
+  const { settings, refreshSettings } = useSettings();
+
   const [correctSound, setCorrectSound] = useState<Audio.Sound | null>(null);
   const [wrongSound, setWrongSound] = useState<Audio.Sound | null>(null);
   const [resultSound, setResultSound] = useState<Audio.Sound | null>(null);
@@ -404,6 +409,14 @@ export default function LessonViewer() {
   const senyaBounceAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = bounce
   const senyaShakeAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = shake
 
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 Lesson screen focused, refreshing settings...');
+      refreshSettings();
+    }, [refreshSettings])
+  );
+
+
   // Helper function to get full image URL
   const getFullImageUrl = (path: string | null | undefined): string | null => {
     if (!path) return null;
@@ -415,8 +428,14 @@ export default function LessonViewer() {
     const cleanPath = path.replace(/^\/+/, '');
     return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
   };
-  // ── Play correct answer sound ──
+
   async function playCorrectSound() {
+    // ✅ Check if sound is enabled
+    if (!settings.soundEnabled) {
+      console.log('🔇 Sound disabled, skipping correct sound');
+      return;
+    }
+
     try {
       if (isSoundPlaying) return;
       setIsSoundPlaying(true);
@@ -430,7 +449,7 @@ export default function LessonViewer() {
         {
           shouldPlay: true,
           isLooping: false,
-          volume: 0.9, // Louder for correct answers (90%)
+          volume: 0.9,
         }
       );
 
@@ -450,8 +469,14 @@ export default function LessonViewer() {
     }
   }
 
-  // ── Play wrong answer sound ──
+  // ── Play wrong answer sound (only if enabled) ──
   async function playWrongSound() {
+    // ✅ Check if sound is enabled
+    if (!settings.soundEnabled) {
+      console.log('🔇 Sound disabled, skipping wrong sound');
+      return;
+    }
+
     try {
       if (isSoundPlaying) return;
       setIsSoundPlaying(true);
@@ -465,7 +490,7 @@ export default function LessonViewer() {
         {
           shouldPlay: true,
           isLooping: false,
-          volume: 0.6, // Lower for wrong answers (60%)
+          volume: 0.6,
         }
       );
 
@@ -485,8 +510,14 @@ export default function LessonViewer() {
     }
   }
 
-  // ── Play quiz result sound ──
+  // ── Play quiz result sound (only if enabled) ──
   async function playResultSound() {
+    // ✅ Check if sound is enabled
+    if (!settings.soundEnabled) {
+      console.log('🔇 Sound disabled, skipping result sound');
+      return;
+    }
+
     try {
       if (resultSound) {
         await resultSound.unloadAsync();
