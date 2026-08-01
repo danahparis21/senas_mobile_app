@@ -10,6 +10,7 @@ import Svg, { Path, Circle, Polyline, Line, Defs, LinearGradient, Stop, Rect } f
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { Audio } from 'expo-av';
 import { api } from '../../services/api';
+import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import GesturePractice from './GesturePractice';
 import DragDropQuestion from './DragDropQuestion';
 import Constants from 'expo-constants';
@@ -355,6 +356,7 @@ function StudentDetailModal({
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function LessonViewer() {
   const router = useRouter();
+  usePracticeTimeTracker();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [loading, setLoading] = useState<boolean>(true);
   const [lesson, setLesson] = useState<Lesson | null>(null);

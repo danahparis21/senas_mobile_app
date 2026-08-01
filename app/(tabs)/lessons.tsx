@@ -30,14 +30,13 @@ import {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// ── GRADIENT BACKGROUND COLORS ─────────────────────────────────────
+// ── SUNNY SKY PALETTE ────────────────────────────────────────────────
 const GRADIENT = {
-  start: '#87CEEB',
-  mid: '#B3E5FC',
-  mid2: '#E3F2FD',
-  end: '#F5F9FF',
+  start: '#c1eaffff',
+  mid: '#BFE7FB',
+  mid2: '#E6F4FE',
+  end: '#F8FCFF',
 };
-
 // Mascot asset path
 const MascotImage = require('../../assets/images/img/senyas_logo.png');
 

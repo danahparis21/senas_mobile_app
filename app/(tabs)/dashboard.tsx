@@ -11,19 +11,114 @@ import {
   FlatList,
   Dimensions,
   Animated,
-  RefreshControl
+  RefreshControl,
+  StatusBar,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
-import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Polyline, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import PromotionModal from '../../components/PromotionModal';
 import AchievementModal from '../../components/AchievementModal';
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// ── SUNNY SKY PALETTE ────────────────────────────────────────────────
+const GRADIENT = {
+  start: '#c1eaffff',
+  mid: '#BFE7FB',
+  mid2: '#E6F4FE',
+  end: '#F8FCFF',
+};
+
+const C = {
+  ink: '#123A6B',
+  inkSoft: '#5B84B1',
+  blue: '#2F86D8',
+  blueDeep: '#1E63B8',
+  sun: '#FBBF24',
+  sunDeep: '#B4700A',
+  card: 'rgba(255,255,255,0.92)',
+  cardLine: 'rgba(255,255,255,0.9)',
+  mint: '#E6F7EF',
+  lilac: '#EFEBFC',
+  peach: '#FFF1DC',
+  sky: '#E6F1FF',
+};
+
+interface ChallengeGoal {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  target: number;
+  xp_reward: number;
+  icon: string;
+  current: number;
+  is_completed: boolean;
+  completed_at: string | null;
+}
+
+interface DailyChallengeData {
+  id: number;
+  date: string;
+  theme: string;
+  is_completed: boolean;
+  completed_at: string | null;
+  goals: ChallengeGoal[];
+  summary: {
+    completed: number;
+    total: number;
+    progress_percentage: number;
+    xp_earned_so_far: number;
+    bonus_xp_available: number;
+  };
+}
+
+
+// ── ANIMATED CLOUD ───────────────────────────────────────────────────
+function AnimatedCloud({ scale = 1, opacity = 0.4 }) {
+  return (
+    <Svg width={120 * scale} height={60 * scale} viewBox="0 0 120 60" opacity={opacity}>
+      <Defs>
+        <LinearGradient id="cloudGrad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
+          <Stop offset="100%" stopColor="#E0F2FE" stopOpacity="0.55" />
+        </LinearGradient>
+      </Defs>
+      <Path
+        d="M20 40 C10 40 5 30 12 22 C8 12 20 5 30 10 C38 2 52 2 60 8 C68 3 80 5 85 14 C95 12 105 18 100 28 C110 35 108 48 95 50 L25 50 C18 50 14 45 20 40Z"
+        fill="url(#cloudGrad)"
+      />
+    </Svg>
+  );
+}
+
+// ── RING PROGRESS ────────────────────────────────────────────────────
+function ProgressRing({ pct, size = 86, stroke = 9 }: { pct: number; size?: number; stroke?: number }) {
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const dash = (Math.min(Math.max(pct, 0), 100) / 100) * circumference;
+  return (
+    <Svg width={size} height={size}>
+      <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(47,134,216,0.15)" strokeWidth={stroke} fill="none" />
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        stroke="#2F86D8"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        fill="none"
+        strokeDasharray={`${dash}, ${circumference}`}
+        transform={`rotate(-90, ${size / 2}, ${size / 2})`}
+      />
+    </Svg>
+  );
+}
 
 interface Lesson {
   lesson_id: number;
@@ -47,17 +142,17 @@ interface Lesson {
 }
 
 const quickActions = [
-  { label: "Multiple Choice", icon: require('../../assets/images/img/multiple_choice.png'), color: "#2563EB", screen: "/quiz/mc" },
-  { label: "Drag & Drop", icon: require('../../assets/images/img/dragNdrop.png'), color: "#1D4ED8", screen: "/quiz/dnd" },
-  { label: "Gesture Cam", icon: require('../../assets/images/img/camera.png'), color: "#0f3172", screen: "/(tabs)/gesture" },
-  { label: "My Badges", icon: require('../../assets/images/img/badges.png'), color: "#fbbf24", screen: "/(tabs)/achievements" },
+  { label: "Multiple Choice", icon: require('../../assets/images/img/multiple_choice.png'), tint: C.sky, screen: "/quiz/mc" },
+  { label: "Drag & Drop", icon: require('../../assets/images/img/dragNdrop.png'), tint: C.lilac, screen: "/quiz/dnd" },
+  { label: "Gesture Cam", icon: require('../../assets/images/img/camera.png'), tint: C.mint, screen: "/(tabs)/gesture" },
+  { label: "My Badges", icon: require('../../assets/images/img/badges.png'), tint: C.peach, screen: "/(tabs)/achievements" },
 ];
 
 function getGreeting(): string {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning!";
-  if (h < 17) return "Good afternoon!";
-  return "Good evening!";
+  if (h < 12) return "Good morning,";
+  if (h < 17) return "Good afternoon,";
+  return "Good evening,";
 }
 
 // Map lesson type to icon - using only existing assets
@@ -98,6 +193,14 @@ export default function Dashboard() {
   const flatListRef = useRef<FlatList>(null);
   const [levelName, setLevelName] = useState<string>('Novice Signer');
 
+  // ── DAILY CHALLENGE STATE ──
+  const [dailyChallenge, setDailyChallenge] = useState<DailyChallengeData | null>(null);
+  const [loadingChallenge, setLoadingChallenge] = useState<boolean>(true);
+
+  // ── ANIMATION FOR CHALLENGE COMPLETION ──
+  const challengeProgressAnim = useRef(new Animated.Value(0)).current;
+  const bonusXpAnim = useRef(new Animated.Value(0)).current;
+
   const [promotionVisible, setPromotionVisible] = useState(false);
   const [promotionData, setPromotionData] = useState<any>(null);
   const [checkingPromotion, setCheckingPromotion] = useState(false);
@@ -112,17 +215,151 @@ export default function Dashboard() {
   const [achievementModalVisible, setAchievementModalVisible] = useState(false);
   const [checkingAchievements, setCheckingAchievements] = useState(false);
 
+  // ── Cloud Animations ──
+  const cloud1Anim = useRef(new Animated.Value(-200)).current;
+  const cloud2Anim = useRef(new Animated.Value(screenWidth + 200)).current;
+  const cloud3Anim = useRef(new Animated.Value(-250)).current;
+  const cloud4Anim = useRef(new Animated.Value(screenWidth + 250)).current;
+
   // Pulsing animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowOpacity = useRef(new Animated.Value(0.3)).current;
   const shimmerAnim = useRef(new Animated.Value(0)).current;
 
+  // ── CLOUD ANIMATIONS ──
+  useEffect(() => {
+    const startCloud1 = () => {
+      cloud1Anim.setValue(-200);
+      Animated.timing(cloud1Anim, {
+        toValue: screenWidth + 200,
+        duration: 45000,
+        useNativeDriver: true,
+      }).start(() => startCloud1());
+    };
+
+    const startCloud2 = () => {
+      cloud2Anim.setValue(screenWidth + 200);
+      Animated.timing(cloud2Anim, {
+        toValue: -200,
+        duration: 55000,
+        useNativeDriver: true,
+      }).start(() => startCloud2());
+    };
+
+    const startCloud3 = () => {
+      cloud3Anim.setValue(-250);
+      Animated.timing(cloud3Anim, {
+        toValue: screenWidth + 250,
+        duration: 50000,
+        useNativeDriver: true,
+      }).start(() => startCloud3());
+    };
+
+    const startCloud4 = () => {
+      cloud4Anim.setValue(screenWidth + 250);
+      Animated.timing(cloud4Anim, {
+        toValue: -250,
+        duration: 60000,
+        useNativeDriver: true,
+      }).start(() => startCloud4());
+    };
+
+    startCloud1();
+    startCloud2();
+    startCloud3();
+    startCloud4();
+
+    return () => {
+      // Cleanup
+    };
+  }, []);
+
+  // ── ADD DAILY CHALLENGE FETCH FUNCTION ──
+  const fetchDailyChallenge = async () => {
+    try {
+      setLoadingChallenge(true);
+      const response = await api.getDailyChallenge();
+
+      if (response.success) {
+        setDailyChallenge(response.challenge);
+
+        // Animate progress if challenge is partially completed
+        const progress = response.challenge.summary.progress_percentage;
+        Animated.timing(challengeProgressAnim, {
+          toValue: progress / 100,
+          duration: 1000,
+          useNativeDriver: false,
+        }).start();
+
+        // If all goals completed, show bonus animation
+        if (response.challenge.is_completed) {
+          Animated.sequence([
+            Animated.timing(bonusXpAnim, {
+              toValue: 1,
+              duration: 500,
+              useNativeDriver: false,
+            }),
+            Animated.timing(bonusXpAnim, {
+              toValue: 0,
+              duration: 500,
+              useNativeDriver: false,
+            }),
+          ]).start();
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching daily challenge:', error);
+      // Fallback: show static challenge if API fails
+      setDailyChallenge(null);
+    } finally {
+      setLoadingChallenge(false);
+    }
+  };
+
+  // ── UPDATE CHALLENGE GOAL ──
+  const updateChallengeGoal = async (goalId: string, incrementBy: number = 1) => {
+    try {
+      const response = await api.updateChallengeProgress(goalId, incrementBy);
+
+      if (response.success) {
+        // Refresh challenge data
+        await fetchDailyChallenge();
+
+        // Update XP if earned
+        if (response.xp_earned > 0 || response.bonus_xp > 0) {
+          // Refresh student data to update XP display
+          await fetchStudentData();
+        }
+      }
+    } catch (error) {
+      console.error('Error updating challenge goal:', error);
+    }
+  };
+
+  // ── TRACK CHALLENGE TIME ──
+  const trackChallengeTime = async (minutes: number) => {
+    try {
+      const response = await api.trackChallengeTime(minutes);
+
+      if (response.success) {
+        await fetchDailyChallenge();
+        if (response.xp_earned > 0 || response.bonus_xp > 0) {
+          await fetchStudentData();
+        }
+      }
+    } catch (error) {
+      console.error('Error tracking challenge time:', error);
+    }
+  };
+
+  // ── UPDATE REFRESH ALL DATA ──
   const refreshAllData = async () => {
     setRefreshing(true);
     try {
       await Promise.all([
         fetchStudentData(),
         fetchTeacherLessons(),
+        fetchDailyChallenge(), // ← ADD THIS
         checkForPromotion(),
         checkForNewAchievements()
       ]);
@@ -133,72 +370,82 @@ export default function Dashboard() {
     }
   };
 
-  // Initial load
+  // ── UPDATE USEEFFECT ──
   useEffect(() => {
     refreshAllData();
     startPulseAnimation();
   }, []);
 
+  // ── RENDER DAILY CHALLENGE GOALS ──
+  const renderChallengeGoal = (goal: ChallengeGoal, index: number) => {
+    const progress = goal.target > 0 ? Math.min((goal.current / goal.target) * 100, 100) : 0;
+    const isCompleted = goal.is_completed;
+
+    return (
+      <View key={goal.id} style={styles.challengeGoalItem}>
+        <View style={styles.challengeGoalRow}>
+          <View style={styles.challengeGoalIcon}>
+            <Text style={styles.challengeGoalIconText}>{goal.icon}</Text>
+          </View>
+          <View style={styles.challengeGoalContent}>
+            <View style={styles.challengeGoalHeader}>
+              <Text style={[styles.challengeGoalTitle, isCompleted && styles.challengeGoalCompleted]}>
+                {goal.title}
+              </Text>
+              <View style={styles.challengeGoalXpBadge}>
+                <Text style={styles.challengeGoalXpText}>+{goal.xp_reward} XP</Text>
+              </View>
+            </View>
+            <Text style={styles.challengeGoalDesc}>{goal.description}</Text>
+            <View style={styles.challengeGoalProgressWrap}>
+              <View style={styles.challengeGoalProgressTrack}>
+                <View
+                  style={[
+                    styles.challengeGoalProgressFill,
+                    { width: `${progress}%` },
+                    isCompleted && styles.challengeGoalProgressComplete
+                  ]}
+                />
+              </View>
+              <Text style={styles.challengeGoalProgressText}>
+                {isCompleted ? '✅ Done' : `${Math.round(progress)}%`}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   // Refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if not already loading
       if (!loading && !refreshing) {
         refreshAllData();
       }
     }, [])
   );
+
   const startPulseAnimation = () => {
-    // Pulse animation (scale) - uses native driver
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.03,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.03, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
       ])
     ).start();
 
-    // Glow animation (opacity) - uses native driver: false since we're not animating native-only props
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glowOpacity, {
-          toValue: 0.8,
-          duration: 1000,
-          useNativeDriver: false,
-        }),
-        Animated.timing(glowOpacity, {
-          toValue: 0.3,
-          duration: 1000,
-          useNativeDriver: false,
-        }),
+        Animated.timing(glowOpacity, { toValue: 0.8, duration: 1000, useNativeDriver: false }),
+        Animated.timing(glowOpacity, { toValue: 0.3, duration: 1000, useNativeDriver: false }),
       ])
     ).start();
 
-    // Shimmer sweep animation - light diagonal streak passing across the card
     Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 2200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 2200, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
       ])
     ).start();
   };
@@ -227,13 +474,7 @@ export default function Dashboard() {
           setLevelName(student.level_name);
         }
 
-        const levelXpMap: Record<number, number> = {
-          1: 100,
-          2: 250,
-          3: 500,
-          4: 800,
-          5: 1200,
-        };
+        const levelXpMap: Record<number, number> = { 1: 100, 2: 250, 3: 500, 4: 800, 5: 1200 };
         const maxXp = levelXpMap[student?.level || 1] || 100;
         setXpMax(maxXp);
       }
@@ -252,7 +493,6 @@ export default function Dashboard() {
       if (response.has_promotion) {
         setPromotionData(response.promotion);
         setShowEnvelope(true);
-        // Reset animation values
         envelopeHeight.setValue(92);
         envelopeOpacity.setValue(1);
         envelopeScale.setValue(1);
@@ -272,23 +512,10 @@ export default function Dashboard() {
         console.error('Error marking promotion viewed:', error);
       }
 
-      // Smooth disappearing transition animation
       Animated.parallel([
-        Animated.timing(envelopeOpacity, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: false,
-        }),
-        Animated.timing(envelopeScale, {
-          toValue: 0.8,
-          duration: 350,
-          useNativeDriver: false,
-        }),
-        Animated.timing(envelopeHeight, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: false,
-        })
+        Animated.timing(envelopeOpacity, { toValue: 0, duration: 350, useNativeDriver: false }),
+        Animated.timing(envelopeScale, { toValue: 0.8, duration: 350, useNativeDriver: false }),
+        Animated.timing(envelopeHeight, { toValue: 0, duration: 400, useNativeDriver: false }),
       ]).start(() => {
         setShowEnvelope(false);
         setPromotionData(null);
@@ -296,7 +523,6 @@ export default function Dashboard() {
     }
     setPromotionVisible(false);
   };
-
 
   const fetchTeacherLessons = async (): Promise<void> => {
     try {
@@ -323,13 +549,7 @@ export default function Dashboard() {
             setLevelName(response.student.level_name);
           }
 
-          const levelXpMap: Record<number, number> = {
-            1: 100,
-            2: 250,
-            3: 500,
-            4: 800,
-            5: 1200,
-          };
+          const levelXpMap: Record<number, number> = { 1: 100, 2: 250, 3: 500, 4: 800, 5: 1200 };
           const maxXp = levelXpMap[response.student.level || 1] || 100;
           setXpMax(maxXp);
 
@@ -362,25 +582,13 @@ export default function Dashboard() {
     }
   };
 
-
-
-
   const getLessonStatusColor = (status: string): string => {
     switch (status) {
-      case 'completed': return '#4CAF50';
-      case 'in_progress': return '#f59e0b';
-      default: return '#2563EB';
+      case 'completed': return '#34C77B';
+      case 'in_progress': return '#F5A524';
+      default: return C.blue;
     }
   };
-
-  const getLessonStatusText = (status: string): string => {
-    switch (status) {
-      case 'completed': return '✅ Completed';
-      case 'in_progress': return '⏳ In Progress';
-      default: return '📖 Pending';
-    }
-  };
-
 
   const renderTeacherLesson = ({ item }: { item: Lesson }) => {
     const progress = item.progress;
@@ -391,6 +599,7 @@ export default function Dashboard() {
     const statusColor = getLessonStatusColor(item.status);
     const isCompleted = item.status === 'completed' || progress?.lesson_completed;
     const isPerfect = progress?.quiz_score === 100;
+    const icon = getLessonIcon(item.lesson_type);
 
     return (
       <Pressable
@@ -399,29 +608,33 @@ export default function Dashboard() {
       >
         <View style={styles.tlMainContent}>
           <View style={styles.tlIconBox}>
-            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-              <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-            </Svg>
+            {icon ? (
+              <Image source={icon} style={styles.tlIconImg} contentFit="contain" />
+            ) : (
+              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.blue} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </Svg>
+            )}
           </View>
 
           <View style={styles.tlTextContent}>
             <View style={styles.tlHeaderRow}>
               <View style={styles.tlBadgeRow}>
-                <View style={[styles.tlDifficultyTag, { backgroundColor: '#F1F5F9' }]}>
+                <View style={[styles.tlDifficultyTag, { backgroundColor: C.sky }]}>
                   <Text style={styles.tlDifficultyText}>
                     {item.difficulty ? item.difficulty.toUpperCase() : 'LESSON'}
                   </Text>
                 </View>
                 {item.has_quiz && (
-                  <View style={[styles.tlDifficultyTag, { backgroundColor: '#ECFDF5' }]}>
-                    <Text style={[styles.tlDifficultyText, { color: '#059669' }]}>📝 QUIZ</Text>
+                  <View style={[styles.tlDifficultyTag, { backgroundColor: C.mint }]}>
+                    <Text style={[styles.tlDifficultyText, { color: '#1E8A5F' }]}>QUIZ</Text>
                   </View>
                 )}
               </View>
               {progress?.quiz_completed && progress?.quiz_score !== null ? (
-                <View style={[styles.tlMiniScoreBadge, { backgroundColor: isPerfect ? '#FEF3C7' : '#D1FAE5' }]}>
-                  <Text style={[styles.tlMiniScoreText, { color: isPerfect ? '#D97706' : '#059669' }]}>
+                <View style={[styles.tlMiniScoreBadge, { backgroundColor: isPerfect ? C.peach : C.mint }]}>
+                  <Text style={[styles.tlMiniScoreText, { color: isPerfect ? C.sunDeep : '#1E8A5F' }]}>
                     {isPerfect ? '🌟 ' : ''}{progress.quiz_score}%
                   </Text>
                 </View>
@@ -484,25 +697,16 @@ export default function Dashboard() {
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#1E4F8A" />
+        <ActivityIndicator size="large" color={C.blueDeep} />
         <Text style={styles.loadingText}>Loading your dashboard...</Text>
       </SafeAreaView>
     );
   }
 
-  // Get the next recommended lesson (first unlocked, not-completed lesson)
-  const nextRecommendedLesson = teacherLessons
-    .filter(lesson => {
-      const isLocked = lesson.is_locked === true || lesson.status === 'locked';
-      const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
-      return !isLocked && !isCompleted;
-    })
-
-
+  // Get carousel lessons
   const carouselLessons = teacherLessons
     .filter(lesson => {
       const isActuallyLocked = lesson.is_locked === true && lesson.is_next_lesson !== true;
-
       if (isActuallyLocked) return false;
 
       const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
@@ -525,372 +729,485 @@ export default function Dashboard() {
     .filter(lesson => lesson.status === 'completed' || lesson.progress?.lesson_completed)
     .slice(0, 3);
 
-  // Use completed lessons for Continue Learning
   const continueLearningLessons = completedLessons;
   const sectionTitle = continueLearningLessons.length > 0 ? 'Continue Learning' : 'Completed Lessons';
 
-  // Debug logging
-  console.log('📚 Teacher Lessons total:', teacherLessons.length);
-  console.log('📚 Next Recommended Lesson:', nextRecommendedLesson.length);
-  console.log('📚 Continue Learning (completed):', continueLearningLessons.length);
-  console.log('📚 Carousel Lessons:', carouselLessons.length);
-
-  // Get unlocked lessons (not completed, not locked)
-  const unlockedLessons = teacherLessons.filter(lesson => {
-    const isLocked = lesson.is_locked === true || lesson.status === 'locked';
-    const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
-    return !isLocked && !isCompleted;
-  });
-
-  // Show continue learning if available, otherwise show completed
   const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
 
-
-  // Debug logging
-  console.log('📚 Teacher Lessons total:', teacherLessons.length);
-  console.log('📚 Continue Learning:', continueLearningLessons.length);
-  console.log('📚 Completed Lessons:', completedLessons.length);
-  console.log('📚 Display Lessons:', displayLessons.length);
-
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refreshAllData}
-            colors={['#0f3172', '#2563EB']}
-            tintColor="#0f3172"
-            title="Refreshing..."
-            titleColor="#0f3172"
-          />
-        }
-      >
-        {/* Hero Card */}
-        <View style={styles.section}>
-          <View style={styles.heroCard}>
-            <View style={styles.heroContent}>
-              <View style={styles.heroTextContent}>
-                <Text style={styles.greetingText}>{getGreeting()}</Text>
-                <Text style={styles.nameText}>Hello, {studentName}!</Text>
-                <View style={styles.badgeRow}>
-                  <View style={styles.smallBadgeBlue}>
-                    <Svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24">
-                      <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </Svg>
-                    <Text style={styles.smallBadgeTextBlue}>{studentLevel}</Text>
-                  </View>
-                  <View style={styles.smallBadgeOrange}>
-                    <Svg width="11" height="11" viewBox="0 0 24 24" fill="#fb923c">
-                      <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
-                    </Svg>
-                    <Text style={styles.smallBadgeTextOrange}>{streak} day streak</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+
+      {/* ── Sunny Sky Gradient Background ── */}
+      <View style={StyleSheet.absoluteFillObject}>
+        <Svg width={screenWidth} height={screenHeight}>
+          <Defs>
+            <LinearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor={GRADIENT.start} stopOpacity="1" />
+              <Stop offset="30%" stopColor={GRADIENT.mid} stopOpacity="0.9" />
+              <Stop offset="70%" stopColor={GRADIENT.mid2} stopOpacity="0.85" />
+              <Stop offset="100%" stopColor={GRADIENT.end} stopOpacity="0.95" />
+            </LinearGradient>
+          </Defs>
+          <Rect width={screenWidth} height={screenHeight} fill="url(#bgGrad)" />
+        </Svg>
+      </View>
+
+      {/* ── Floating Clouds ── */}
+      <View style={styles.floatingSky} pointerEvents="none">
+        <Animated.View style={[styles.cloudWrapper, { top: 40, transform: [{ translateX: cloud1Anim }] }]}>
+          <AnimatedCloud scale={1.5} opacity={0.4} />
+        </Animated.View>
+        <Animated.View style={[styles.cloudWrapper, { top: 180, transform: [{ translateX: cloud2Anim }] }]}>
+          <AnimatedCloud scale={1.2} opacity={0.3} />
+        </Animated.View>
+        <Animated.View style={[styles.cloudWrapper, { top: 350, transform: [{ translateX: cloud3Anim }] }]}>
+          <AnimatedCloud scale={1.8} opacity={0.35} />
+        </Animated.View>
+        <Animated.View style={[styles.cloudWrapper, { top: 500, transform: [{ translateX: cloud4Anim }] }]}>
+          <AnimatedCloud scale={1.3} opacity={0.3} />
+        </Animated.View>
+      </View>
+
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refreshAllData}
+              colors={[C.blueDeep, C.blue]}
+              tintColor={C.blueDeep}
+              title="Refreshing..."
+              titleColor={C.blueDeep}
+            />
+          }
+        >
+          {/* ── Hero Greeting + Senya ── */}
+          <View style={styles.heroWrap}>
+            <View style={styles.heroText}>
+              <Text style={styles.greetingText}>{getGreeting()}</Text>
+              <Text style={styles.nameText} numberOfLines={2}>{studentName}! 👋</Text>
+              <Text style={styles.heroSub}>You've got this. Let's{"\n"}make it a signing day!</Text>
+            </View>
+            <Image
+              source={require('../../assets/images/img/senya_blue.png')}
+              style={styles.senyaHero}
+              contentFit="contain"
+            />
+          </View>
+
+          {/* ── Today's Goal Card (ring + level progress) ── */}
+          <View style={styles.section}>
+            <View style={styles.goalCard}>
+              <View style={styles.goalRingSide}>
+                <View style={styles.goalRingWrap}>
+                  <ProgressRing pct={xpPct} />
+                  <View style={styles.goalRingCenter}>
+                    <Text style={styles.goalRingPct}>{Math.round(xpPct)}%</Text>
                   </View>
                 </View>
+                <Text style={styles.goalRingLabel}>Progress</Text>
               </View>
-              <Image source={require('../../assets/images/img/senya_blue.png')} style={styles.senyaHero} contentFit="contain" />
-            </View>
 
-            <View style={styles.divider} />
-            <View style={styles.levelSection}>
-              <View style={styles.levelIconBox}>
-                <Image source={require('../../assets/images/img/level_1.png')} style={styles.levelIcon} contentFit="contain" />
-              </View>
-              <View style={styles.levelInfo}>
-                <View style={styles.levelHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={styles.levelTag}>
-                      <Text style={styles.levelTagText}>LEVEL {level}</Text>
-                    </View>
-                    <Text style={styles.levelTitle}>{levelName}</Text>
-                  </View>
-                  <Text style={styles.xpPctText}>{Math.round(xpPct)}%</Text>
+              <View style={styles.goalInfo}>
+                <Text style={styles.goalTitle}>Today's Goal</Text>
+                <View style={styles.goalXpRow}>
+                  <Text style={styles.goalXpBig}>{xp}</Text>
+                  <Text style={styles.goalXpSmall}> / {xpMax} XP</Text>
                 </View>
                 <View style={styles.progressTrack}>
                   <View style={[styles.progressFill, { width: `${xpPct}%` }]} />
                 </View>
-                <Text style={styles.xpStatusText}>{xp} / {xpMax} XP · {Math.max(0, xpMax - xp)} XP to next level</Text>
+                <View style={styles.goalTagRow}>
+                  <View style={styles.levelTag}>
+                    <Text style={styles.levelTagText}>LEVEL {level}</Text>
+                  </View>
+                  <Text style={styles.levelTitle} numberOfLines={1}>{levelName}</Text>
+                </View>
+                <Text style={styles.xpStatusText}>
+                  {studentLevel} · {Math.max(0, xpMax - xp)} XP to next level 💪
+                </Text>
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Promotion Banner Card - Clean glassmorphic design */}
-        {promotionData && showEnvelope && (
-          <Animated.View style={[
-            styles.section,
-            {
-              opacity: envelopeOpacity,
-              transform: [{ scale: envelopeScale }],
-              height: envelopeHeight,
-              overflow: 'hidden',
-              marginBottom: 8,
-            }
-          ]}>
-            <Pressable
-              onPress={() => setPromotionVisible(true)}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.92 : 1,
-              })}
-            >
-              <Animated.View style={[
-                styles.envelopeCardEnhanced,
-                { transform: [{ scale: pulseAnim }] }
-              ]}>
-                {/* Colorful gradient base */}
-                <LinearGradient
-                  colors={['#0f172a', '#1d4ed8', '#3b82f6', '#38bdf8'] as const}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-
-                {/* Frosted glass layer on top of the gradient */}
-                <BlurView intensity={35} tint="light" style={StyleSheet.absoluteFill} />
-                <View style={styles.envelopeGlassTint} />
-
-                {/* Animated glowing border */}
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.envelopeBorderGlow, { opacity: glowOpacity }]}
-                />
-
-                {/* Light sweep shimmer */}
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.envelopeShimmerSweep,
-                    {
-                      transform: [
-                        {
-                          translateX: shimmerAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-220, 260],
-                          }),
-                        },
-                        { rotate: '18deg' },
-                      ],
-                    },
-                  ]}
-                />
-
-                {/* Content */}
-                <View style={styles.envelopeRow}>
-                  <View style={styles.envelopeIconWrap}>
-                    <View style={styles.envelopeIconGlow} />
-                    <LinearGradient
-                      colors={['#fde68a', '#f59e0b', '#d97706'] as const}
-                      start={{ x: 0.2, y: 0.1 }}
-                      end={{ x: 0.8, y: 0.9 }}
-                      style={styles.envelopeIconCircle}
-                    >
-                      <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                        <Path
-                          d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                          fill="#FFFBEB"
-                          stroke="#FDE68A"
-                          strokeWidth="0.5"
-                        />
-                      </Svg>
-                    </LinearGradient>
-                  </View>
-
-                  <View style={styles.envelopeTextContent}>
-                    <Text style={styles.envelopeTitle} numberOfLines={1}>
-                      You leveled up! 🎉
-                    </Text>
-                    <Text style={styles.envelopeSubtitle} numberOfLines={1}>
-                      Tap to open your certificate
-                    </Text>
-                  </View>
-
-                  <View style={styles.envelopeArrowCircle}>
-                    <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <Polyline points="9 18 15 12 9 6" />
-                    </Svg>
-                  </View>
-                </View>
-              </Animated.View>
-            </Pressable>
-          </Animated.View>
-        )}
-
-        {/* Uploaded by Teacher Section - Show Next Recommended Lesson */}
-        {!loadingLessons && carouselLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionHeaderLeft}>
-                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f3172" strokeWidth="2">
-                  <Path d="M12 6v6l4 2" />
-                  <Circle cx="12" cy="12" r="10" />
-                </Svg>
-                <Text style={styles.sectionTitle}> Your Lessons</Text>
-              </View>
-              <Pressable onPress={() => router.push('/lessons')}>
-                <Text style={styles.seeAllText}>See All →</Text>
-              </Pressable>
-            </View>
-
-            <FlatList
-              ref={flatListRef}
-              data={carouselLessons}
-              renderItem={renderTeacherLesson}
-              keyExtractor={(item) => item.lesson_id?.toString() || Math.random().toString()}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={screenWidth * 0.78 + 14}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              contentContainerStyle={styles.teacherLessonsCarousel}
-              ListEmptyComponent={
-                <View style={styles.emptyLessons}>
-                  <Text style={styles.emptyLessonsText}>No lessons available</Text>
-                </View>
+          {/* ── Promotion Banner Card ── */}
+          {promotionData && showEnvelope && (
+            <Animated.View style={[
+              styles.section,
+              {
+                opacity: envelopeOpacity,
+                transform: [{ scale: envelopeScale }],
+                height: envelopeHeight,
+                overflow: 'hidden',
+                marginBottom: 8,
               }
-            />
-          </View>
-        )}
+            ]}>
+              <Pressable
+                onPress={() => setPromotionVisible(true)}
+                style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
+              >
+                <Animated.View style={[styles.envelopeCardEnhanced, { transform: [{ scale: pulseAnim }] }]}>
+                  <ExpoLinearGradient
+                    colors={['#1E63B8', '#2F86D8', '#68C0F0', '#A8E0FA'] as const}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
 
-        {/* Daily Challenge */}
-        <View style={styles.section}>
-          <Pressable style={styles.dailyCard} onPress={() => router.push('/assessment')}>
-            <View style={styles.dailyHeader}>
-              <View style={styles.dailyIconBox}>
-                <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <Circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2" />
-                  <Circle cx="12" cy="12" r="6" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
-                  <Circle cx="12" cy="12" r="2" fill="#fff" />
-                </Svg>
-              </View>
-              <Text style={styles.dailyLabel}>DAILY CHALLENGE</Text>
-              <View style={styles.dailyXpBadge}>
-                <Text style={styles.dailyXpText}>+50 XP</Text>
-              </View>
-            </View>
-            <View style={styles.dailyContent}>
-              <View style={styles.dailyTextContent}>
-                <Text style={styles.dailyTitle}>Practice Your Signs</Text>
-                <Text style={styles.dailyDesc}>Complete a lesson today to earn your daily streak bonus.</Text>
-                <View style={styles.dailyDots}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <View key={n} style={[styles.dailyDot, { backgroundColor: n <= 2 ? '#fbbf24' : 'rgba(255,255,255,0.2)' }]} />
-                  ))}
+                  <BlurView intensity={25} tint="light" style={StyleSheet.absoluteFill} />
+                  <View style={styles.envelopeGlassTint} />
+
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.envelopeBorderGlow, { opacity: glowOpacity }]}
+                  />
+
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.envelopeShimmerSweep,
+                      {
+                        transform: [
+                          {
+                            translateX: shimmerAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [-220, 260],
+                            }),
+                          },
+                          { rotate: '18deg' },
+                        ],
+                      },
+                    ]}
+                  />
+
+                  <View style={styles.envelopeRow}>
+                    <View style={styles.envelopeIconWrap}>
+                      <View style={styles.envelopeIconGlow} />
+                      <ExpoLinearGradient
+                        colors={['#FDE68A', '#F59E0B', '#D97706'] as const}
+                        start={{ x: 0.2, y: 0.1 }}
+                        end={{ x: 0.8, y: 0.9 }}
+                        style={styles.envelopeIconCircle}
+                      >
+                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                          <Path
+                            d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                            fill="#FFFBEB"
+                            stroke="#FDE68A"
+                            strokeWidth="0.5"
+                          />
+                        </Svg>
+                      </ExpoLinearGradient>
+                    </View>
+
+                    <View style={styles.envelopeTextContent}>
+                      <Text style={styles.envelopeTitle} numberOfLines={1}>You leveled up! 🎉</Text>
+                      <Text style={styles.envelopeSubtitle} numberOfLines={1}>Tap to open your certificate</Text>
+                    </View>
+
+                    <View style={styles.envelopeArrowCircle}>
+                      <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <Polyline points="9 18 15 12 9 6" />
+                      </Svg>
+                    </View>
+                  </View>
+                </Animated.View>
+              </Pressable>
+            </Animated.View>
+          )}
+
+          {/* ── Your Lessons carousel ── */}
+          {!loadingLessons && carouselLessons.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionHeaderLeft}>
+                  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="2">
+                    <Path d="M12 6v6l4 2" />
+                    <Circle cx="12" cy="12" r="10" />
+                  </Svg>
+                  <Text style={styles.sectionTitle}>Your Lessons</Text>
                 </View>
-                <Text style={styles.dailyStatusText}>Practice daily to build your streak!</Text>
+                <Pressable onPress={() => router.push('/lessons')}>
+                  <Text style={styles.seeAllText}>See all</Text>
+                </Pressable>
               </View>
-              <View style={styles.dailyActionBox}>
-                <View style={styles.dailyStartBtn}>
-                  <Text style={styles.dailyStartText}>Start</Text>
-                  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#78350f" strokeWidth="2.5">
-                    <Line x1="5" y1="12" x2="19" y2="12" /><Polyline points="12 5 19 12 12 19" />
+
+              <FlatList
+                ref={flatListRef}
+                data={carouselLessons}
+                renderItem={renderTeacherLesson}
+                keyExtractor={(item) => item.lesson_id?.toString() || Math.random().toString()}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={screenWidth * 0.78 + 14}
+                snapToAlignment="start"
+                decelerationRate="fast"
+                contentContainerStyle={styles.teacherLessonsCarousel}
+                ListEmptyComponent={
+                  <View style={styles.emptyLessons}>
+                    <Text style={styles.emptyLessonsText}>No lessons available</Text>
+                  </View>
+                }
+              />
+            </View>
+          )}
+
+
+
+          {/* ── DAILY CHALLENGE ── */}
+          <View style={styles.section}>
+            <Pressable
+              style={styles.dailyCard}
+              onPress={() => {
+                // Navigate to gesture practice or challenge view
+                router.push('/(tabs)/gesture');
+              }}
+            >
+              <ExpoLinearGradient
+                colors={['#2F86D8', '#1E63B8'] as const}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+
+              <View style={styles.dailyHeader}>
+                <View style={styles.dailyIconBox}>
+                  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <Circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2" />
+                    <Circle cx="12" cy="12" r="6" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
+                    <Circle cx="12" cy="12" r="2" fill="#fff" />
                   </Svg>
                 </View>
+                <Text style={styles.dailyLabel}>DAILY CHALLENGE</Text>
+
+                {/* Dynamic XP Badge */}
+                {dailyChallenge && dailyChallenge.summary.bonus_xp_available > 0 ? (
+                  <Animated.View style={[
+                    styles.dailyXpBadge,
+                    {
+                      transform: [{
+                        scale: bonusXpAnim.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: [1, 1.3, 1],
+                        }),
+                      }],
+                    },
+                  ]}>
+                    <Text style={styles.dailyXpText}>🎉 +{dailyChallenge.summary.bonus_xp_available} Bonus!</Text>
+                  </Animated.View>
+                ) : (
+                  <View style={styles.dailyXpBadge}>
+                    <Text style={styles.dailyXpText}>
+                      {(dailyChallenge?.summary?.xp_earned_so_far ?? 0) > 0
+                        ? `+${dailyChallenge?.summary?.xp_earned_so_far ?? 0} XP`
+                        : '+50 XP'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.dailyContent}>
+                <View style={styles.dailyTextContent}>
+                  {/* Dynamic Title based on challenge */}
+                  <Text style={styles.dailyTitle}>
+                    {dailyChallenge?.theme
+                      ? `Practice ${dailyChallenge.theme.replace('_', ' & ')}`
+                      : 'Practice Your Signs'}
+                  </Text>
+
+                  {/* Dynamic Description */}
+                  <Text style={styles.dailyDesc}>
+                    {dailyChallenge?.is_completed
+                      ? '🎉 Challenge complete! Amazing work today!'
+                      : (dailyChallenge?.summary?.total ?? 0) > 0
+                        ? `${dailyChallenge?.summary?.completed ?? 0} of ${dailyChallenge?.summary?.total ?? 0} goals completed`
+                        : 'Complete goals to earn XP and build your streak!'}
+                  </Text>
+
+                  {/* Progress Dots - Dynamic based on goals */}
+                  <View style={styles.dailyDots}>
+                    {dailyChallenge ? (
+                      dailyChallenge.goals.map((goal, idx) => (
+                        <View
+                          key={idx}
+                          style={[
+                            styles.dailyDot,
+                            {
+                              backgroundColor: goal.is_completed
+                                ? '#FBBF24'
+                                : 'rgba(255,255,255,0.25)'
+                            }
+                          ]}
+                        />
+                      ))
+                    ) : (
+                      // Fallback dots if no challenge data
+                      [1, 2, 3, 4, 5].map((n) => (
+                        <View key={n} style={[styles.dailyDot, { backgroundColor: n <= 2 ? '#FBBF24' : 'rgba(255,255,255,0.25)' }]} />
+                      ))
+                    )}
+                  </View>
+
+                  {/* Status Text */}
+                  <Text style={styles.dailyStatusText}>
+                    {dailyChallenge?.is_completed
+                      ? '🌟 All goals complete! You earned bonus XP! 🎉'
+                      : dailyChallenge
+                        ? `${Math.round(dailyChallenge.summary.progress_percentage)}% complete • Tap to practice!`
+                        : 'Practice daily to build your streak!'}
+                  </Text>
+                </View>
+
+                <View style={styles.dailyActionBox}>
+                  <View style={styles.dailyStartBtn}>
+                    <Text style={styles.dailyStartText}>
+                      {dailyChallenge?.is_completed ? 'Done!' : 'Start'}
+                    </Text>
+                    {!dailyChallenge?.is_completed && (
+                      <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#78350F" strokeWidth="2.5">
+                        <Line x1="5" y1="12" x2="19" y2="12" />
+                        <Polyline points="12 5 19 12 12 19" />
+                      </Svg>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          </View>
+
+          {/* ── CHALLENGE GOALS DETAIL (Collapsible/Expandable) ── */}
+          {dailyChallenge && dailyChallenge.goals.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.challengeGoalsPanel}>
+                <View style={styles.challengeGoalsHeader}>
+                  <Text style={styles.challengeGoalsTitle}>Today's Goals</Text>
+                  <Text style={styles.challengeGoalsCount}>
+                    {dailyChallenge?.summary?.completed ?? 0}/{dailyChallenge?.summary?.total ?? 0}
+                  </Text>
+                </View>
+
+                {/* Animated Progress Bar */}
+                <View style={styles.challengeGoalsProgressTrack}>
+                  <Animated.View
+                    style={[
+                      styles.challengeGoalsProgressFill,
+                      {
+                        width: challengeProgressAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0%', '100%'],
+                        }),
+                      },
+                    ]}
+                  />
+                </View>
+
+                {dailyChallenge.goals.map((goal, index) => renderChallengeGoal(goal, index))}
               </View>
             </View>
-          </Pressable>
-        </View>
-
-        {/* Continue Learning Section - RESTORED with dynamic data */}
-        {displayLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{sectionTitle}</Text>
-              <Pressable onPress={() => router.push('/lessons')}>
-                <Text style={styles.seeAllText}>See All →</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.lessonsList}>
-              {displayLessons.map((lesson) => {
-                const progress = lesson.progress;
-                const progressPercent = progress && lesson.total_steps > 0
-                  ? Math.round((progress.current_step / lesson.total_steps) * 100)
-                  : 0;
-                const statusTag = getStatusTag(lesson.status, progress);
-                const isLocked = statusTag === 'Pending' && progressPercent === 0;
-                const isCompleted = statusTag === 'Completed';
-                const icon = getLessonIcon(lesson.lesson_type);
-
-                return (
-                  <Pressable
-                    key={lesson.lesson_id}
-                    style={[styles.lessonCard, isLocked && { opacity: 0.5 }]}
-                    disabled={isLocked}
-                    onPress={() => router.push(`/lesson/${lesson.lesson_id}`)}
-                  >
-                    <View style={[styles.lessonIconBox, { backgroundColor: isLocked ? 'rgba(15,49,114,0.06)' : 'rgba(37,99,235,0.10)' }]}>
-                      {isCompleted ? (
-                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5">
-                          <Polyline points="20 6 9 17 4 12" />
-                        </Svg>
-                      ) : isLocked ? (
-                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2">
-                          <Rect x="3" y="11" width="18" height="11" rx="2" />
-                          <Path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </Svg>
-                      ) : icon ? (
-                        <Image source={icon} style={styles.lessonIcon} contentFit="contain" />
-                      ) : (
-                        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2">
-                          <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                          <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                        </Svg>
-                      )}
-                    </View>
-                    <View style={styles.lessonInfo}>
-                      <View style={styles.lessonRow}>
-                        <Text style={styles.lessonTitle} numberOfLines={1}>{lesson.title}</Text>
-                        <View style={[styles.lessonTag, {
-                          backgroundColor: isCompleted ? 'rgba(37,99,235,0.12)' :
-                            isLocked ? 'rgba(15,49,114,0.07)' :
-                              'rgba(251,191,36,0.18)'
-                        }]}>
-                          <Text style={[styles.lessonTagText, {
-                            color: isCompleted ? '#1848c8' :
-                              isLocked ? '#6B7280' :
-                                '#92400E'
-                          }]}>
-                            {statusTag}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.lessonProgressTrack}>
-                        <View style={[styles.lessonProgressFill, {
-                          width: `${Math.min(progressPercent, 100)}%`,
-                          backgroundColor: isCompleted ? '#2563EB' : '#f59e0b'
-                        }]} />
-                      </View>
-                      <Text style={styles.lessonProgressText}>{Math.min(progressPercent, 100)}% complete</Text>
-                    </View>
+          )}
+          {/* ── Continue Learning / Completed ── */}
+          {displayLessons.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.panel}>
+                <View style={styles.panelHeader}>
+                  <Text style={styles.sectionTitle}>{sectionTitle}</Text>
+                  <Pressable onPress={() => router.push('/lessons')}>
+                    <Text style={styles.seeAllText}>See all</Text>
                   </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-
-
-        {/* Quick Practice */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Practice</Text>
-          <View style={styles.quickGrid}>
-            {quickActions.map((q, i) => (
-              <Pressable key={i} style={styles.quickCard} onPress={() => router.push(q.screen as any)}>
-                <View style={styles.quickIconBox}>
-                  <Image source={q.icon} style={styles.quickIcon} contentFit="contain" />
                 </View>
-                <Text style={styles.quickText}>{q.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
 
-      </ScrollView>
+                <View style={styles.lessonsList}>
+                  {displayLessons.map((lesson) => {
+                    const progress = lesson.progress;
+                    const progressPercent = progress && lesson.total_steps > 0
+                      ? Math.round((progress.current_step / lesson.total_steps) * 100)
+                      : 0;
+                    const statusTag = getStatusTag(lesson.status, progress);
+                    const isLocked = statusTag === 'Pending' && progressPercent === 0;
+                    const isCompleted = statusTag === 'Completed';
+                    const icon = getLessonIcon(lesson.lesson_type);
 
+                    return (
+                      <Pressable
+                        key={lesson.lesson_id}
+                        style={[styles.lessonRowCard, isLocked && { opacity: 0.55 }]}
+                        disabled={isLocked}
+                        onPress={() => router.push(`/lesson/${lesson.lesson_id}`)}
+                      >
+                        <View style={[styles.lessonIconBox, {
+                          backgroundColor: isCompleted ? C.mint : isLocked ? '#EEF2F7' : C.sky,
+                        }]}>
+                          {isCompleted ? (
+                            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E8A5F" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                              <Polyline points="20 6 9 17 4 12" />
+                            </Svg>
+                          ) : isLocked ? (
+                            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2">
+                              <Rect x="3" y="11" width="18" height="11" rx="2" />
+                              <Path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </Svg>
+                          ) : icon ? (
+                            <Image source={icon} style={styles.lessonIcon} contentFit="contain" />
+                          ) : (
+                            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.blue} strokeWidth="2">
+                              <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                              <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                            </Svg>
+                          )}
+                        </View>
+                        <View style={styles.lessonInfo}>
+                          <View style={styles.lessonRow}>
+                            <Text style={styles.lessonTitle} numberOfLines={1}>{lesson.title}</Text>
+                            <View style={[styles.lessonTag, {
+                              backgroundColor: isCompleted ? C.mint : isLocked ? '#EEF2F7' : C.peach,
+                            }]}>
+                              <Text style={[styles.lessonTagText, {
+                                color: isCompleted ? '#1E8A5F' : isLocked ? '#6B7280' : C.sunDeep,
+                              }]}>
+                                {statusTag}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.lessonProgressTrack}>
+                            <View style={[styles.lessonProgressFill, {
+                              width: `${Math.min(progressPercent, 100)}%`,
+                              backgroundColor: isCompleted ? '#34C77B' : '#F5A524',
+                            }]} />
+                          </View>
+                          <Text style={styles.lessonProgressText}>{Math.min(progressPercent, 100)}% complete</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          )}
 
+          {/* ── Quick Practice ──
+          <View style={styles.section}>
+            <View style={styles.panel}>
+              <View style={styles.panelHeader}>
+                <Text style={styles.sectionTitle}>Quick Practice</Text>
+              </View>
+              <View style={styles.quickRow}>
+                {quickActions.map((q, i) => (
+                  <Pressable key={i} style={styles.quickItem} onPress={() => router.push(q.screen as any)}>
+                    <View style={[styles.quickIconBox, { backgroundColor: q.tint }]}>
+                      <Image source={q.icon} style={styles.quickIcon} contentFit="contain" />
+                    </View>
+                    <Text style={styles.quickText} numberOfLines={2}>{q.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </View> */}
+
+        </ScrollView>
+      </SafeAreaView>
 
       <PromotionModal
         visible={promotionVisible}
@@ -898,7 +1215,6 @@ export default function Dashboard() {
         onClose={handlePromotionClose}
         studentName={studentName}
       />
-      {/* 🎯 ADD THIS - Achievement Modal */}
       <AchievementModal
         visible={achievementModalVisible}
         achievements={newAchievements}
@@ -907,388 +1223,318 @@ export default function Dashboard() {
           setNewAchievements([]);
         }}
       />
-
-    </SafeAreaView>
+    </View>
   );
 }
 
+const CARD_SHADOW = {
+  shadowColor: '#1E63B8',
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.10,
+  shadowRadius: 20,
+  elevation: 3,
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#eaf5fd' },
-  scrollContent: { paddingBottom: 100 },
-  loadingContainer: { alignItems: 'center', justifyContent: 'center' },
-  loadingText: { marginTop: 16, fontSize: 14, color: '#666' },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  safeArea: { flex: 1 },
+  floatingSky: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0, overflow: 'hidden' },
+  cloudWrapper: { position: 'absolute', left: 0 },
+  scrollContent: { paddingBottom: 110, zIndex: 1 },
+  loadingContainer: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+  loadingText: { marginTop: 16, fontSize: 14, color: C.inkSoft, fontWeight: '600' },
 
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
-  logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  streakBadge: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 20, paddingVertical: 5, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
-  streakText: { color: '#0f3172', fontSize: 13, fontWeight: '700' },
-  section: { paddingHorizontal: 16, marginBottom: 14 },
-  heroCard: { backgroundColor: 'white', borderRadius: 24, padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 20, elevation: 2, borderWidth: 1, borderColor: '#EAECF0' },
-  heroContent: { flexDirection: 'row', justifyContent: 'space-between' },
-  heroTextContent: { flex: 1, paddingRight: 8 },
-  greetingText: { color: '#4b7bbb', fontSize: 13, fontWeight: '600' },
-  nameText: { color: '#0f3172', fontSize: 26, fontWeight: '800', marginTop: 2, marginBottom: 8 },
-  badgeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  smallBadgeBlue: { backgroundColor: 'rgba(15,49,114,0.10)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  smallBadgeTextBlue: { fontSize: 11, fontWeight: '700', color: '#0f3172' },
-  smallBadgeOrange: { backgroundColor: 'rgba(251,191,36,0.15)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  smallBadgeTextOrange: { fontSize: 11, fontWeight: '700', color: '#92400E' },
-  senyaHero: { width: 100, height: 100, marginTop: -6 },
-  divider: { height: 1, backgroundColor: 'rgba(15,49,114,0.08)', marginVertical: 14 },
-  levelSection: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  levelIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(251,191,36,0.15)', alignItems: 'center', justifyContent: 'center' },
-  levelIcon: { width: 36, height: 36 },
-  levelInfo: { flex: 1 },
-  levelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  levelTag: { backgroundColor: '#1848c8', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 8, marginRight: 6 },
-  levelTagText: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 1 },
-  levelTitle: { fontSize: 14, fontWeight: '800', color: '#0f3172' },
-  xpPctText: { fontSize: 11, fontWeight: '700', color: '#4b7bbb' },
-  progressTrack: { backgroundColor: 'rgba(15,49,114,0.12)', borderRadius: 99, height: 8, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: '#f59e0b', borderRadius: 99 },
-  xpStatusText: { fontSize: 10, color: '#4b7bbb', fontWeight: '600', marginTop: 4 },
+  // Hero greeting
+  heroWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 6, zIndex: 1 },
+  heroText: { flex: 1, paddingRight: 6 },
+  greetingText: { color: C.ink, fontSize: 26, fontWeight: '800', lineHeight: 32 },
+  nameText: { color: C.blueDeep, fontSize: 28, fontWeight: '900', lineHeight: 36, marginBottom: 8 },
+  heroSub: { color: C.inkSoft, fontSize: 13.5, fontWeight: '600', lineHeight: 20 },
+  senyaHero: { width: 148, height: 168, marginRight: -5 },
 
-  dailyCard: { backgroundColor: '#2563EB', borderRadius: 20, padding: 20, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.32, shadowRadius: 24, elevation: 8 },
+  section: { paddingHorizontal: 16, marginBottom: 14, zIndex: 1 },
+
+  // Today's goal card
+  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 26, padding: 16, gap: 14, borderWidth: 1, borderColor: C.cardLine, ...CARD_SHADOW },
+  goalRingSide: { alignItems: 'center', paddingRight: 14, borderRightWidth: 1, borderRightColor: 'rgba(18,58,107,0.08)' },
+  goalRingWrap: { alignItems: 'center', justifyContent: 'center' },
+  goalRingCenter: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  goalRingPct: { fontSize: 19, fontWeight: '900', color: C.ink },
+  goalRingLabel: { fontSize: 11, fontWeight: '700', color: C.inkSoft, marginTop: 6 },
+  goalInfo: { flex: 1 },
+  goalTitle: { fontSize: 16, fontWeight: '800', color: C.ink, marginBottom: 4 },
+  goalXpRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
+  goalXpBig: { fontSize: 22, fontWeight: '900', color: C.blue },
+  goalXpSmall: { fontSize: 13, fontWeight: '700', color: C.inkSoft },
+  progressTrack: { backgroundColor: 'rgba(18,58,107,0.10)', borderRadius: 99, height: 8, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: C.sun, borderRadius: 99 },
+  goalTagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
+  levelTag: { backgroundColor: C.blue, borderRadius: 7, paddingVertical: 3, paddingHorizontal: 8 },
+  levelTagText: { fontSize: 9, fontWeight: '900', color: '#fff', letterSpacing: 1 },
+  levelTitle: { fontSize: 13, fontWeight: '800', color: C.ink, flex: 1 },
+  xpStatusText: { fontSize: 10.5, color: C.inkSoft, fontWeight: '700', marginTop: 5 },
+
+  // Generic white panel
+  panel: { backgroundColor: C.card, borderRadius: 26, padding: 16, borderWidth: 1, borderColor: C.cardLine, ...CARD_SHADOW },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 2 },
+  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
+  sectionTitle: { fontSize: 16.5, fontWeight: '800', color: C.ink },
+  seeAllText: { color: C.blue, fontSize: 13, fontWeight: '800', paddingVertical: 4 },
+
+  // Quick practice
+  quickRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  quickItem: { width: '23%', alignItems: 'center', gap: 8 },
+  quickIconBox: { width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  quickIcon: { width: 34, height: 34 },
+  quickText: { fontSize: 10.5, fontWeight: '700', color: C.ink, textAlign: 'center', lineHeight: 14 },
+
+  // Continue learning
+  lessonsList: { gap: 10 },
+  lessonRowCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  lessonIconBox: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  lessonIcon: { width: 30, height: 30 },
+  lessonInfo: { flex: 1, minWidth: 0 },
+  lessonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  lessonTitle: { fontSize: 14, fontWeight: '800', color: C.ink, flex: 1 },
+  lessonTag: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 99 },
+  lessonTagText: { fontSize: 10, fontWeight: '800' },
+  lessonProgressTrack: { backgroundColor: 'rgba(18,58,107,0.09)', borderRadius: 99, height: 5, marginTop: 7, overflow: 'hidden' },
+  lessonProgressFill: { height: '100%', borderRadius: 99 },
+  lessonProgressText: { fontSize: 10, color: C.inkSoft, marginTop: 4, fontWeight: '700' },
+
+  // Daily challenge
+  dailyCard: { borderRadius: 26, padding: 20, overflow: 'hidden', shadowColor: '#1E63B8', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 22, elevation: 8 },
   dailyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  dailyIconBox: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-  dailyLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.75)', letterSpacing: 1 },
-  dailyXpBadge: { marginLeft: 'auto', backgroundColor: 'rgba(251,191,36,0.25)', borderRadius: 99, paddingVertical: 3, paddingHorizontal: 10 },
-  dailyXpText: { fontSize: 11, fontWeight: '800', color: '#fde68a' },
+  dailyIconBox: { width: 28, height: 28, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  dailyLabel: { fontSize: 10.5, fontWeight: '900', color: 'rgba(255,255,255,0.85)', letterSpacing: 1.2 },
+  dailyXpBadge: { marginLeft: 'auto', backgroundColor: 'rgba(251,191,36,0.28)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 11 },
+  dailyXpText: { fontSize: 11, fontWeight: '900', color: '#FDE68A' },
   dailyContent: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   dailyTextContent: { flex: 1, paddingRight: 12 },
-  dailyTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 6 },
-  dailyDesc: { fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: '500', lineHeight: 18 },
+  dailyTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 6 },
+  dailyDesc: { fontSize: 12, color: 'rgba(255,255,255,0.78)', fontWeight: '500', lineHeight: 18 },
   dailyDots: { flexDirection: 'row', gap: 5, marginTop: 12 },
   dailyDot: { width: 28, height: 6, borderRadius: 99 },
-  dailyStatusText: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600', marginTop: 5 },
+  dailyStatusText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '600', marginTop: 6 },
   dailyActionBox: { alignItems: 'center', gap: 10 },
-  dailyStartBtn: { backgroundColor: '#fbbf24', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dailyStartText: { color: '#78350f', fontWeight: '800', fontSize: 14 },
+  dailyStartBtn: { backgroundColor: '#FBBF24', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dailyStartText: { color: '#78350F', fontWeight: '900', fontSize: 14 },
 
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172' },
-  seeAllText: { color: '#2563EB', fontSize: 13, fontWeight: '700', paddingVertical: 4 },
-
-  // Continue Learning styles
-  lessonsList: { gap: 10 },
-  lessonCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  lessonIconBox: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  lessonIcon: { width: 36, height: 36 },
-  lessonInfo: { flex: 1 },
-  lessonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  lessonTitle: { fontSize: 14, fontWeight: '700', color: '#0f3172', flex: 1 },
-  lessonTag: { paddingVertical: 3, paddingHorizontal: 9, borderRadius: 99 },
-  lessonTagText: { fontSize: 10, fontWeight: '700' },
-  lessonProgressTrack: { backgroundColor: 'rgba(15,49,114,0.10)', borderRadius: 99, height: 5, marginTop: 7, overflow: 'hidden' },
-  lessonProgressFill: { height: '100%', borderRadius: 99 },
-  lessonProgressText: { fontSize: 10, color: '#4b7bbb', marginTop: 3, fontWeight: '600' },
-
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  quickCard: { width: '48%', backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', gap: 7 },
-  quickIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(37,99,235,0.10)', alignItems: 'center', justifyContent: 'center' },
-  quickIcon: { width: 40, height: 40 },
-  quickText: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
-
-  // Teacher Lesson Cards
-  teacherLessonsCarousel: {
-    paddingRight: 16,
-    gap: 12,
-  },
+  // Teacher Lessons carousel
+  teacherLessonsCarousel: { paddingRight: 16, paddingLeft: 2, paddingVertical: 4 },
   teacherLessonCard: {
     width: screenWidth * 0.78,
-    backgroundColor: 'white',
-    borderRadius: 24,
+    backgroundColor: C.card,
+    borderRadius: 26,
     padding: 16,
     marginRight: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 20,
-    elevation: 2,
     borderWidth: 1,
-    borderColor: '#EAECF0',
+    borderColor: C.cardLine,
+    ...CARD_SHADOW,
   },
-  tlMainContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 12,
-  },
-  tlIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: 'rgba(37,99,235,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tlTextContent: {
-    flex: 1,
-  },
-  tlHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  tlBadgeRow: {
-    flexDirection: 'row',
-    gap: 5,
-  },
-  tlDifficultyTag: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-  },
-  tlDifficultyText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#64748B',
-    letterSpacing: 0.3,
-  },
-  tlMiniScoreBadge: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  tlMiniScoreText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  tlDateText: {
-    fontSize: 10,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  tlTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0f3172',
-    lineHeight: 18,
-  },
-  tlProgressSection: {
-    marginBottom: 14,
-  },
-  tlProgressTrack: {
-    height: 5,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  tlProgressFill: {
-    height: '100%',
-    borderRadius: 99,
-  },
-  tlProgressInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  tlProgressInfoText: {
-    fontSize: 9.5,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  tlButtonSection: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  tlCardActionBtn: {
-    flex: 1.3,
-    borderRadius: 12,
-    paddingVertical: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tlCardActionBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  tlCardHistoryBtn: {
-    flex: 1,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1.5,
-    borderColor: '#BFDBFE',
-    borderRadius: 12,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tlCardHistoryBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#2563EB',
-  },
+  tlMainContent: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  tlIconBox: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.sky, alignItems: 'center', justifyContent: 'center' },
+  tlIconImg: { width: 30, height: 30 },
+  tlTextContent: { flex: 1, minWidth: 0 },
+  tlHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  tlBadgeRow: { flexDirection: 'row', gap: 5 },
+  tlDifficultyTag: { paddingVertical: 3, paddingHorizontal: 9, borderRadius: 99 },
+  tlDifficultyText: { fontSize: 9, fontWeight: '900', color: C.blueDeep, letterSpacing: 0.4 },
+  tlMiniScoreBadge: { paddingVertical: 3, paddingHorizontal: 9, borderRadius: 99 },
+  tlMiniScoreText: { fontSize: 10, fontWeight: '900' },
+  tlDateText: { fontSize: 10, color: C.inkSoft, fontWeight: '700' },
+  tlTitle: { fontSize: 14.5, fontWeight: '900', color: C.ink, lineHeight: 19 },
+  tlProgressSection: { marginBottom: 14 },
+  tlProgressTrack: { height: 6, backgroundColor: 'rgba(18,58,107,0.09)', borderRadius: 99, overflow: 'hidden' },
+  tlProgressFill: { height: '100%', borderRadius: 99 },
+  tlProgressInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
+  tlProgressInfoText: { fontSize: 9.5, color: C.inkSoft, fontWeight: '700' },
+  tlButtonSection: { flexDirection: 'row', gap: 8 },
+  tlCardActionBtn: { flex: 1.3, borderRadius: 14, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  tlCardActionBtnText: { fontSize: 12.5, fontWeight: '900', color: '#fff' },
+  tlCardHistoryBtn: { flex: 1, backgroundColor: C.sky, borderRadius: 14, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  tlCardHistoryBtnText: { fontSize: 11.5, fontWeight: '900', color: C.blueDeep },
 
   emptyLessons: {
     width: screenWidth * 0.75,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 22,
     padding: 28,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#EAECF0',
+    borderColor: 'rgba(255,255,255,0.9)',
     borderStyle: 'dashed',
   },
-  emptyLessonsText: {
-    fontSize: 14,
-    color: '#9AA1B0',
-    fontWeight: '600',
-  },
-  envelopeCard: {
-    borderRadius: 20,
-    paddingTop: 68,
-    paddingBottom: 12,
-    paddingHorizontal: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.30)',
-    overflow: 'hidden',
-    position: 'relative',
-    shadowColor: '#0f3172',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.30,
-    shadowRadius: 18,
-    elevation: 6,
-  },
+  emptyLessonsText: { fontSize: 14, color: C.inkSoft, fontWeight: '700' },
 
-  envelopeStripeTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 5,
-  },
-  envelopeStripeBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 5,
-  },
-
-  envelopeSeal: {
-    position: 'absolute',
-    top: 36,
-    left: '50%',
-    marginLeft: -20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  envelopeSealIcon: {
-    fontSize: 16,
-  },
-
+  // Promotion envelope
   envelopeCardEnhanced: {
-    borderRadius: 20,
+    borderRadius: 22,
     paddingVertical: 16,
     paddingHorizontal: 16,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center',
     minHeight: 88,
-    shadowColor: '#3b82f6',
+    shadowColor: '#2F86D8',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.55,
+    shadowOpacity: 0.45,
     shadowRadius: 22,
     elevation: 8,
     borderWidth: 1,
-    borderColor: 'rgba(191, 219, 254, 0.35)',
+    borderColor: 'rgba(255,255,255,0.45)',
   },
-  envelopeGlassTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  envelopeBorderGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(96, 165, 250, 0.85)',
-  },
-  envelopeShimmerSweep: {
-    position: 'absolute',
-    top: -60,
-    left: 0,
-    width: 60,
-    height: 220,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  envelopeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  envelopeIconWrap: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  envelopeIconGlow: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(251, 191, 36, 0.35)',
-  },
-  envelopeIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  envelopeTextContent: {
-    flex: 1,
-    paddingRight: 8,
-  },
+  envelopeGlassTint: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.10)' },
+  envelopeBorderGlow: { ...StyleSheet.absoluteFillObject, borderRadius: 22, borderWidth: 1.5, borderColor: 'rgba(168, 224, 250, 0.9)' },
+  envelopeShimmerSweep: { position: 'absolute', top: -60, left: 0, width: 60, height: 220, backgroundColor: 'rgba(255,255,255,0.18)' },
+  envelopeRow: { flexDirection: 'row', alignItems: 'center' },
+  envelopeIconWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  envelopeIconGlow: { position: 'absolute', width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(251, 191, 36, 0.35)' },
+  envelopeIconCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+  envelopeTextContent: { flex: 1, paddingRight: 8, minWidth: 0 },
   envelopeTitle: {
     fontSize: 15.5,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
     marginBottom: 3,
-    letterSpacing: 0.1,
     textShadowColor: 'rgba(0,0,0,0.18)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  envelopeSubtitle: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.82)',
-    letterSpacing: 0.1,
-  },
+  envelopeSubtitle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
   envelopeArrowCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
+    borderColor: 'rgba(255,255,255,0.25)',
   },
+
+  challengeGoalsPanel: {
+    backgroundColor: C.card,
+    borderRadius: 26,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: C.cardLine,
+    ...CARD_SHADOW,
+  },
+  challengeGoalsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  challengeGoalsTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.ink,
+  },
+  challengeGoalsCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.inkSoft,
+  },
+  challengeGoalsProgressTrack: {
+    height: 6,
+    backgroundColor: 'rgba(18,58,107,0.09)',
+    borderRadius: 99,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  challengeGoalsProgressFill: {
+    height: '100%',
+    backgroundColor: C.blue,
+    borderRadius: 99,
+  },
+  challengeGoalItem: {
+    marginBottom: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(18,58,107,0.06)',
+  },
+
+  challengeGoalRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  challengeGoalIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: C.sky,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeGoalIconText: {
+    fontSize: 18,
+  },
+  challengeGoalContent: {
+    flex: 1,
+  },
+  challengeGoalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  challengeGoalTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  challengeGoalCompleted: {
+    color: '#1E8A5F',
+  },
+  challengeGoalXpBadge: {
+    backgroundColor: C.peach,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 99,
+  },
+  challengeGoalXpText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: C.sunDeep,
+  },
+  challengeGoalDesc: {
+    fontSize: 11,
+    color: C.inkSoft,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  challengeGoalProgressWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  challengeGoalProgressTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: 'rgba(18,58,107,0.09)',
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  challengeGoalProgressFill: {
+    height: '100%',
+    backgroundColor: C.blue,
+    borderRadius: 99,
+  },
+  challengeGoalProgressComplete: {
+    backgroundColor: '#34C77B',
+  },
+  challengeGoalProgressText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.inkSoft,
+    minWidth: 40,
+    textAlign: 'right',
+  },
+
 });

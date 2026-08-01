@@ -72,7 +72,10 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
     // Determine header background color based on current route
     const getHeaderBackground = (): string => {
         if (segments && segments.length > 0 && segments.includes('lessons')) {
-            return '#87CEEB';
+            return '#c1eaffff';
+        }
+        else if (segments && segments.length > 0 && segments.includes('dashboard')) {
+            return '#c1eaffff';
         }
         return 'transparent';
     };

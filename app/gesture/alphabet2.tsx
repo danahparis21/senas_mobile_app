@@ -26,6 +26,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
+import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -73,6 +74,7 @@ interface LetterAttempt {
 
 export default function WebViewCameraScreen() {
     const router = useRouter();
+    usePracticeTimeTracker();
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const [loading, setLoading] = useState(true);

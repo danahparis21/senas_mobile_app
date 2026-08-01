@@ -23,6 +23,7 @@ import { Audio } from 'expo-av';
 import { useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
+import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -118,6 +119,7 @@ interface ChallengeSession {
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function ChallengeScreen() {
     const router = useRouter();
+    usePracticeTimeTracker();
     const params = useLocalSearchParams<{
         mode: 'master' | 'infinite';
         moduleId: string;

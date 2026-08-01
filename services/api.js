@@ -1309,4 +1309,121 @@ export const api = {
         }
     },
 
+    /**
+     * 🎯 Get today's daily challenge
+     * GET /api/student/daily-challenge
+     */
+    getDailyChallenge: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🎯 Fetching daily challenge...');
+
+            const response = await fetch(`${API_URL}/student/daily-challenge`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🎯 Daily challenge response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch daily challenge');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching daily challenge:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 🎯 Update a goal's progress
+     * POST /api/student/daily-challenge/progress
+     */
+    updateChallengeProgress: async (goalId, incrementBy) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🎯 Updating challenge progress for goal: ${goalId} (+${incrementBy})...`);
+
+            const response = await fetch(`${API_URL}/student/daily-challenge/progress`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    goal_id: goalId,
+                    increment_by: incrementBy,
+                }),
+            });
+
+            const data = await response.json();
+            console.log('🎯 Challenge progress update response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to update challenge progress');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error updating challenge progress:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 🎯 Track time spent in gesture practice (for time goal)
+     * POST /api/student/daily-challenge/track-time
+     */
+    trackChallengeTime: async (minutesSpent) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`⏱️ Tracking challenge time: ${minutesSpent} minutes...`);
+
+            const response = await fetch(`${API_URL}/student/daily-challenge/track-time`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    minutes_spent: minutesSpent,
+                }),
+            });
+
+            const data = await response.json();
+            console.log('⏱️ Challenge time tracking response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to track challenge time');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error tracking challenge time:', error);
+            throw error;
+        }
+    },
+
+
+
 };
