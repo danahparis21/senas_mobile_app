@@ -146,11 +146,16 @@ interface Lesson {
   done: boolean;
   active: boolean;
   locked: boolean;
-  // 🆕 NEW FIELDS FOR ADAPTIVE REASONS
+  // 🆕 NEW FIELDS FOR ADAPTIVE REASONS & CHECKPOINT EXAM
   covered_skills?: WeakSkill[];  // What weak skills this lesson covers
   recommendation_type?: string;  // 'weak_skill_practice', 'new_skill', 'next_in_path'
   priority?: number;            // How many weak skills it covers
   weakest_skill?: WeakSkill | null;  // 🆕
+  is_checkpoint_exam?: boolean;
+  exam_id?: number;
+  total_points?: number;
+  passing_score?: number;
+  total_questions?: number;
 }
 
 interface WeakSkill {
@@ -443,7 +448,8 @@ export default function Lessons() {
           const lessons = module.lessons || [];
 
           const transformedLessons: Lesson[] = lessons.map((lesson: any, index: number) => {
-            const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
+            const isExam = !!lesson.is_checkpoint_exam;
+            const color = isExam ? '#F59E0B' : ACCENT_COLORS[index % ACCENT_COLORS.length];
 
             // Check if this is the first lesson in the module
             const isFirstLesson = index === 0;
@@ -457,14 +463,12 @@ export default function Lessons() {
               }
             }
 
-            // 🔥 Logic for locking:
-            // 1. First lesson is ALWAYS unlocked
-            // 2. If this is the next lesson after a completed one, it's UNLOCKED (even if failed - to retry)
-            // 3. Other lessons: lock if status is failed or is_locked is true
-            // 4. Completed lessons are always unlocked (show checkmark)
+            // Logic for locking:
             let isLocked = false;
 
-            if (isFirstLesson) {
+            if (isExam) {
+              isLocked = lesson.is_locked === true;
+            } else if (isFirstLesson) {
               isLocked = false; // First lesson always unlocked
             } else if (lesson.status === 'completed' && (lesson.score || 0) >= 60) {
               isLocked = false; // Completed lessons are unlocked
@@ -475,26 +479,31 @@ export default function Lessons() {
             }
 
             const isDone = lesson.status === 'completed' && (lesson.score || 0) >= 60;
-            const isActive = lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed'));
+            const isActive = isExam ? (!isLocked && !isDone) : (lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed')));
 
-            console.log(`📚 Lesson ${lesson.lesson_id}: "${lesson.title}" - status: ${lesson.status}, is_locked: ${lesson.is_locked}, isFirstLesson: ${isFirstLesson}, isNextLesson: ${isNextLesson}, final: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
+            console.log(`📚 Lesson/Exam ${lesson.lesson_id}: "${lesson.title}" - status: ${lesson.status}, is_locked: ${lesson.is_locked}, isExam: ${isExam}, final: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
 
             return {
               id: lesson.lesson_id || lesson.id,
               lesson_id: lesson.lesson_id || lesson.id,
+              exam_id: lesson.exam_id,
+              is_checkpoint_exam: isExam,
               title: lesson.title,
               description: lesson.description,
               difficulty: lesson.difficulty,
               status: lesson.status,
               total_steps: lesson.total_steps,
-              has_quiz: lesson.has_quiz,
+              total_points: lesson.total_points,
+              passing_score: lesson.passing_score,
+              total_questions: lesson.total_questions,
+              has_quiz: lesson.has_quiz || isExam,
               module_id: lesson.module_id,
-              category: lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson",
-              desc: lesson.description || "Complete the contents and quiz assigned by your teacher.",
+              category: isExam ? "Checkpoint Exam" : (lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson"),
+              desc: lesson.description || (isExam ? "Module Checkpoint Exam" : "Complete the contents and quiz assigned by your teacher."),
               color: color,
               iconBg: color + '18',
-              duration: lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min",
-              xp: lesson.has_quiz ? 30 : 20,
+              duration: isExam ? `${lesson.total_questions || 10} Qs` : (lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min"),
+              xp: isExam ? (lesson.total_points || 30) : (lesson.has_quiz ? 30 : 20),
               done: isDone,
               active: isActive,
               locked: isLocked,
@@ -1084,6 +1093,8 @@ export default function Lessons() {
                         <LockIcon size={24} color={iconColor} />
                       ) : lesson.done ? (
                         <CheckIcon size={26} color={iconColor} />
+                      ) : lesson.is_checkpoint_exam ? (
+                        <Text style={{ fontSize: 24 }}>🏆</Text>
                       ) : lesson.active ? (
                         <PlayIcon color={iconColor} size={24} />
                       ) : (
@@ -1093,8 +1104,8 @@ export default function Lessons() {
 
                     <View style={styles.nodeLabelBox}>
                       {lesson.active && !lesson.locked && (
-                        <View style={styles.nextBadge}>
-                          <Text style={styles.nextBadgeText}>NEXT UP</Text>
+                        <View style={[styles.nextBadge, lesson.is_checkpoint_exam && { backgroundColor: '#F59E0B' }]}>
+                          <Text style={styles.nextBadgeText}>{lesson.is_checkpoint_exam ? "EXAM 🏆" : "NEXT UP"}</Text>
                         </View>
                       )}
                       <Text
@@ -1156,14 +1167,25 @@ export default function Lessons() {
                   <Text style={styles.recommendationTypeText}>
                     {selectedLesson.recommendation_type === 'weak_skill_practice' && '📝 Practice Lesson'}
                     {selectedLesson.recommendation_type === 'new_skill' && '🌟 New Skill Lesson'}
+                    {selectedLesson.recommendation_type === 'goal_match' && '🎯 Matches Your Goal'}
                     {selectedLesson.recommendation_type === 'next_in_path' && '➡️ Next in Path'}
                     {selectedLesson.recommendation_type === 'recommended' && '📚 Recommended'}
                   </Text>
                 </View>
               )}
 
-              {/* 🆕 ADAPTIVE REASON SECTION - Now SCROLLABLE */}
-              {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0 && (
+              {/* 🆕 ADAPTIVE REASON SECTION - Now SCROLLABLE
+                  Previously gated on covered_skills.length > 0, which hid
+                  this whole panel for 'goal_match' and 'next_in_path'
+                  recommendations — those never populate covered_skills
+                  since they're not skill-driven, even though they always
+                  have a perfectly good recommended_reason string. That's
+                  why new students (whose picks mostly come from those two
+                  types before enough mastery data exists) saw an empty
+                  "Why this lesson?" panel. Now it shows whenever there's
+                  a reason at all, with the skill breakdown as an optional
+                  extra when covered_skills is actually populated. */}
+              {selectedLesson.recommended_reason && (
                 <ScrollView
                   style={styles.adaptiveReasonScrollContainer}
                   showsVerticalScrollIndicator={true}
@@ -1172,26 +1194,30 @@ export default function Lessons() {
                   <View style={styles.adaptiveReasonContainer}>
                     <Text style={styles.adaptiveReasonTitle}>🎯 Why this lesson?</Text>
                     <Text style={styles.adaptiveReasonSubtitle}>
-                      This lesson will help you practice these skills:
+                      {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0
+                        ? 'This lesson will help you practice these skills:'
+                        : selectedLesson.recommended_reason}
                     </Text>
-                    <View style={styles.skillListContainer}>
-                      {selectedLesson.covered_skills.map((skill, idx) => {
-                        const mastery = Math.round(skill.mastery * 100);
-                        const masteryColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : mastery < 60 ? '#8B5CF6' : '#10B981';
-                        return (
-                          <View key={idx} style={styles.skillListItem}>
-                            <View style={[styles.skillDot, { backgroundColor: masteryColor }]} />
-                            <Text style={styles.skillListText}>
-                              <Text style={styles.skillListName}>{skill.display_name || skill.gesture_name}</Text>
-                              <Text style={[styles.skillListMastery, { color: masteryColor }]}>
-                                {' '}({mastery}% mastery)
+                    {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0 && (
+                      <View style={styles.skillListContainer}>
+                        {selectedLesson.covered_skills.map((skill, idx) => {
+                          const mastery = Math.round(skill.mastery * 100);
+                          const masteryColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : mastery < 60 ? '#8B5CF6' : '#10B981';
+                          return (
+                            <View key={idx} style={styles.skillListItem}>
+                              <View style={[styles.skillDot, { backgroundColor: masteryColor }]} />
+                              <Text style={styles.skillListText}>
+                                <Text style={styles.skillListName}>{skill.display_name || skill.gesture_name}</Text>
+                                <Text style={[styles.skillListMastery, { color: masteryColor }]}>
+                                  {' '}({mastery}% mastery)
+                                </Text>
+                                {mastery < 30 && <Text style={styles.skillListWarning}> ⚠️ Needs practice!</Text>}
                               </Text>
-                              {mastery < 30 && <Text style={styles.skillListWarning}> ⚠️ Needs practice!</Text>}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
                   </View>
                 </ScrollView>
               )}
@@ -1207,8 +1233,8 @@ export default function Lessons() {
                 </View>
               </View>
 
-              {/* Attempt History Button - Only show if lesson has a quiz */}
-              {selectedLesson.has_quiz && (
+              {/* Attempt History Button - Only show if regular lesson has a quiz */}
+              {selectedLesson.has_quiz && !selectedLesson.is_checkpoint_exam && (
                 <Pressable
                   style={styles.attemptHistoryBtn}
                   onPress={() => {
@@ -1223,7 +1249,11 @@ export default function Lessons() {
               <Pressable
                 onPress={() => {
                   setExpandedId(null);
-                  router.push(`/lesson/${selectedLesson.id}` as any);
+                  if (selectedLesson.is_checkpoint_exam) {
+                    router.push(`/checkpoint-exam/${selectedLesson.exam_id}` as any);
+                  } else {
+                    router.push(`/lesson/${selectedLesson.id}` as any);
+                  }
                 }}
                 style={[
                   styles.cardActionBtn,
@@ -1234,9 +1264,9 @@ export default function Lessons() {
                 <Text style={styles.cardActionBtnText}>
                   {selectedLesson.locked
                     ? "🔒 LOCKED"
-                    : selectedLesson.done
-                      ? "🔄 REVIEW LESSON"
-                      : "🚀 START LESSON"}
+                    : selectedLesson.is_checkpoint_exam
+                      ? (selectedLesson.done ? "🔄 RETAKE EXAM" : "🏆 START EXAM")
+                      : (selectedLesson.done ? "🔄 REVIEW LESSON" : "🚀 START LESSON")}
                 </Text>
               </Pressable>
             </View>

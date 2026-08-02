@@ -1642,5 +1642,116 @@ export const api = {
             throw error;
         }
     },
+    /**
+     * 📝 Get all checkpoint exams for the student
+     * GET /api/student/checkpoint-exams
+     */
+    getCheckpointExams: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📝 Fetching checkpoint exams...');
+
+            const response = await fetch(`${API_URL}/student/checkpoint-exams`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📝 Checkpoint exams response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch checkpoint exams');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching checkpoint exams:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 📝 Get a specific checkpoint exam with all questions
+     * GET /api/student/checkpoint-exam/{examId}
+     */
+    getCheckpointExamById: async (examId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📝 Fetching checkpoint exam ${examId}...`);
+
+            const response = await fetch(`${API_URL}/student/checkpoint-exam/${examId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📝 Checkpoint exam response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch checkpoint exam');
+            }
+
+            return data;
+        } catch (error) {
+            console.error(`❌ Error fetching checkpoint exam ${examId}:`, error);
+            throw error;
+        }
+    },
+
+    /**
+     * 📝 Submit a checkpoint exam
+     * POST /api/student/checkpoint-exam/{examId}/submit
+     */
+    submitCheckpointExam: async (examId, answers) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📝 Submitting checkpoint exam ${examId}...`);
+
+            const response = await fetch(`${API_URL}/student/checkpoint-exam/${examId}/submit`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ answers }),
+            });
+
+            const data = await response.json();
+            console.log('📝 Checkpoint exam submit response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to submit checkpoint exam');
+            }
+
+            return data;
+        } catch (error) {
+            console.error(`❌ Error submitting checkpoint exam ${examId}:`, error);
+            throw error;
+        }
+    },
+
+
+
 
 };
