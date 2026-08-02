@@ -19,7 +19,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import { useCameraPermissions } from 'expo-camera';
 import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
-
+import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -263,10 +263,9 @@ export default function GesturePractice({
         showCutePopup('⏭️ Skipped', 'Moving to next question');
     };
     // ─── Handle WebView messages ─────────────────────────────────────────────
-    const handleMessage = (event: any) => {
+    const handleMessage = async (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-
             if (data.type === 'model_status') {
                 if (data.status === 'loaded') {
                     setIsConnected(true);
@@ -384,6 +383,27 @@ export default function GesturePractice({
 
                     playGestureSound();
                     animateSenyaBounce();
+
+                    // 🎯 ADD THIS: Update mastery in real-time
+                    try {
+                        const gestureId = gestureIds[currentIndex];
+                        if (gestureId) {
+                            const response = await api.updateMasteryAfterPractice(
+                                parseInt(gestureId),
+                                1, // 1 new attempt
+                                1  // 1 success
+                            );
+                            console.log('✅ Mastery updated:', response);
+
+                            // If this unlocked new lessons, show a notification
+                            if (response.unlocked_lessons && response.unlocked_lessons.length > 0) {
+                                // You could show a popup here
+                                console.log(`🎉 Unlocked: ${response.unlocked_lessons.join(', ')}`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Failed to update mastery:', error);
+                    }
 
                     const displayName = ID_TO_GESTURE[gestureIds[currentIndex]] || currentTarget;
                     showCutePopup(

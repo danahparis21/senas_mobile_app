@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import Svg, { Path, Circle, Polyline } from 'react-native-svg';
+import Svg, { Path, Circle, Polyline, Rect, Line } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { GlassCard } from '../../components/ui/GlassCard';
 import ConfettiCannon from 'react-native-confetti-cannon';
 
-// 🎯 ICON MAPPING - Map backend achievement codes to local images
+// ICON MAPPING - Map backend achievement codes to local images
 const ACHIEVEMENT_IMAGES: Record<string, any> = {
   'xp_50': require('../../assets/images/img/first_step.png'),
   'xp_100': require('../../assets/images/img/alphabet_star.png'),
@@ -57,7 +57,52 @@ function MilestoneIcon({ done }: { done: boolean }) {
   );
 }
 
-// 🎯 Achievement Type from Backend
+// ── ICONS (no emoji) ────────────────────────────────────────────────
+function LightningIcon({ size = 12, color = '#1848c8' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M13 2 4.5 13.5H11L10 22 19.5 10.5H13L13 2Z" />
+    </Svg>
+  );
+}
+
+function CheckIcon({ size = 11, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 13l4 4L19 7" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function LockIcon({ size = 11, color = '#9CA3AF' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="4" y="10" width="16" height="10" rx="2" stroke={color} strokeWidth={2} />
+      <Path d="M7 10V7a5 5 0 0 1 10 0v3" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function TrophyIcon({ size = 12, color = '#4b7bbb' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z" />
+      <Path d="M17 5h3a2 2 0 0 1-2 4M7 5H4a2 2 0 0 0 2 4" />
+    </Svg>
+  );
+}
+
+function CloseIcon({ size = 16, color = '#4b5563' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1="6" y1="6" x2="18" y2="18" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+      <Line x1="18" y1="6" x2="6" y2="18" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+
+// Achievement Type from Backend
 interface Achievement {
   id: number;
   code: string;
@@ -86,6 +131,21 @@ export default function Achievements() {
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [newlyEarned, setNewlyEarned] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const openAchievementModal = (achievement: Achievement) => {
+    setSelectedAchievement(achievement);
+    setModalVisible(true);
+  };
+
+  const closeAchievementModal = () => {
+    // Only hide — don't clear selectedAchievement yet, so the card's
+    // content stays rendered through the fade-out instead of vanishing
+    // and leaving an empty rounded rectangle behind for the animation
+    // to fade out on its own.
+    setModalVisible(false);
+  };
 
   useEffect(() => {
     fetchAchievements();
@@ -110,7 +170,7 @@ export default function Achievements() {
         setStudentName(`${student?.first_name || ''} ${student?.last_name || ''}`.trim());
       }
 
-      // 🎯 Fetch achievements from backend
+      // Fetch achievements from backend
       const response = await api.getAchievements();
 
       if (response.success) {
@@ -199,7 +259,8 @@ export default function Achievements() {
                     <Text style={styles.heroBadgeTextOrange}>{earnedCount}/{totalCount} badges</Text>
                   </View>
                   <View style={styles.heroBadgeBlue}>
-                    <Text style={styles.heroBadgeTextBlue}>⚡ {totalXP} XP</Text>
+                    <LightningIcon size={12} color="#1848c8" />
+                    <Text style={styles.heroBadgeTextBlue}>{totalXP} XP</Text>
                   </View>
                   <View style={[styles.heroBadgeBlue, { backgroundColor: 'rgba(239,68,68,0.10)' }]}>
                     <Text style={[styles.heroBadgeTextBlue, { color: '#EF4444' }]}>Level {level}</Text>
@@ -216,8 +277,9 @@ export default function Achievements() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>XP Milestones</Text>
             <View style={styles.xpToNextBadge}>
+              {totalXP >= 500 && <TrophyIcon size={12} color="#4b7bbb" />}
               <Text style={styles.xpToNextText}>
-                {totalXP < 500 ? `${500 - totalXP} XP to next` : '🎉 Max Level!'}
+                {totalXP < 500 ? `${500 - totalXP} XP to next` : 'Max Level!'}
               </Text>
             </View>
           </View>
@@ -281,62 +343,78 @@ export default function Achievements() {
               const progressPercent = progress?.percentage || 0;
 
               return (
-                <GlassCard key={achievement.id} style={[styles.badgeCard, !earned && { opacity: 0.85 }]}>
-                  {earned && (
-                    <View style={styles.earnedRibbon}>
-                      <Text style={styles.earnedRibbonText}>✓ EARNED</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.badgeIconBox}>
-                    {earned ? (
-                      <View style={[styles.customBadgeBox, { shadowColor: achievement.color }]}>
-                        <Image
-                          source={getAchievementImage(achievement.code)}
-                          style={{ width: 40, height: 40 }}
-                          contentFit="contain"
-                        />
-                      </View>
-                    ) : (
-                      <View style={styles.lockedBadgeBox}>
-                        <Image
-                          source={require('../../assets/images/img/locked.png')}
-                          style={{ width: 40, height: 40, opacity: 0.7 }}
-                          contentFit="contain"
-                        />
-                        {/* Show progress bar for locked achievements */}
-                        {progress && progress.target > 0 && (
-                          <View style={styles.progressMiniTrack}>
-                            <View
-                              style={[
-                                styles.progressMiniFill,
-                                { width: `${Math.min(progressPercent, 100)}%` }
-                              ]}
-                            />
-                          </View>
-                        )}
+                <Pressable
+                  key={achievement.id}
+                  style={styles.badgeCardPressable}
+                  onPress={() => openAchievementModal(achievement)}
+                >
+                  <GlassCard style={[styles.badgeCard, !earned && { opacity: 0.85 }]}>
+                    {earned && (
+                      <View style={styles.earnedRibbon}>
+                        <CheckIcon size={9} color="#fff" />
+                        <Text style={styles.earnedRibbonText}>EARNED</Text>
                       </View>
                     )}
-                  </View>
 
-                  <Text style={[styles.badgeName, earned ? { color: '#0f3172' } : { color: '#9CA3AF' }]}>
-                    {achievement.name}
-                  </Text>
-                  <Text style={styles.badgeDesc}>{achievement.description}</Text>
+                    <View style={styles.badgeIconBox}>
+                      {earned ? (
+                        <View style={[styles.customBadgeBox, { shadowColor: achievement.color }]}>
+                          <Image
+                            source={getAchievementImage(achievement.code)}
+                            style={{ width: 56, height: 56 }}
+                            contentFit="contain"
+                          />
+                        </View>
+                      ) : (
+                        <View style={styles.lockedBadgeBox}>
+                          <Image
+                            source={require('../../assets/images/img/locked.png')}
+                            style={{ width: 52, height: 52, opacity: 0.7 }}
+                            contentFit="contain"
+                          />
+                          {/* Show progress bar for locked achievements */}
+                          {progress && progress.target > 0 && (
+                            <View style={styles.progressMiniTrack}>
+                              <View
+                                style={[
+                                  styles.progressMiniFill,
+                                  { width: `${Math.min(progressPercent, 100)}%` }
+                                ]}
+                              />
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
 
-                  {!earned && progress && progress.target > 0 && (
-                    <Text style={styles.progressText}>
-                      {progress.current} / {progress.target}
+                    <Text
+                      style={[styles.badgeName, earned ? { color: '#0f3172' } : { color: '#9CA3AF' }]}
+                      numberOfLines={1}
+                    >
+                      {achievement.name}
                     </Text>
-                  )}
+                    <Text style={styles.badgeDesc} numberOfLines={2}>{achievement.description}</Text>
 
-                  <View style={[styles.badgeXpTag, earned ? { backgroundColor: `${achievement.color}15` } : { backgroundColor: 'rgba(15,49,114,0.06)' }]}>
-                    <Text style={[styles.badgeXpText, earned ? { color: achievement.color } : { color: '#9CA3AF' }]}>
-                      {earned ? '✅ ' : '🔒 '}
-                      {progress?.target ? `${progress.target} required` : 'Achievement'}
-                    </Text>
-                  </View>
-                </GlassCard>
+                    <View style={styles.progressTextSlot}>
+                      {!earned && progress && progress.target > 0 && (
+                        <Text style={styles.progressText}>
+                          {progress.current} / {progress.target}
+                        </Text>
+                      )}
+                    </View>
+
+                    <View style={[styles.badgeXpTag, earned ? { backgroundColor: `${achievement.color}15` } : { backgroundColor: 'rgba(15,49,114,0.06)' }]}>
+                      {earned ? (
+                        <CheckIcon size={10} color={achievement.color} />
+                      ) : (
+                        <LockIcon size={10} color="#9CA3AF" />
+                      )}
+                      <Text style={[styles.badgeXpText, earned ? { color: achievement.color } : { color: '#9CA3AF' }]}>
+                        {progress?.target ? `${progress.target} required` : (earned ? 'Achieved' : 'Achievement')}
+                      </Text>
+                    </View>
+                  </GlassCard>
+                </Pressable>
               );
             })}
           </View>
@@ -352,6 +430,95 @@ export default function Achievements() {
           fallSpeed={3000}
         />
       )}
+
+      {/* Achievement detail modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAchievementModal}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={closeAchievementModal}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            {selectedAchievement && (() => {
+              const isEarned = selectedAchievement.is_unlocked;
+              const modalProgress = selectedAchievement.progress;
+              const modalProgressPercent = modalProgress?.percentage || 0;
+
+              return (
+                <>
+                  <Pressable
+                    style={styles.modalCloseBtn}
+                    onPress={closeAchievementModal}
+                  >
+                    <CloseIcon size={16} color="#4b5563" />
+                  </Pressable>
+
+                  {isEarned ? (
+                    <View style={[styles.modalBadgeBox, { shadowColor: selectedAchievement.color }]}>
+                      <Image
+                        source={getAchievementImage(selectedAchievement.code)}
+                        style={{ width: 72, height: 72 }}
+                        contentFit="contain"
+                      />
+                    </View>
+                  ) : (
+                    <View style={styles.modalLockedBadgeBox}>
+                      <Image
+                        source={require('../../assets/images/img/locked.png')}
+                        style={{ width: 72, height: 72, opacity: 0.7 }}
+                        contentFit="contain"
+                      />
+                    </View>
+                  )}
+
+                  <Text style={styles.modalName}>{selectedAchievement.name}</Text>
+
+                  <View style={[
+                    styles.modalStatusPill,
+                    isEarned ? styles.modalStatusPillEarned : styles.modalStatusPillLocked,
+                  ]}>
+                    {isEarned ? <CheckIcon size={11} color="#fff" /> : <LockIcon size={11} color="#6B7280" />}
+                    <Text style={[styles.modalStatusText, { color: isEarned ? '#fff' : '#6B7280' }]}>
+                      {isEarned ? 'Earned' : 'Locked'}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.modalDesc}>{selectedAchievement.description}</Text>
+
+                  {isEarned && selectedAchievement.unlocked_at && (
+                    <Text style={styles.modalUnlockedDate}>
+                      Unlocked on {new Date(selectedAchievement.unlocked_at).toLocaleDateString('en-US', {
+                        month: 'long', day: 'numeric', year: 'numeric',
+                      })}
+                    </Text>
+                  )}
+
+                  {!isEarned && modalProgress && modalProgress.target > 0 && (
+                    <View style={styles.modalProgressSection}>
+                      <View style={styles.modalProgressHeader}>
+                        <Text style={styles.modalProgressLabel}>PROGRESS</Text>
+                        <Text style={styles.modalProgressValue}>
+                          {modalProgress.current} / {modalProgress.target}
+                        </Text>
+                      </View>
+                      <View style={styles.modalProgressTrack}>
+                        <View style={[styles.modalProgressFill, { width: `${Math.min(modalProgressPercent, 100)}%` }]} />
+                      </View>
+                    </View>
+                  )}
+
+                  {selectedAchievement.category && (
+                    <View style={styles.modalCategoryTag}>
+                      <Text style={styles.modalCategoryText}>{selectedAchievement.category}</Text>
+                    </View>
+                  )}
+                </>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -369,21 +536,21 @@ const styles = StyleSheet.create({
   streakText: { color: '#0f3172', fontSize: 13, fontWeight: '700' },
 
   section: { paddingHorizontal: 16, marginTop: 14 },
-  heroCard: { padding: 18 },
-  heroContent: { flexDirection: 'row', justifyContent: 'space-between' },
-  heroTextContent: { flex: 1, paddingRight: 8 },
+  heroCard: { padding: 18, paddingRight: 10, overflow: 'hidden' },
+  heroContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  heroTextContent: { flex: 1, paddingRight: 4 },
   heroSubtitle: { color: '#4b7bbb', fontSize: 12, fontWeight: '600', marginBottom: 2 },
   heroTitle: { fontSize: 24, fontWeight: '800', color: '#0f3172', marginBottom: 10 },
   heroBadgesRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   heroBadgeOrange: { backgroundColor: 'rgba(245,158,11,0.13)', borderRadius: 10, paddingVertical: 5, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
   heroBadgeTextOrange: { fontSize: 12, fontWeight: '800', color: '#92400E' },
-  heroBadgeBlue: { backgroundColor: 'rgba(37,99,235,0.10)', borderRadius: 10, paddingVertical: 5, paddingHorizontal: 12 },
+  heroBadgeBlue: { backgroundColor: 'rgba(37,99,235,0.10)', borderRadius: 10, paddingVertical: 5, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
   heroBadgeTextBlue: { fontSize: 12, fontWeight: '800', color: '#1848c8' },
-  senyaHero: { width: 90, height: 90 },
+  senyaHero: { width: 140, height: 140, marginVertical: -18, marginRight: -12 },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f3172' },
-  xpToNextBadge: { backgroundColor: 'rgba(15,49,114,0.08)', borderRadius: 99, paddingVertical: 3, paddingHorizontal: 10 },
+  xpToNextBadge: { backgroundColor: 'rgba(15,49,114,0.08)', borderRadius: 99, paddingVertical: 3, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
   xpToNextText: { fontSize: 11, fontWeight: '700', color: '#4b7bbb' },
 
   milestoneCard: { padding: 18 },
@@ -412,17 +579,89 @@ const styles = StyleSheet.create({
 
   gridSection: { paddingHorizontal: 16, marginTop: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between' },
-  badgeCard: { width: '48%', padding: 16, overflow: 'hidden' },
-  earnedRibbon: { position: 'absolute', top: 0, right: 0, backgroundColor: '#10B981', borderBottomLeftRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
+  badgeCardPressable: { width: '48%' },
+  badgeCard: { padding: 16, overflow: 'hidden' },
+  earnedRibbon: { position: 'absolute', top: 0, right: 0, backgroundColor: '#10B981', borderBottomLeftRadius: 12, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
   earnedRibbonText: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
-  badgeIconBox: { alignItems: 'center', marginBottom: 10, marginTop: 10 },
-  customBadgeBox: { width: 56, height: 56, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
-  lockedBadgeBox: { width: 56, height: 56, borderRadius: 20, backgroundColor: 'rgba(156,163,175,0.15)', alignItems: 'center', justifyContent: 'center' },
+  badgeIconBox: { alignItems: 'center', marginBottom: 10, marginTop: 8 },
+  customBadgeBox: { width: 76, height: 76, borderRadius: 24, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+  lockedBadgeBox: { width: 76, height: 76, borderRadius: 24, backgroundColor: 'rgba(156,163,175,0.15)', alignItems: 'center', justifyContent: 'center' },
   badgeName: { fontSize: 13, fontWeight: '800', marginBottom: 3 },
-  badgeDesc: { fontSize: 10.5, color: '#6B7280', lineHeight: 14, marginBottom: 8 },
-  badgeXpTag: { alignSelf: 'flex-start', borderRadius: 99, paddingVertical: 3, paddingHorizontal: 10 },
+  badgeDesc: { fontSize: 10.5, color: '#6B7280', lineHeight: 14, height: 28, marginBottom: 0 },
+  badgeXpTag: { alignSelf: 'flex-start', borderRadius: 99, paddingVertical: 3, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
   badgeXpText: { fontSize: 11, fontWeight: '800' },
-  progressText: { fontSize: 10, color: '#6B7280', marginBottom: 6, textAlign: 'center' },
+  progressTextSlot: { height: 16, marginBottom: 2, alignItems: 'center', justifyContent: 'center' },
+  progressText: { fontSize: 10, color: '#6B7280', textAlign: 'center' },
   progressMiniTrack: { width: 40, height: 4, backgroundColor: 'rgba(156,163,175,0.3)', borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   progressMiniFill: { height: '100%', backgroundColor: '#F59E0B', borderRadius: 2 },
-}); 
+
+  // Achievement detail modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,26,46,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 26,
+    padding: 24,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,49,114,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBadgeBox: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    marginTop: 6,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  modalLockedBadgeBox: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: 'rgba(156,163,175,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    marginTop: 6,
+  },
+  modalName: { fontSize: 19, fontWeight: '800', color: '#0f3172', textAlign: 'center', marginBottom: 8 },
+  modalStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 99,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  modalStatusPillEarned: { backgroundColor: '#10B981' },
+  modalStatusPillLocked: { backgroundColor: 'rgba(156,163,175,0.18)' },
+  modalStatusText: { fontSize: 12, fontWeight: '800' },
+  modalDesc: { fontSize: 13.5, color: '#4b5563', textAlign: 'center', lineHeight: 20, marginBottom: 14 },
+  modalUnlockedDate: { fontSize: 11.5, color: '#9CA3AF', fontWeight: '600', marginBottom: 4 },
+  modalProgressSection: { width: '100%', marginTop: 4, marginBottom: 14 },
+  modalProgressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  modalProgressLabel: { fontSize: 10, fontWeight: '700', color: '#4b7bbb', letterSpacing: 0.6 },
+  modalProgressValue: { fontSize: 11, fontWeight: '800', color: '#0f3172' },
+  modalProgressTrack: { height: 8, borderRadius: 99, backgroundColor: 'rgba(15,49,114,0.10)', overflow: 'hidden' },
+  modalProgressFill: { height: '100%', backgroundColor: '#F59E0B', borderRadius: 99 },
+  modalCategoryTag: { marginTop: 2, backgroundColor: 'rgba(15,49,114,0.06)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 12 },
+  modalCategoryText: { fontSize: 10.5, fontWeight: '700', color: '#4b7bbb', textTransform: 'capitalize' },
+});

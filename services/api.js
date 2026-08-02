@@ -1528,4 +1528,119 @@ export const api = {
     },
 
 
+    // Add to your api object in api.js
+
+    /**
+     * 🎯 Get adaptive learning path recommendations
+     * GET /api/student/adaptive-lessons
+     */
+    getAdaptiveLessons: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🧠 Fetching adaptive lessons...');
+
+            const response = await fetch(`${API_URL}/student/adaptive-lessons`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🧠 Adaptive lessons response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch adaptive lessons');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching adaptive lessons:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 📊 Get detailed mastery data for the student
+     * GET /api/student/mastery
+     */
+    getMasteryData: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📊 Fetching mastery data...');
+
+            const response = await fetch(`${API_URL}/student/mastery`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📊 Mastery data response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch mastery data');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching mastery data:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 🎯 Update mastery after a practice session (real-time)
+     * POST /api/student/mastery/update
+     */
+    updateMasteryAfterPractice: async (gestureId, attempts, successes) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🎯 Updating mastery for gesture ${gestureId}...`);
+
+            const response = await fetch(`${API_URL}/student/mastery/update`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    gesture_id: gestureId,
+                    attempts: attempts,
+                    successes: successes,
+                }),
+            });
+
+            const data = await response.json();
+            console.log('🎯 Mastery update response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to update mastery');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error updating mastery:', error);
+            throw error;
+        }
+    },
+
 };

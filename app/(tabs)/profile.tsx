@@ -885,7 +885,7 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    backgroundColor: '#1848c8',
+    backgroundColor: '#065bc2ff',
     paddingTop: 32, paddingBottom: 40,
     alignItems: 'center', position: 'relative', overflow: 'hidden',
   },

@@ -179,6 +179,20 @@ interface Lesson {
   } | null;
 }
 
+// One row per teacher module for "Continue Learning" — aggregated from
+// api.getStudentLessons(), the same source lessons.tsx uses to build its
+// per-module lesson map.
+interface ModuleSummary {
+  module_id: number;
+  title: string;
+  totalCount: number;
+  doneCount: number;
+  percent: number;
+}
+
+// Module card accents — shades of blue only, matching the app's brand.
+const MODULE_ACCENT_COLORS = [C.blue, '#4FA3E3', C.blueDeep];
+
 const quickActions = [
   { label: "Multiple Choice", icon: require('../../assets/images/img/multiple_choice.png'), tint: C.sky, screen: "/quiz/mc" },
   { label: "Drag & Drop", icon: require('../../assets/images/img/dragNdrop.png'), tint: C.lilac, screen: "/quiz/dnd" },
@@ -226,8 +240,11 @@ export default function Dashboard() {
   const [xpMax, setXpMax] = useState<number>(100);
   const [streak, setStreak] = useState<number>(0);
   const [level, setLevel] = useState<number>(1);
-  const [teacherLessons, setTeacherLessons] = useState<Lesson[]>([]);
+  const [learningPathLessons, setLearningPathLessons] = useState<Lesson[]>([]);
+  const [fallbackLessons, setFallbackLessons] = useState<Lesson[]>([]);
+  const [teacherModules, setTeacherModules] = useState<ModuleSummary[]>([]);
   const [loadingLessons, setLoadingLessons] = useState<boolean>(true);
+  const [loadingModules, setLoadingModules] = useState<boolean>(true);
   const flatListRef = useRef<FlatList>(null);
   const [levelName, setLevelName] = useState<string>('Novice Signer');
 
@@ -510,7 +527,9 @@ export default function Dashboard() {
     try {
       await Promise.all([
         fetchStudentData(),
-        fetchTeacherLessons(),
+        fetchLearningPathLessons(),
+        fetchFallbackLessons(),
+        fetchTeacherModules(),
         fetchDailyChallenge(), // ← ADD THIS
         checkForPromotion(),
         checkForNewAchievements()
@@ -688,16 +707,96 @@ export default function Dashboard() {
     setPromotionVisible(false);
   };
 
-  const fetchTeacherLessons = async (): Promise<void> => {
+  // "Your Lessons" carousel — pulls from the student's personalized
+  // Learning Path (same source as the "My Learning Path" tab in
+  // lessons.tsx), not a flat next-lesson-per-module list.
+  const fetchLearningPathLessons = async (): Promise<void> => {
     try {
       setLoadingLessons(true);
-      const response = await api.getAllLessons();
+      const response = await api.getRecommendedLessons();
 
-      console.log('📚 Dashboard - All lessons response:', JSON.stringify(response, null, 2));
+      console.log('🎯 Dashboard - Learning path lessons response:', JSON.stringify(response, null, 2));
 
       if (response.success) {
-        const allLessons = response.lessons || [];
-        setTeacherLessons(allLessons);
+        const rawLessons = response.lessons || [];
+
+        // Normalize into the same Lesson shape the carousel card expects.
+        // The learning-path endpoint returns done/active/locked booleans
+        // directly (see lessons.tsx's own transform of this same
+        // endpoint) rather than the status/progress shape getAllLessons()
+        // used, so we map defensively with fallbacks either way.
+        const normalized: Lesson[] = rawLessons.map((lesson: any) => ({
+          lesson_id: lesson.lesson_id ?? lesson.id,
+          title: lesson.title,
+          description: lesson.description || lesson.recommended_reason || '',
+          lesson_type: lesson.lesson_type || lesson.category || lesson.difficulty || 'default',
+          difficulty: lesson.difficulty || '',
+          status: lesson.status || (lesson.done ? 'completed' : lesson.active ? 'in_progress' : 'pending'),
+          assigned_at: lesson.assigned_at || '',
+          has_quiz: !!lesson.has_quiz,
+          total_steps: lesson.total_steps || 0,
+          is_locked: !!lesson.locked,
+          is_next_lesson: !!lesson.active,
+          score: lesson.score ?? null,
+          progress: lesson.progress ?? null,
+        }));
+
+        setLearningPathLessons(normalized);
+      }
+    } catch (error) {
+      console.error('Error fetching learning path lessons:', error);
+    } finally {
+      setLoadingLessons(false);
+    }
+  };
+
+  // Fallback for "Your Lessons" when the Learning Path has nothing left to
+  // show (e.g. everything in it is already done/mastered) — falls back to
+  // the flat assigned-lessons list, filtered to what still needs
+  // attention: not yet done, or done but scored under 100 and worth
+  // reviewing. This is exactly what the carousel showed before the
+  // Learning Path was wired in.
+  const fetchFallbackLessons = async (): Promise<void> => {
+    try {
+      const response = await api.getAllLessons();
+
+      if (response.success) {
+        setFallbackLessons(response.lessons || []);
+      }
+    } catch (error) {
+      console.error('Error fetching fallback lessons:', error);
+    }
+  };
+
+  // "Continue Learning" — the teacher's assigned curriculum, grouped by
+  // module (Module 1, Module 2, ...), same source lessons.tsx uses to
+  // build its module lesson map.
+  const fetchTeacherModules = async (): Promise<void> => {
+    try {
+      setLoadingModules(true);
+      const response = await api.getStudentLessons();
+
+      console.log('📚 Dashboard - Student modules response:', JSON.stringify(response, null, 2));
+
+      if (response.success && response.modules) {
+        const summaries: ModuleSummary[] = response.modules.map((module: any) => {
+          const lessons = module.lessons || [];
+          const totalCount = lessons.length;
+          const doneCount = lessons.filter(
+            (l: any) => l.status === 'completed' && (l.score ?? 0) >= 60
+          ).length;
+          const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+
+          return {
+            module_id: module.module_id,
+            title: module.title,
+            totalCount,
+            doneCount,
+            percent,
+          };
+        });
+
+        setTeacherModules(summaries);
 
         if (response.student) {
           if (response.student.total_xp !== undefined && response.student.total_xp !== null) {
@@ -723,9 +822,9 @@ export default function Dashboard() {
         }
       }
     } catch (error) {
-      console.error('Error fetching teacher lessons:', error);
+      console.error('Error fetching teacher modules:', error);
     } finally {
-      setLoadingLessons(false);
+      setLoadingModules(false);
     }
   };
 
@@ -756,13 +855,19 @@ export default function Dashboard() {
 
   const renderTeacherLesson = ({ item }: { item: Lesson }) => {
     const progress = item.progress;
+    const isCompleted = item.status === 'completed' || !!progress?.lesson_completed;
+    // The learning-path endpoint doesn't return step-level progress (no
+    // progress.current_step), only a completion state — so fall back to
+    // 100%/0% by completion instead of always reading as 0%.
     const progressPercent = progress && item.total_steps > 0
       ? Math.round((progress.current_step / item.total_steps) * 100)
-      : 0;
+      : isCompleted
+        ? 100
+        : 0;
 
     const statusColor = getLessonStatusColor(item.status);
-    const isCompleted = item.status === 'completed' || progress?.lesson_completed;
-    const isPerfect = progress?.quiz_score === 100;
+    const displayScore = progress?.quiz_score ?? item.score ?? null;
+    const isPerfect = displayScore === 100;
     const icon = getLessonIcon(item.lesson_type);
 
     return (
@@ -796,10 +901,10 @@ export default function Dashboard() {
                   </View>
                 )}
               </View>
-              {progress?.quiz_completed && progress?.quiz_score !== null ? (
+              {(progress?.quiz_completed || (item.has_quiz && displayScore !== null)) ? (
                 <View style={[styles.tlMiniScoreBadge, { backgroundColor: isPerfect ? C.peach : C.mint }]}>
                   <Text style={[styles.tlMiniScoreText, { color: isPerfect ? C.sunDeep : '#1E8A5F' }]}>
-                    {isPerfect ? '🌟 ' : ''}{progress.quiz_score}%
+                    {isPerfect ? '🌟 ' : ''}{displayScore}%
                   </Text>
                 </View>
               ) : (
@@ -867,9 +972,25 @@ export default function Dashboard() {
     );
   }
 
-  // Get carousel lessons
-  const carouselLessons = teacherLessons
-    .filter(lesson => {
+  // Get carousel lessons. Always show at least 3 (a single card looks
+  // empty) by layering three tiers, deduped by lesson_id:
+  //   1. Learning Path picks that aren't locked or already mastered
+  //   2. anything else assigned that still needs review (not done, or
+  //      done with a low score)
+  //   3. if still short, pad with whatever's left — including lessons
+  //      already at 100% — just so the row isn't sparse
+  const MIN_CAROUSEL_LESSONS = 3;
+
+  const learningPathCandidates = learningPathLessons.filter((lesson) => {
+    if (lesson.is_locked) return false;
+    const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
+    if (!isCompleted) return true;
+    const score = lesson.score ?? lesson.progress?.quiz_score ?? 0;
+    return score < 100;
+  });
+
+  const needsReviewCandidates = fallbackLessons
+    .filter((lesson) => {
       const isActuallyLocked = lesson.is_locked === true && lesson.is_next_lesson !== true;
       if (isActuallyLocked) return false;
 
@@ -888,15 +1009,36 @@ export default function Dashboard() {
       return 0;
     });
 
-  // Get completed lessons for "Continue Learning"
-  const completedLessons = teacherLessons
-    .filter(lesson => lesson.status === 'completed' || lesson.progress?.lesson_completed)
-    .slice(0, 3);
+  const usedLessonIds = new Set<number>();
+  const takeUnique = (source: Lesson[], count: number): Lesson[] => {
+    const picked: Lesson[] = [];
+    for (const lesson of source) {
+      if (picked.length >= count) break;
+      if (usedLessonIds.has(lesson.lesson_id)) continue;
+      usedLessonIds.add(lesson.lesson_id);
+      picked.push(lesson);
+    }
+    return picked;
+  };
 
-  const continueLearningLessons = completedLessons;
-  const sectionTitle = continueLearningLessons.length > 0 ? 'Continue Learning' : 'Completed Lessons';
+  let carouselLessons: Lesson[] = takeUnique(learningPathCandidates, MIN_CAROUSEL_LESSONS);
 
-  const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
+  if (carouselLessons.length < MIN_CAROUSEL_LESSONS) {
+    carouselLessons = carouselLessons.concat(
+      takeUnique(needsReviewCandidates, MIN_CAROUSEL_LESSONS - carouselLessons.length)
+    );
+  }
+
+  if (carouselLessons.length < MIN_CAROUSEL_LESSONS) {
+    // Everything left is already at 100% — pad with those anyway rather
+    // than showing fewer than 3 cards.
+    carouselLessons = carouselLessons.concat(
+      takeUnique(
+        [...learningPathLessons, ...fallbackLessons],
+        MIN_CAROUSEL_LESSONS - carouselLessons.length
+      )
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -1276,81 +1418,40 @@ export default function Dashboard() {
             </View>
           </View>
 
-          {/* ── Continue Learning / Completed ── */}
-          {displayLessons.length > 0 && (
+          {/* ── Continue Learning (per-module, colored — distinct from Today's Goals) ── */}
+          {!loadingModules && teacherModules.length > 0 && (
             <View style={styles.section}>
-              <View style={styles.panel}>
-                <View style={styles.panelHeader}>
-                  <Text style={styles.sectionTitle}>{sectionTitle}</Text>
-                  <Pressable onPress={() => router.push('/lessons')}>
-                    <Text style={styles.seeAllText}>See all</Text>
-                  </Pressable>
-                </View>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Continue Learning</Text>
+              </View>
 
-                <View style={styles.lessonsList}>
-                  {displayLessons.map((lesson) => {
-                    const progress = lesson.progress;
-                    const progressPercent = progress && lesson.total_steps > 0
-                      ? Math.round((progress.current_step / lesson.total_steps) * 100)
-                      : 0;
-                    const statusTag = getStatusTag(lesson.status, progress);
-                    const isLocked = statusTag === 'Pending' && progressPercent === 0;
-                    const isCompleted = statusTag === 'Completed';
-                    const icon = getLessonIcon(lesson.lesson_type);
-
-                    return (
-                      <Pressable
-                        key={lesson.lesson_id}
-                        style={[styles.lessonRowCard, isLocked && { opacity: 0.55 }]}
-                        disabled={isLocked}
-                        onPress={() => router.push(`/lesson/${lesson.lesson_id}`)}
-                      >
-                        <View style={[styles.lessonIconBox, {
-                          backgroundColor: isCompleted ? C.mint : isLocked ? '#EEF2F7' : C.sky,
-                        }]}>
-                          {isCompleted ? (
-                            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E8A5F" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
-                              <Polyline points="20 6 9 17 4 12" />
-                            </Svg>
-                          ) : isLocked ? (
-                            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2">
-                              <Rect x="3" y="11" width="18" height="11" rx="2" />
-                              <Path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                            </Svg>
-                          ) : icon ? (
-                            <Image source={icon} style={styles.lessonIcon} contentFit="contain" />
-                          ) : (
-                            <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.blue} strokeWidth="2">
-                              <Path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                              <Path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                            </Svg>
-                          )}
+              <View style={styles.moduleList}>
+                {teacherModules.map((module, index) => {
+                  const accent = MODULE_ACCENT_COLORS[index % MODULE_ACCENT_COLORS.length];
+                  return (
+                    <Pressable
+                      key={module.module_id}
+                      style={[styles.moduleCard, { backgroundColor: accent }]}
+                      onPress={() => router.push(`/lessons?tab=modules&moduleId=${module.module_id}` as any)}
+                    >
+                      <View style={styles.moduleCardInfo}>
+                        <Text style={styles.moduleCardTitle} numberOfLines={1}>{module.title}</Text>
+                        <Text style={styles.moduleCardStats}>
+                          {module.percent}% · {module.doneCount} lessons/{module.totalCount}
+                        </Text>
+                        <View style={styles.moduleCardProgressTrack}>
+                          <View style={[styles.moduleCardProgressFill, { width: `${module.percent}%` }]} />
                         </View>
-                        <View style={styles.lessonInfo}>
-                          <View style={styles.lessonRow}>
-                            <Text style={styles.lessonTitle} numberOfLines={1}>{lesson.title}</Text>
-                            <View style={[styles.lessonTag, {
-                              backgroundColor: isCompleted ? C.mint : isLocked ? '#EEF2F7' : C.peach,
-                            }]}>
-                              <Text style={[styles.lessonTagText, {
-                                color: isCompleted ? '#1E8A5F' : isLocked ? '#6B7280' : C.sunDeep,
-                              }]}>
-                                {statusTag}
-                              </Text>
-                            </View>
-                          </View>
-                          <View style={styles.lessonProgressTrack}>
-                            <View style={[styles.lessonProgressFill, {
-                              width: `${Math.min(progressPercent, 100)}%`,
-                              backgroundColor: isCompleted ? '#34C77B' : '#F5A524',
-                            }]} />
-                          </View>
-                          <Text style={styles.lessonProgressText}>{Math.min(progressPercent, 100)}% complete</Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                      </View>
+                      <View style={styles.moduleArrowCircle}>
+                        <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
+                          <Line x1="5" y1="12" x2="19" y2="12" />
+                          <Polyline points="12 5 19 12 12 19" />
+                        </Svg>
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -1517,6 +1618,40 @@ const styles = StyleSheet.create({
 
   // Teacher Lessons carousel
   teacherLessonsCarousel: { paddingRight: 16, paddingLeft: 2, paddingVertical: 4 },
+
+  // Continue Learning — colorful per-module cards, distinct from the white
+  // Today's Goals card above.
+  moduleList: { gap: 12 },
+  moduleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  moduleCardInfo: { flex: 1, paddingRight: 12 },
+  moduleCardTitle: { fontSize: 15, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  moduleCardStats: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.85)', marginBottom: 8 },
+  moduleCardProgressTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 99,
+    overflow: 'hidden',
+  },
+  moduleCardProgressFill: { height: '100%', backgroundColor: '#fff', borderRadius: 99 },
+  moduleArrowCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   teacherLessonCard: {
     width: screenWidth * 0.78,
     backgroundColor: C.card,

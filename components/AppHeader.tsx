@@ -112,7 +112,7 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
         // 🔥 Rate limiting - don't fetch too frequently
         const now = Date.now();
         if (!forceRefresh && (now - lastFetchTimeRef.current) < MIN_FETCH_INTERVAL) {
-            console.log(`⏳ Skipping notifications fetch - rate limited (${Math.round((MIN_FETCH_INTERVAL - (now - lastFetchTimeRef.current)) / 1000)}s remaining)`);
+            console.log(`⏳ Skipping notifications fetch - rate limited`);
             return;
         }
 
@@ -122,7 +122,7 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
             setTimeout(() => {
                 fetchErrorCountRef.current = 0;
                 console.log('🔄 Resetting error count, retrying...');
-            }, 30000); // Wait 30 seconds before trying again
+            }, 30000);
             return;
         }
 
@@ -151,7 +151,7 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
             let currentNotifications: Notification[] = [];
             const cacheTimestamp = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP);
             const cacheAge = cacheTimestamp ? Date.now() - parseInt(cacheTimestamp) : Infinity;
-            const isCacheValid = cacheAge < 5000; // 5 seconds cache validity
+            const isCacheValid = cacheAge < 5000;
 
             if (!forceRefresh && isCacheValid) {
                 const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
@@ -185,46 +185,45 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
                     }
                     console.log('📬 Fetched fresh notifications:', currentNotifications.length, 'Unread:', unread);
                     fetchSuccess = true;
-                    fetchErrorCountRef.current = 0; // Reset error count on success
+                    fetchErrorCountRef.current = 0;
                 }
             } catch (error: any) {
-                // 🔥 Check if it's a rate limit error
                 if (error.message?.includes('Too Many Attempts') ||
                     error.message?.includes('429') ||
                     error.message?.includes('rate limit')) {
-
                     fetchErrorCountRef.current += 1;
                     console.warn(`⏳ Rate limited! (Error ${fetchErrorCountRef.current}/${MAX_ERROR_COUNT})`);
-
-                    // If we have cached data, use it
-                    if (currentNotifications.length === 0) {
-                        const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
-                        if (cachedData) {
-                            currentNotifications = JSON.parse(cachedData);
-                            setNotifications(currentNotifications);
-                            console.log('📦 Using cached notifications (fallback):', currentNotifications.length);
-                        }
-                    }
                 } else {
                     console.log('Could not fetch notifications from database:', error);
-                    // Use cache if available
-                    if (currentNotifications.length === 0) {
-                        const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
-                        if (cachedData) {
-                            currentNotifications = JSON.parse(cachedData);
-                            setNotifications(currentNotifications);
-                            console.log('📦 Using cached notifications (fallback):', currentNotifications.length);
-                        }
+                }
+                // Use cache if available
+                if (currentNotifications.length === 0) {
+                    const cachedData = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATIONS_CACHE);
+                    if (cachedData) {
+                        currentNotifications = JSON.parse(cachedData);
+                        setNotifications(currentNotifications);
+                        console.log('📦 Using cached notifications (fallback):', currentNotifications.length);
                     }
                 }
             }
 
-            // 3. Daily practice reminder (only if not force refreshing and no errors)
-            if (!forceRefresh && studentId && fetchSuccess) {
+            // 🔥 FIX: Daily practice reminder — check on EVERY fetch (mount
+            // and focus alike), not just when forceRefresh is false. This
+            // check has its own independent daily-date guard right below,
+            // so gating it behind forceRefresh too was redundant — and
+            // harmful, since useFocusEffect always passes forceRefresh=true,
+            // which meant this could only ever run once per app session
+            // (on initial mount) instead of getting a fresh chance every
+            // time the student opens the app or returns to a screen.
+            if (studentId) {
                 try {
                     const reminderKey = getStudentStorageKey(STORAGE_KEYS.LAST_PRACTICE_REMINDER, studentId);
                     const lastReminderDate = await AsyncStorage.getItem(reminderKey);
                     const today = new Date().toDateString();
+
+                    console.log(`🔍 Reminder check - Student: ${studentId}, Key: ${reminderKey}`);
+                    console.log(`🔍 Last reminder: ${lastReminderDate}, Today: ${today}`);
+                    console.log(`🔍 Should create? ${lastReminderDate !== today}`);
 
                     if (lastReminderDate !== today) {
                         let practiceMessage = 'Practice your gestures today! 🖐️';
@@ -248,26 +247,35 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
                             action_url: '/(tabs)/gesture',
                         }]);
 
-                        console.log('📅 Reminder save result:', saveResult);
+                        console.log('📅 Reminder save result:', JSON.stringify(saveResult));
 
-                        await AsyncStorage.setItem(reminderKey, today);
+                        // 🔥 FIX: ONLY save the date if the notification was actually saved
+                        // Check: success === true AND saved > 0
+                        if (saveResult && saveResult.success && saveResult.saved > 0) {
+                            await AsyncStorage.setItem(reminderKey, today);
+                            console.log(`✅ Reminder saved! Date set to: ${today}`);
 
-                        const updatedResponse = await api.getNotifications();
-                        if (updatedResponse.success) {
-                            const freshNotifications = updatedResponse.notifications || [];
-                            setNotifications(freshNotifications);
-                            setUnreadCount(updatedResponse.unread_count || 0);
-                            if (updatedResponse.unread_count > 0) {
-                                animateBadge();
+                            // Fetch fresh notifications after saving
+                            const updatedResponse = await api.getNotifications();
+                            if (updatedResponse.success) {
+                                const freshNotifications = updatedResponse.notifications || [];
+                                setNotifications(freshNotifications);
+                                setUnreadCount(updatedResponse.unread_count || 0);
+                                if (updatedResponse.unread_count > 0) {
+                                    animateBadge();
+                                }
+                                await AsyncStorage.setItem(
+                                    STORAGE_KEYS.NOTIFICATIONS_CACHE,
+                                    JSON.stringify(freshNotifications)
+                                );
+                                await AsyncStorage.setItem(
+                                    STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP,
+                                    String(Date.now())
+                                );
                             }
-                            await AsyncStorage.setItem(
-                                STORAGE_KEYS.NOTIFICATIONS_CACHE,
-                                JSON.stringify(freshNotifications)
-                            );
-                            await AsyncStorage.setItem(
-                                STORAGE_KEYS.NOTIFICATIONS_TIMESTAMP,
-                                String(Date.now())
-                            );
+                        } else {
+                            console.log(`⚠️ Reminder NOT saved (success: ${saveResult?.success}, saved: ${saveResult?.saved}) - will retry next time`);
+                            // DO NOT save the date - retry on next fetch
                         }
                     } else {
                         console.log(`⏭️ Reminder already sent today for student ${studentId}`);

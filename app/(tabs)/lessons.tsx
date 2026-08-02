@@ -13,7 +13,7 @@ import {
   StatusBar,
   Platform
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { api } from '../../services/api';
@@ -27,6 +27,9 @@ import {
   GreetingIcon,
   FlameIcon
 } from '../../components/ui/icons';
+import { MasteryBadge } from '../../components/MasteryBadge';
+import { WeakSkillsSection } from '../../components/WeakSkillsSection';
+import { MasterySummary } from '../../components/MasterySummary';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -143,6 +146,22 @@ interface Lesson {
   done: boolean;
   active: boolean;
   locked: boolean;
+  // 🆕 NEW FIELDS FOR ADAPTIVE REASONS
+  covered_skills?: WeakSkill[];  // What weak skills this lesson covers
+  recommendation_type?: string;  // 'weak_skill_practice', 'new_skill', 'next_in_path'
+  priority?: number;            // How many weak skills it covers
+  weakest_skill?: WeakSkill | null;  // 🆕
+}
+
+interface WeakSkill {
+  gesture_id: number;
+  gesture_name: string;
+  display_name: string;
+  mastery: number;
+  attempts: number;
+  successes: number;
+  wrong_attempts: number;
+  never_practiced?: boolean;
 }
 
 interface Module {
@@ -154,6 +173,19 @@ interface Module {
 
 export default function Lessons() {
   const router = useRouter();
+  // Optional deep-link params: navigating here with ?tab=modules&moduleId=5
+  // (e.g. from a "Continue Learning" module card on the dashboard) opens
+  // straight to that module's lesson map instead of the default view.
+  const params = useLocalSearchParams<{ tab?: string; moduleId?: string }>();
+  // Tracks which param combo was last applied. Using a ref instead of a
+  // one-time "applied" boolean matters here: expo-router can reuse this
+  // same screen instance across navigations (no remount) when re-pushed
+  // with new params, so a once-only guard would apply the very first
+  // deep link and then silently ignore every later one — leaving the
+  // screen stuck wherever it was last, regardless of which module card
+  // was tapped. Comparing against the last-applied key re-syncs whenever
+  // the incoming params actually change.
+  const lastAppliedDeepLinkKeyRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<number>(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -188,6 +220,13 @@ export default function Lessons() {
   const cloud2Anim = useRef(new Animated.Value(screenWidth + 200)).current;
   const cloud3Anim = useRef(new Animated.Value(-250)).current;
   const cloud4Anim = useRef(new Animated.Value(screenWidth + 250)).current;
+
+
+  // Adaptive Learning State
+  const [weakSkills, setWeakSkills] = useState<WeakSkill[]>([]);
+  const [masterySummary, setMasterySummary] = useState<any>(null);
+  const [loadingMastery, setLoadingMastery] = useState<boolean>(false);
+  const [showWeakSkills, setShowWeakSkills] = useState<boolean>(true);
 
   // Sun glow animation
   useEffect(() => {
@@ -291,6 +330,108 @@ export default function Lessons() {
     bob.start();
     return () => bob.stop();
   }, [bobAnim]);
+
+
+  // ── LOAD MASTERY DATA ──────────────────────────────────────────────────
+  const loadMasteryData = async () => {
+    try {
+      setLoadingMastery(true);
+      const response = await api.getMasteryData();
+
+      if (response.success) {
+        setWeakSkills(response.weak_skills || []);
+        setMasterySummary(response.overall || null);
+      }
+    } catch (error) {
+      console.error('Error loading mastery data:', error);
+    } finally {
+      setLoadingMastery(false);
+    }
+  };
+
+  // ── HANDLE PRACTICE PRESS ─────────────────────────────────────────────
+  const handlePracticePress = (skill: WeakSkill) => {
+    // Navigate to gesture practice - using the correct route
+    router.push({
+
+      pathname: '/lesson/GesturePractice',
+      params: {
+        gestureId: skill.gesture_id,
+        gestureName: skill.display_name || skill.gesture_name,
+        mastery: skill.mastery,
+      }
+    });
+  };
+
+  // ── LOAD ADAPTIVE LESSONS ─────────────────────────────────────────────
+  const loadAdaptiveLessons = async () => {
+    try {
+      setLoadingLearningPath(true);
+      const response = await api.getAdaptiveLessons();
+
+      if (response.success) {
+        // Transform lessons
+        const transformed: Lesson[] = response.lessons.map((lesson: any, index: number) => {
+          const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
+
+          // 🆕 Find the WEAKEST skill this lesson covers
+          let weakestSkill = null;
+          let weakestMastery = 1.0;
+          if (lesson.covered_skills && lesson.covered_skills.length > 0) {
+            for (const skill of lesson.covered_skills) {
+              if (skill.mastery < weakestMastery) {
+                weakestMastery = skill.mastery;
+                weakestSkill = skill;
+              }
+            }
+          }
+
+          return {
+            id: lesson.lesson_id,
+            lesson_id: lesson.lesson_id,
+            title: lesson.title,
+            description: lesson.description,
+            difficulty: lesson.difficulty,
+            status: lesson.status,
+            total_steps: lesson.total_steps,
+            has_quiz: lesson.has_quiz,
+            module_id: lesson.module_id,
+            recommended_reason: lesson.recommendation_reason,
+            category: lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson",
+            desc: lesson.recommendation_reason || lesson.description || "Picked for you based on your learning path.",
+            color: color,
+            iconBg: color + '18',
+            duration: lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min",
+            xp: lesson.has_quiz ? 30 : 20,
+            done: !!lesson.done,
+            active: !!lesson.active,
+            locked: !!lesson.locked,
+            // 🆕 Store adaptive data
+            covered_skills: lesson.covered_skills || [],
+            recommendation_type: lesson.recommendation_type || 'recommended',
+            priority: lesson.priority || 0,
+            // 🆕 Store the weakest skill for badge display
+            weakest_skill: weakestSkill,
+          };
+        });
+
+        setLearningPathLessons(transformed);
+        setGoalMastered(!!response.learning_path?.goal_mastered);
+
+        // Also update weak skills from the response
+        if (response.weak_skills) {
+          setWeakSkills(response.weak_skills);
+        }
+        if (response.mastery_summary) {
+          setMasterySummary(response.mastery_summary);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching adaptive lessons:', error);
+    } finally {
+      setLoadingLearningPath(false);
+    }
+  };
 
   const loadModulesData = async () => {
     try {
@@ -429,8 +570,33 @@ export default function Lessons() {
 
   useEffect(() => {
     loadModulesData();
-    loadLearningPathData();
+    loadAdaptiveLessons(); // Changed from loadLearningPathData
+    loadMasteryData();
   }, []);
+
+  // Once modules are in, honor a ?tab=modules&moduleId=X deep link (if any)
+  // by jumping straight to that module. Re-applies whenever the params
+  // actually change (see the ref comment above) so tapping a different
+  // module card while already on this screen still navigates correctly.
+  useEffect(() => {
+    if (modules.length === 0) return;
+
+    const wantsModulesTab = params.tab === 'modules' || !!params.moduleId;
+    if (!wantsModulesTab) return;
+
+    const key = `${params.tab ?? ''}|${params.moduleId ?? ''}`;
+    if (lastAppliedDeepLinkKeyRef.current === key) return;
+    lastAppliedDeepLinkKeyRef.current = key;
+
+    setActiveTab(1);
+
+    if (params.moduleId) {
+      const targetIndex = modules.findIndex((m) => m.module_id === Number(params.moduleId));
+      if (targetIndex !== -1) {
+        setCurrentModuleIndex(targetIndex);
+      }
+    }
+  }, [modules, params.tab, params.moduleId]);
 
   // Compute current lessons based on active tab
   const getCurrentLessons = (): Lesson[] => {
@@ -851,7 +1017,6 @@ export default function Lessons() {
                 </Animated.View>
               )}
 
-              {/* Checkpoint Nodes */}
               {currentLessons.map((lesson, index) => {
                 const pos = points[index];
                 const isSelected = expandedId === lesson.id;
@@ -862,6 +1027,22 @@ export default function Lessons() {
                 if (lesson.locked) {
                   nodeBg = '#CBD5E1';
                   iconColor = '#64748B';
+                }
+
+                // 🆕 Determine badge text
+                let badgeText = '';
+                let badgeColor = '#F59E0B';
+                if (lesson.recommendation_type === 'weak_skill_practice' && lesson.weakest_skill) {
+                  const skillName = lesson.weakest_skill.display_name || lesson.weakest_skill.gesture_name;
+                  const mastery = Math.round(lesson.weakest_skill.mastery * 100);
+                  badgeText = `✏️ ${skillName} (${mastery}%)`;
+                  badgeColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : '#10B981';
+                } else if (lesson.recommendation_type === 'new_skill') {
+                  badgeText = '🌟 New Skill';
+                  badgeColor = '#8B5CF6';
+                } else if (lesson.recommendation_type === 'next_in_path') {
+                  badgeText = '➡️ Next Lesson';
+                  badgeColor = '#3B82F6';
                 }
 
                 return (
@@ -927,6 +1108,15 @@ export default function Lessons() {
                         {lesson.title}
                       </Text>
                     </View>
+
+                    {/* 🆕 SKILL BADGE - below the lesson title */}
+                    {badgeText && !lesson.done && !lesson.locked && (
+                      <View style={[styles.skillBadge, { backgroundColor: badgeColor + '20', borderColor: badgeColor }]}>
+                        <Text style={[styles.skillBadgeText, { color: badgeColor }]} numberOfLines={1}>
+                          {badgeText}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -959,6 +1149,52 @@ export default function Lessons() {
               </View>
 
               <Text style={styles.cardDescText}>{selectedLesson.desc}</Text>
+
+              {/* 🆕 RECOMMENDATION TYPE BADGE */}
+              {selectedLesson.recommendation_type && (
+                <View style={styles.recommendationTypeContainer}>
+                  <Text style={styles.recommendationTypeText}>
+                    {selectedLesson.recommendation_type === 'weak_skill_practice' && '📝 Practice Lesson'}
+                    {selectedLesson.recommendation_type === 'new_skill' && '🌟 New Skill Lesson'}
+                    {selectedLesson.recommendation_type === 'next_in_path' && '➡️ Next in Path'}
+                    {selectedLesson.recommendation_type === 'recommended' && '📚 Recommended'}
+                  </Text>
+                </View>
+              )}
+
+              {/* 🆕 ADAPTIVE REASON SECTION - Now SCROLLABLE */}
+              {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0 && (
+                <ScrollView
+                  style={styles.adaptiveReasonScrollContainer}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  <View style={styles.adaptiveReasonContainer}>
+                    <Text style={styles.adaptiveReasonTitle}>🎯 Why this lesson?</Text>
+                    <Text style={styles.adaptiveReasonSubtitle}>
+                      This lesson will help you practice these skills:
+                    </Text>
+                    <View style={styles.skillListContainer}>
+                      {selectedLesson.covered_skills.map((skill, idx) => {
+                        const mastery = Math.round(skill.mastery * 100);
+                        const masteryColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : mastery < 60 ? '#8B5CF6' : '#10B981';
+                        return (
+                          <View key={idx} style={styles.skillListItem}>
+                            <View style={[styles.skillDot, { backgroundColor: masteryColor }]} />
+                            <Text style={styles.skillListText}>
+                              <Text style={styles.skillListName}>{skill.display_name || skill.gesture_name}</Text>
+                              <Text style={[styles.skillListMastery, { color: masteryColor }]}>
+                                {' '}({mastery}% mastery)
+                              </Text>
+                              {mastery < 30 && <Text style={styles.skillListWarning}> ⚠️ Needs practice!</Text>}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </ScrollView>
+              )}
 
               <View style={styles.cardInfoRow}>
                 <View style={styles.cardInfoBadge}>
@@ -1483,4 +1719,89 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2563EB',
   },
+  skillBadge: {
+    position: 'absolute',
+    top: NODE_RADIUS * 2 + 32,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: '#F59E0B',
+    maxWidth: 120,
+    alignSelf: 'center',
+  },
+  skillBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#F59E0B',
+    textAlign: 'center',
+  },
+  // ─── ADAPTIVE REASON STYLES ────────────────────────────────────────────
+  adaptiveReasonContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 14,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  adaptiveReasonTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f3172',
+    marginBottom: 2,
+  },
+  adaptiveReasonSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  skillListContainer: {
+    gap: 4,
+  },
+  skillListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  skillDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  skillListText: {
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  skillListName: {
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  skillListMastery: {
+    fontWeight: '600',
+  },
+  skillListWarning: {
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  recommendationTypeContainer: {
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  recommendationTypeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6366F1',
+  },
+  adaptiveReasonScrollContainer: {
+    maxHeight: 160, // Limit height so it doesn't take over the screen
+    marginVertical: 4,
+  },
+
 });
