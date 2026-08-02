@@ -1751,6 +1751,41 @@ export const api = {
         }
     },
 
+    /**
+     * 🏆 Get checkpoint exam leaderboard
+     * GET /api/student/checkpoint-exam/{examId}/leaderboard
+     */
+    getCheckpointExamLeaderboard: async (examId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🏆 Fetching checkpoint exam leaderboard for exam ${examId}...`);
+
+            const response = await fetch(`${API_URL}/student/checkpoint-exam/${examId}/leaderboard`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🏆 Checkpoint exam leaderboard response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch checkpoint exam leaderboard');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching checkpoint exam leaderboard:', error);
+            throw error;
+        }
+    },
 
 
 

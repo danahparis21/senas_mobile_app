@@ -70,9 +70,13 @@ export function WeakSkillsSection({
                         </View>
 
                         <View style={styles.skillStats}>
-                            <MasteryBadge mastery={skill.mastery} size={50} />
+                            <MasteryBadge
+                                mastery={skill.mastery}
+                                size={50}
+                                compact={true}  // Add this for cleaner display
+                                showLabel={true}
+                            />
                         </View>
-
                         <View style={styles.skillDetails}>
                             <Text style={styles.skillDetailText}>
                                 📊 {skill.attempts} attempts

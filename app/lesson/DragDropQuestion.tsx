@@ -1,5 +1,5 @@
 // app/lesson/DragDropQuestion.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,17 +10,19 @@ import {
     SafeAreaView,
     Platform,
     ScrollView,
+    PanResponder,
+    Modal,
+    StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
-import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
-
-
+import { useSettings } from '../../contexts/SettingsContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
-// Remove /api from the end to get the base URL for images
 const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -34,7 +36,7 @@ const WRONG_SOUND = require('../../assets/music/wrong.mp3');
 
 // ─── MOTIVATIONS (Senya speech bubble) ─────────────────────────────────────
 const SENYA_MOTIVATIONS = [
-    "You've got this! Tap and match! ✋",
+    "You've got this! Drag and match! ✋",
     "Nice work! Keep going!",
     "Almost there! Match them all!",
     "You're doing amazing!",
@@ -66,6 +68,31 @@ interface DragDropQuestionProps {
 
 const MAX_WRONG_ATTEMPTS = 2;
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+// ─── COLOR PAIRS FOR TEXT-ONLY LAYOUT ─────────────────────────────────────
+type ColorPair = {
+    gradient: [string, string];
+    bg: string;
+};
+
+const COLOR_PAIRS: ColorPair[] = [
+    { gradient: ['#7C3AED', '#6D28D9'], bg: '#F5F3FF' },
+    { gradient: ['#0EA5E9', '#0284C7'], bg: '#EFF9FF' },
+    { gradient: ['#F59E0B', '#D97706'], bg: '#FFFBEB' },
+    { gradient: ['#10B981', '#059669'], bg: '#ECFDF5' },
+    { gradient: ['#EC4899', '#DB2777'], bg: '#FDF2F8' },
+    { gradient: ['#8B5CF6', '#7C3AED'], bg: '#F5F3FF' },
+];
+
+// ─── DRAG STATE FOR EACH ITEM ─────────────────────────────────────────────
+interface DragState {
+    pan: Animated.ValueXY;
+    scale: Animated.Value;
+    rotate: Animated.Value;
+    opacity: Animated.Value;
+}
+
 export default function DragDropQuestion({
     question,
     questionIndex,
@@ -78,14 +105,31 @@ export default function DragDropQuestion({
     const [leftItems, setLeftItems] = useState<DragDropPair[]>([]);
     const [rightItems, setRightItems] = useState<DragDropPair[]>([]);
     const [matches, setMatches] = useState<Record<number, number>>({});
-    const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
-    const [selectedRight, setSelectedRight] = useState<number | null>(null);
     const [isComplete, setIsComplete] = useState(false);
     const [attempts, setAttempts] = useState(0);
     const [wrongPair, setWrongPair] = useState<{ left: number | null; right: number | null }>({ left: null, right: null });
     const [showContinue, setShowContinue] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
     const [motivationIndex, setMotivationIndex] = useState(0);
+    const [hoverZoneId, setHoverZoneId] = useState<number | null>(null);
+    const [draggingItem, setDraggingItem] = useState<{ index: number; side: 'left' | 'right' } | null>(null);
+    const [showExitModal, setShowExitModal] = useState(false);
+    const [dropSuccess, setDropSuccess] = useState<number | null>(null);
+
+    // ─── INDEPENDENT DRAG STATES PER ITEM ────────────────────────────────
+    const dragStatesRef = useRef<Map<string, DragState>>(new Map());
+
+    const getDragState = useCallback((key: string): DragState => {
+        if (!dragStatesRef.current.has(key)) {
+            dragStatesRef.current.set(key, {
+                pan: new Animated.ValueXY({ x: 0, y: 0 }),
+                scale: new Animated.Value(1),
+                rotate: new Animated.Value(0),
+                opacity: new Animated.Value(1),
+            });
+        }
+        return dragStatesRef.current.get(key)!;
+    }, []);
 
     // Audio states
     const [correctSound, setCorrectSound] = useState<Audio.Sound | null>(null);
@@ -95,27 +139,36 @@ export default function DragDropQuestion({
     // Senya animations
     const senyaBounceAnim = useRef(new Animated.Value(0)).current;
     const senyaShakeAnim = useRef(new Animated.Value(0)).current;
+
+    // Zone measurement refs
+    const zoneRectsRef = useRef<Record<number, Rect>>({});
+    const zoneRefs = useRef<Record<number, View | null>>({});
+    const scrollViewRef = useRef<ScrollView>(null);
+
     // Helper function to get full image URL
     const getFullImageUrl = (path: string | null | undefined): string | null => {
         if (!path) return null;
-        // If it's already a full URL, return it
         if (path.startsWith('http://') || path.startsWith('https://')) {
             return path;
         }
-        // Remove leading slash if present
         const cleanPath = path.replace(/^\/+/, '');
         return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
     };
 
+    // Check if ANY item has images
+    const hasImages = React.useMemo(() => {
+        const hasLeftImages = question.drag_drop_pairs?.some(pair =>
+            pair.left_image && pair.left_image.length > 0
+        ) ?? false;
+        const hasRightImages = question.drag_drop_pairs?.some(pair =>
+            pair.right_image && pair.right_image.length > 0
+        ) ?? false;
+        return hasLeftImages || hasRightImages;
+    }, [question.drag_drop_pairs]);
 
-    // ── Play correct sound (only if enabled) ──
+    // ── Sound effects ──
     async function playCorrectSoundEffect() {
-        // ✅ Check if sound is enabled
-        if (!settings.soundEnabled) {
-            console.log('🔇 Sound disabled, skipping correct sound');
-            return;
-        }
-
+        if (!settings.soundEnabled) return;
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -138,14 +191,8 @@ export default function DragDropQuestion({
         }
     }
 
-    // ── Play wrong sound (only if enabled) ──
     async function playWrongSoundEffect() {
-        // ✅ Check if sound is enabled
-        if (!settings.soundEnabled) {
-            console.log('🔇 Sound disabled, skipping wrong sound');
-            return;
-        }
-
+        if (!settings.soundEnabled) return;
         try {
             if (isSoundPlaying) return;
             setIsSoundPlaying(true);
@@ -206,39 +253,55 @@ export default function DragDropQuestion({
         };
     }, []);
 
-    const handleLeftPress = (index: number) => {
-        if (isComplete || isAnimating) return;
-        if (matches[index] !== undefined) return;
+    // ── Zone measurement ──
+    const measureZone = useCallback((id: number) => {
+        const node = zoneRefs.current[id];
+        if (node) {
+            // @ts-ignore - measureInWindow exists on View
+            node.measureInWindow?.((x: number, y: number, width: number, height: number) => {
+                if (width > 0) {
+                    zoneRectsRef.current[id] = { x, y, width, height };
+                }
+            });
+        }
+    }, []);
 
-        setSelectedLeft(selectedLeft === index ? null : index);
-        if (selectedLeft === index) {
-            setSelectedLeft(null);
-        } else {
-            setSelectedLeft(index);
-            if (selectedRight !== null && !isAnimating) {
-                attemptMatch(index, selectedRight);
+    const remeasureAllZones = useCallback(() => {
+        const allIds = Object.keys(zoneRefs.current).map(Number);
+        allIds.forEach(id => measureZone(id));
+    }, [measureZone]);
+
+    // ── Hit test ──
+    const findZoneAt = useCallback((pageX: number, pageY: number): number | null => {
+        let best: number | null = null;
+        let bestDist = Infinity;
+        const pad = 20;
+
+        for (const key in zoneRectsRef.current) {
+            const r = zoneRectsRef.current[key];
+            if (!r) continue;
+            const index = parseInt(key);
+            if (Object.values(matches).includes(index)) continue;
+
+            if (pageX >= r.x - pad && pageX <= r.x + r.width + pad &&
+                pageY >= r.y - pad && pageY <= r.y + r.height + pad) {
+                const cx = r.x + r.width / 2;
+                const cy = r.y + r.height / 2;
+                const d = (pageX - cx) ** 2 + (pageY - cy) ** 2;
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = index;
+                }
             }
         }
-    };
+        return best;
+    }, [matches]);
 
-    const handleRightPress = (index: number) => {
-        if (isComplete || isAnimating) return;
-        const isMatched = Object.values(matches).includes(index);
-        if (isMatched) return;
-
-        setSelectedRight(selectedRight === index ? null : index);
-        if (selectedRight === index) {
-            setSelectedRight(null);
-        } else {
-            setSelectedRight(index);
-            if (selectedLeft !== null && !isAnimating) {
-                attemptMatch(selectedLeft, index);
-            }
-        }
-    };
-
-    const attemptMatch = (leftIndex: number, rightIndex: number) => {
+    // ── Attempt match ──
+    const attemptMatch = useCallback((leftIndex: number, rightIndex: number, dragKey: string) => {
         if (isAnimating) return;
+        if (leftIndex === undefined || rightIndex === undefined) return;
+
         setIsAnimating(true);
 
         const leftItem = leftItems[leftIndex];
@@ -249,23 +312,47 @@ export default function DragDropQuestion({
             return;
         }
 
+        const dragState = dragStatesRef.current.get(dragKey);
+        if (!dragState) {
+            setIsAnimating(false);
+            return;
+        }
+
+        const { pan, scale } = dragState;
+
         if (leftItem.match_id === rightItem.match_id) {
             // ✅ Correct match!
             playCorrectSoundEffect();
             animateSenyaBounce();
+            setDropSuccess(rightIndex);
 
-            setMatches(prev => ({ ...prev, [leftIndex]: rightIndex }));
-            setSelectedLeft(null);
-            setSelectedRight(null);
+            setMatches(prev => {
+                const newMatches = { ...prev, [leftIndex]: rightIndex };
+                if (Object.keys(newMatches).length === leftItems.length) {
+                    setIsComplete(true);
+                }
+                return newMatches;
+            });
 
-            const totalPairs = leftItems.length;
-            const matchedCount = Object.keys(matches).length + 1;
+            // Reset drag state with animation
+            Animated.parallel([
+                Animated.spring(pan, {
+                    toValue: { x: 0, y: 0 },
+                    friction: 6,
+                    tension: 40,
+                    useNativeDriver: true,
+                }),
+                Animated.spring(scale, {
+                    toValue: 1,
+                    friction: 6,
+                    useNativeDriver: true,
+                }),
+            ]).start(() => {
+                setDraggingItem(null);
+                setIsAnimating(false);
+            });
 
-            if (matchedCount === totalPairs) {
-                setIsComplete(true);
-            }
-
-            setIsAnimating(false);
+            setTimeout(() => setDropSuccess(null), 400);
         } else {
             // ❌ Wrong match
             playWrongSoundEffect();
@@ -275,209 +362,483 @@ export default function DragDropQuestion({
             setAttempts(newAttempts);
             setWrongPair({ left: leftIndex, right: rightIndex });
 
-            setTimeout(() => {
-                setWrongPair({ left: null, right: null });
-                setSelectedLeft(null);
-                setSelectedRight(null);
+            Animated.parallel([
+                Animated.spring(pan, {
+                    toValue: { x: 0, y: 0 },
+                    friction: 8,
+                    tension: 60,
+                    useNativeDriver: true,
+                }),
+                Animated.spring(scale, {
+                    toValue: 1,
+                    friction: 6,
+                    useNativeDriver: true,
+                }),
+            ]).start(() => {
+                setDraggingItem(null);
                 setIsAnimating(false);
 
                 if (newAttempts >= MAX_WRONG_ATTEMPTS) {
                     setShowContinue(true);
                     setIsComplete(true);
                 }
-            }, 600);
+            });
+
+            setTimeout(() => {
+                setWrongPair({ left: null, right: null });
+            }, 500);
         }
-    };
+    }, [leftItems, rightItems, matches, attempts, isAnimating, leftItems.length]);
 
-    // ─── RENDER LEFT ITEM ──────────────────────────────────────────────────
-    const renderLeftItem = (item: DragDropPair, index: number) => {
-        const isMatched = matches[index] !== undefined;
-        const isSelected = selectedLeft === index;
-        const isWrongItem = wrongPair.left === index;
+    // ── Create PanResponder for drag items ──
+    const createPanResponder = useCallback((index: number, side: 'left' | 'right') => {
+        const isMatched = side === 'left'
+            ? matches[index] !== undefined
+            : Object.values(matches).includes(index);
 
-        const imageUrl = getFullImageUrl(item.left_image);
-        const hasImage = !!imageUrl;
-        const hasText = item.left_text && item.left_text.length > 0;
+        if (isMatched || isComplete || isAnimating) {
+            return null;
+        }
 
-        // Determine if this item has content (image or text)
-        const hasContent = hasImage || hasText;
+        const dragKey = `${side}-${index}`;
+        const dragState = getDragState(dragKey);
+        const { pan, scale, rotate, opacity } = dragState;
 
+        return PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+            onPanResponderGrant: () => {
+                pan.setValue({ x: 0, y: 0 });
+                scale.setValue(1.08);
+                opacity.setValue(0.92);
+                rotate.setValue(0);
+                setDraggingItem({ index, side });
+                setHoverZoneId(null);
+                setTimeout(remeasureAllZones, 50);
+            },
+            onPanResponderMove: (evt, gesture) => {
+                pan.setValue({ x: gesture.dx, y: gesture.dy });
+                rotate.setValue(gesture.dx * 0.02);
+
+                const zoneId = findZoneAt(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+                if (zoneId !== hoverZoneId) {
+                    setHoverZoneId(zoneId);
+                }
+            },
+            onPanResponderRelease: (evt) => {
+                const zoneId = findZoneAt(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+                setHoverZoneId(null);
+
+                let matched = false;
+
+                if (side === 'left' && zoneId !== null) {
+                    const isRightMatched = Object.values(matches).includes(zoneId);
+                    if (!isRightMatched) {
+                        attemptMatch(index, zoneId, dragKey);
+                        matched = true;
+                    }
+                } else if (side === 'right' && zoneId !== null) {
+                    const isLeftMatched = matches[zoneId] !== undefined;
+                    if (!isLeftMatched) {
+                        const rightItem = rightItems[index];
+                        const leftMatchIndex = leftItems.findIndex(
+                            item => item.match_id === rightItem?.match_id
+                        );
+                        if (leftMatchIndex !== -1 && matches[leftMatchIndex] === undefined) {
+                            attemptMatch(leftMatchIndex, index, dragKey);
+                            matched = true;
+                        }
+                    }
+                }
+
+                if (!matched) {
+                    Animated.parallel([
+                        Animated.spring(pan, {
+                            toValue: { x: 0, y: 0 },
+                            friction: 10,
+                            tension: 80,
+                            useNativeDriver: true,
+                        }),
+                        Animated.spring(scale, {
+                            toValue: 1,
+                            friction: 8,
+                            useNativeDriver: true,
+                        }),
+                    ]).start(() => {
+                        setDraggingItem(null);
+                    });
+                }
+            },
+            onPanResponderTerminate: () => {
+                Animated.spring(pan, {
+                    toValue: { x: 0, y: 0 },
+                    friction: 8,
+                    tension: 60,
+                    useNativeDriver: true,
+                }).start(() => {
+                    setDraggingItem(null);
+                    setHoverZoneId(null);
+                });
+            },
+        });
+    }, [matches, isComplete, isAnimating, findZoneAt, attemptMatch, remeasureAllZones, leftItems, rightItems, hoverZoneId, getDragState]);
+
+    // ─── RENDER WITH IMAGES ──────────────────────────────────────────────
+    const renderWithImages = () => {
         return (
-            <Pressable
-                key={`left-${index}`}
-                style={[
-                    styles.itemCard,
-                    isSelected && styles.itemCardSelected,
-                    isMatched && styles.itemCardMatched,
-                    isWrongItem && styles.itemCardWrong,
-                    (isMatched || isComplete) && styles.itemCardDisabled,
-                    // Use the same size class for all items in the column
-                    hasContent && styles.itemCardWithContent,
-                    !hasContent && styles.itemCardEmpty,
-                ]}
-                onPress={() => handleLeftPress(index)}
-                disabled={isMatched || isComplete || isAnimating}
-            >
-                {imageUrl ? (
-                    <Image
-                        source={{ uri: imageUrl }}
-                        style={[
-                            styles.itemImage,
-                            hasText ? styles.itemImageWithText : styles.itemImageOnly,
-                        ]}
-                        contentFit="contain"
-                        onError={(error) => {
-                            console.log('❌ Left image load error:', error, 'URL:', imageUrl);
-                        }}
-                    />
-                ) : null}
-                {hasText && !imageUrl && (
-                    <Text style={[
-                        styles.itemText,
-                        styles.itemTextOnly,
-                        isMatched && styles.itemTextMatched,
-                        isSelected && styles.itemTextSelected,
-                        isWrongItem && styles.itemTextWrong,
-                        isComplete && !isMatched && styles.itemTextDisabled,
-                    ]}>
-                        {item.left_text}
+            <View style={styles.imageLayoutContainer}>
+                <View style={styles.imageLayoutColumn}>
+                    <Text style={styles.imageLayoutLabel}>
+                        {question.drag_drop_left_label || 'Signs'}
                     </Text>
-                )}
-                {imageUrl && hasText && (
-                    <Text style={[
-                        styles.itemText,
-                        styles.itemTextWithImage,
-                        isMatched && styles.itemTextMatched,
-                        isSelected && styles.itemTextSelected,
-                        isWrongItem && styles.itemTextWrong,
-                        isComplete && !isMatched && styles.itemTextDisabled,
-                    ]}>
-                        {item.left_text}
+                    {leftItems.map((item, index) => {
+                        const isMatched = matches[index] !== undefined;
+                        const isDragging = draggingItem?.index === index && draggingItem?.side === 'left';
+                        const isWrongItem = wrongPair.left === index;
+                        const imageUrl = getFullImageUrl(item.left_image);
+                        const hasText = item.left_text && item.left_text.length > 0;
+
+                        if (isMatched) {
+                            return (
+                                <View key={`left-${index}`} style={[styles.imageCard, styles.imageCardMatched]}>
+                                    <View style={styles.imageCardContent}>
+                                        {imageUrl && (
+                                            <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                        )}
+                                        {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
+                                    </View>
+                                    <View style={styles.matchBadge}>
+                                        <Ionicons name="checkmark" size={14} color="#fff" />
+                                    </View>
+                                </View>
+                            );
+                        }
+
+                        const dragKey = `left-${index}`;
+                        const dragState = getDragState(dragKey);
+                        const { pan, scale } = dragState;
+                        const responder = createPanResponder(index, 'left');
+
+                        return (
+                            <Animated.View
+                                key={`left-${index}`}
+                                {...responder?.panHandlers}
+                                style={[
+                                    styles.imageCard,
+                                    isDragging && styles.imageCardDragging,
+                                    isWrongItem && styles.imageCardWrong,
+                                    {
+                                        transform: [
+                                            { translateX: pan.x },
+                                            { translateY: pan.y },
+                                            { scale: isDragging ? scale : 1 },
+                                        ],
+                                        zIndex: isDragging ? 999 : 1,
+                                        elevation: isDragging ? 12 : 1,
+                                        opacity: isDragging ? 0.92 : 1,
+                                    },
+                                ]}
+                            >
+                                <View style={styles.imageCardContent}>
+                                    {imageUrl && (
+                                        <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                    )}
+                                    {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
+                                    {isWrongItem && (
+                                        <View style={styles.wrongIndicator}>
+                                            <Ionicons name="close" size={14} color="#fff" />
+                                        </View>
+                                    )}
+                                </View>
+                            </Animated.View>
+                        );
+                    })}
+                </View>
+
+                <View style={styles.imageDivider}>
+                    <View style={styles.imageDividerIcon}>
+                        <Ionicons name="arrow-forward" size={16} color="#1848c8" />
+                    </View>
+                </View>
+
+                <View style={styles.imageLayoutColumn}>
+                    <Text style={styles.imageLayoutLabel}>
+                        {question.drag_drop_right_label || 'Meanings'}
                     </Text>
-                )}
-                {!imageUrl && !hasText && (
-                    <Text style={[styles.itemText, styles.itemTextEmpty]}>—</Text>
-                )}
-                {isMatched && (
-                    <View style={styles.matchBadge}>
-                        <Ionicons name="checkmark" size={12} color="#fff" />
-                    </View>
-                )}
-                {isWrongItem && (
-                    <View style={styles.wrongIndicator}>
-                        <Ionicons name="close" size={14} color="#fff" />
-                    </View>
-                )}
-            </Pressable>
+                    {rightItems.map((item, index) => {
+                        const isMatched = Object.values(matches).includes(index);
+                        const isHovered = hoverZoneId === index && !isMatched;
+                        const isWrongItem = wrongPair.right === index;
+                        const isSuccess = dropSuccess === index;
+                        const imageUrl = getFullImageUrl(item.right_image);
+                        const hasText = item.right_text && item.right_text.length > 0;
+
+                        return (
+                            <View
+                                key={`right-${index}`}
+                                ref={(ref) => {
+                                    if (ref) {
+                                        zoneRefs.current[index] = ref;
+                                    }
+                                }}
+                                onLayout={() => measureZone(index)}
+                                style={{ width: '100%' }}
+                            >
+                                <Animated.View style={[
+                                    styles.imageCard,
+                                    styles.imageDropZone,
+                                    isMatched && styles.imageCardMatched,
+                                    isHovered && styles.imageCardHovered,
+                                    isWrongItem && styles.imageCardWrong,
+                                    isSuccess && styles.imageCardSuccess,
+                                    {
+                                        transform: [
+                                            { scale: isSuccess ? 1.04 : isHovered ? 1.02 : 1 },
+                                        ],
+                                    },
+                                ]}>
+                                    <View style={styles.imageDropZoneContent}>
+                                        {isMatched ? (
+                                            <>
+                                                {imageUrl && (
+                                                    <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                                )}
+                                                {hasText && <Text style={styles.imageCardText}>{item.right_text}</Text>}
+                                                <View style={styles.matchBadge}>
+                                                    <Ionicons name="checkmark" size={14} color="#fff" />
+                                                </View>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Text style={styles.imageDropZoneLabel}>
+                                                    {item.right_text || 'Drop here'}
+                                                </Text>
+                                                {isHovered && (
+                                                    <View style={styles.dropHintBadge}>
+                                                        <Text style={styles.dropHintText}>Drop here!</Text>
+                                                    </View>
+                                                )}
+                                            </>
+                                        )}
+                                    </View>
+                                </Animated.View>
+                            </View>
+                        );
+                    })}
+                </View>
+            </View>
         );
     };
 
-    // ─── RENDER RIGHT ITEM ──────────────────────────────────────────────────
-    const renderRightItem = (item: DragDropPair, index: number) => {
-        const isMatched = Object.values(matches).includes(index);
-        const isSelected = selectedRight === index;
-        const isWrongItem = wrongPair.right === index;
-
-        const imageUrl = getFullImageUrl(item.right_image);
-        const hasImage = !!imageUrl;
-        const hasText = item.right_text && item.right_text.length > 0;
-
-        const hasContent = hasImage || hasText;
-
+    // ─── RENDER WITHOUT IMAGES ──────────────────────────────────────────
+    const renderWithoutImages = () => {
         return (
-            <Pressable
-                key={`right-${index}`}
-                style={[
-                    styles.itemCard,
-                    isSelected && styles.itemCardSelected,
-                    isMatched && styles.itemCardMatched,
-                    isWrongItem && styles.itemCardWrong,
-                    (isMatched || isComplete) && styles.itemCardDisabled,
-                    hasContent && styles.itemCardWithContent,
-                    !hasContent && styles.itemCardEmpty,
-                ]}
-                onPress={() => handleRightPress(index)}
-                disabled={isMatched || isComplete || isAnimating}
-            >
-                {imageUrl ? (
-                    <Image
-                        source={{ uri: imageUrl }}
-                        style={[
-                            styles.itemImage,
-                            hasText ? styles.itemImageWithText : styles.itemImageOnly,
-                        ]}
-                        contentFit="contain"
-                        onError={(error) => {
-                            console.log('❌ Right image load error:', error, 'URL:', imageUrl);
-                        }}
-                    />
-                ) : null}
-                {hasText && !imageUrl && (
-                    <Text style={[
-                        styles.itemText,
-                        styles.itemTextOnly,
-                        isMatched && styles.itemTextMatched,
-                        isSelected && styles.itemTextSelected,
-                        isWrongItem && styles.itemTextWrong,
-                        isComplete && !isMatched && styles.itemTextDisabled,
-                    ]}>
-                        {item.right_text}
+            <View style={styles.textLayoutContainer}>
+                <View style={styles.textLayoutColumn}>
+                    <Text style={styles.textLayoutLabel}>
+                        {question.drag_drop_left_label || 'Signs'}
                     </Text>
-                )}
-                {imageUrl && hasText && (
-                    <Text style={[
-                        styles.itemText,
-                        styles.itemTextWithImage,
-                        isMatched && styles.itemTextMatched,
-                        isSelected && styles.itemTextSelected,
-                        isWrongItem && styles.itemTextWrong,
-                        isComplete && !isMatched && styles.itemTextDisabled,
-                    ]}>
-                        {item.right_text}
+                    {leftItems.map((item, index) => {
+                        const isMatched = matches[index] !== undefined;
+                        const isDragging = draggingItem?.index === index && draggingItem?.side === 'left';
+                        const isWrongItem = wrongPair.left === index;
+                        const colors = COLOR_PAIRS[index % COLOR_PAIRS.length];
+
+                        if (isMatched) {
+                            return (
+                                <View key={`left-${index}`} style={[styles.textCard, styles.textCardMatched]}>
+                                    <Text style={[styles.textCardText, styles.textCardMatchedText]}>{item.left_text}</Text>
+                                    <View style={styles.matchBadge}>
+                                        <Ionicons name="checkmark" size={12} color="#fff" />
+                                    </View>
+                                </View>
+                            );
+                        }
+
+                        const dragKey = `left-${index}`;
+                        const dragState = getDragState(dragKey);
+                        const { pan, scale, rotate } = dragState;
+                        const responder = createPanResponder(index, 'left');
+
+                        return (
+                            <Animated.View
+                                key={`left-${index}`}
+                                {...responder?.panHandlers}
+                                style={[
+                                    styles.textCard,
+                                    isDragging && styles.textCardDragging,
+                                    isWrongItem && styles.textCardWrong,
+                                    {
+                                        transform: [
+                                            { translateX: pan.x },
+                                            { translateY: pan.y },
+                                            { scale: isDragging ? scale : 1 },
+                                            {
+                                                rotate: isDragging ? rotate.interpolate({
+                                                    inputRange: [-10, 10],
+                                                    outputRange: ['-2deg', '2deg']
+                                                }) : '0deg'
+                                            },
+                                        ],
+                                        zIndex: isDragging ? 999 : 1,
+                                        elevation: isDragging ? 12 : 1,
+                                        opacity: isDragging ? 0.92 : 1,
+                                    },
+                                ]}
+                            >
+                                <LinearGradient
+                                    colors={colors.gradient}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.textCardGradient}
+                                >
+                                    <Text style={styles.textCardGradientText}>{item.left_text}</Text>
+                                </LinearGradient>
+                                {isWrongItem && (
+                                    <View style={styles.wrongIndicator}>
+                                        <Ionicons name="close" size={12} color="#fff" />
+                                    </View>
+                                )}
+                            </Animated.View>
+                        );
+                    })}
+                </View>
+
+                <View style={styles.textDivider}>
+                    <View style={styles.textDividerIcon}>
+                        <Ionicons name="arrow-forward" size={12} color="#1848c8" />
+                    </View>
+                </View>
+
+                <View style={styles.textLayoutColumn}>
+                    <Text style={styles.textLayoutLabel}>
+                        {question.drag_drop_right_label || 'Meanings'}
                     </Text>
-                )}
-                {!imageUrl && !hasText && (
-                    <Text style={[styles.itemText, styles.itemTextEmpty]}>—</Text>
-                )}
-                {isMatched && (
-                    <View style={styles.matchBadge}>
-                        <Ionicons name="checkmark" size={12} color="#fff" />
-                    </View>
-                )}
-                {isWrongItem && (
-                    <View style={styles.wrongIndicator}>
-                        <Ionicons name="close" size={14} color="#fff" />
-                    </View>
-                )}
-            </Pressable>
+                    {rightItems.map((item, index) => {
+                        const isMatched = Object.values(matches).includes(index);
+                        const isHovered = hoverZoneId === index && !isMatched;
+                        const isWrongItem = wrongPair.right === index;
+                        const isSuccess = dropSuccess === index;
+
+                        return (
+                            <View
+                                key={`right-${index}`}
+                                ref={(ref) => {
+                                    if (ref) {
+                                        zoneRefs.current[index] = ref;
+                                    }
+                                }}
+                                onLayout={() => measureZone(index)}
+                                style={{ width: '100%' }}
+                            >
+                                <Animated.View style={[
+                                    styles.textCard,
+                                    styles.textDropZone,
+                                    isMatched && styles.textCardMatched,
+                                    isHovered && styles.textCardHovered,
+                                    isWrongItem && styles.textCardWrong,
+                                    isSuccess && styles.textCardSuccess,
+                                    {
+                                        transform: [
+                                            { scale: isSuccess ? 1.04 : isHovered ? 1.02 : 1 },
+                                        ],
+                                    },
+                                ]}>
+                                    {isMatched ? (
+                                        <>
+                                            <Text style={[styles.textCardText, styles.textCardMatchedText]}>
+                                                {item.right_text}
+                                            </Text>
+                                            <View style={styles.matchBadge}>
+                                                <Ionicons name="checkmark" size={12} color="#fff" />
+                                            </View>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Text style={styles.textCardText}>
+                                                {item.right_text || 'Drop here'}
+                                            </Text>
+                                            {isHovered && (
+                                                <View style={styles.textDropHint}>
+                                                    <Text style={styles.textDropHintText}>Drop here!</Text>
+                                                </View>
+                                            )}
+                                        </>
+                                    )}
+                                </Animated.View>
+                            </View>
+                        );
+                    })}
+                </View>
+            </View>
         );
     };
 
+    // ─── EXIT MODAL ────────────────────────────────────────────────────
+    const renderExitModal = () => (
+        <Modal visible={showExitModal} transparent animationType="fade" onRequestClose={() => setShowExitModal(false)}>
+            <Pressable style={styles.modalOverlay} onPress={() => setShowExitModal(false)}>
+                <Pressable style={styles.modalContainer} onPress={e => e.stopPropagation()}>
+                    <BlurView intensity={80} style={StyleSheet.absoluteFill} tint="dark" />
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalIconBox}>
+                            <Ionicons name="exit-outline" size={30} color="#DC2626" />
+                        </View>
+                        <Text style={styles.modalTitle}>Exit Activity?</Text>
+                        <Text style={styles.modalDescription}>
+                            Your progress will be lost. Are you sure you want to exit?
+                        </Text>
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalButton, styles.modalButtonCancel]}
+                                onPress={() => setShowExitModal(false)}
+                            >
+                                <Text style={styles.modalButtonText}>Stay</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.modalButton, styles.modalButtonConfirm]}
+                                onPress={onBack}
+                            >
+                                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Exit</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </Pressable>
+            </Pressable>
+        </Modal>
+    );
 
+    // ─── RESET STATE ────────────────────────────────────────────────────
     useEffect(() => {
-        // Reset all state when the question changes
         setMatches({});
-        setSelectedLeft(null);
-        setSelectedRight(null);
         setIsComplete(false);
         setAttempts(0);
         setWrongPair({ left: null, right: null });
         setShowContinue(false);
         setIsAnimating(false);
+        setDraggingItem(null);
+        setHoverZoneId(null);
+        setDropSuccess(null);
+        zoneRectsRef.current = {};
+        zoneRefs.current = {};
+        dragStatesRef.current.clear();
 
-        // Re-initialize items
         if (question.drag_drop_pairs && question.drag_drop_pairs.length > 0) {
             const pairs = question.drag_drop_pairs;
             setLeftItems(pairs);
-            // Keep right items in the same order as left items
-            // This ensures matches work correctly
             setRightItems([...pairs]);
         }
     }, [question.drag_drop_pairs, question.question_id]);
 
+    // ─── MEASURE ZONES AFTER RENDER ──────────────────────────────────
+    useEffect(() => {
+        const timer = setTimeout(remeasureAllZones, 500);
+        return () => clearTimeout(timer);
+    }, [leftItems, rightItems, matches]);
+
     const allMatched = Object.keys(matches).length === leftItems.length;
-    const livesRemaining = MAX_WRONG_ATTEMPTS - attempts;
     const isGameOver = showContinue && !allMatched;
+
     const senyaTranslate = senyaBounceAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [0, -15],
@@ -499,10 +860,18 @@ export default function DragDropQuestion({
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* ─── TOP BAR ────────────────────────────────────────────────── */}
+            <StatusBar barStyle="dark-content" />
+
+            <ScrollView
+                ref={scrollViewRef}
+                contentContainerStyle={styles.scrollContent}
+                scrollEnabled={!draggingItem}
+                onScroll={remeasureAllZones}
+                onMomentumScrollEnd={remeasureAllZones}
+                showsVerticalScrollIndicator={false}
+            >
                 <View style={styles.topBar}>
-                    <Pressable onPress={onBack} style={styles.exitBtn}>
+                    <Pressable onPress={() => setShowExitModal(true)} style={styles.exitBtn}>
                         <Ionicons name="arrow-back" size={20} color="#0f3172" />
                     </Pressable>
                     <Text style={styles.logoText}>SEÑAS</Text>
@@ -513,7 +882,6 @@ export default function DragDropQuestion({
                     </View>
                 </View>
 
-                {/* ─── PROGRESS ─────────────────────────────────────────────── */}
                 <View style={styles.glassCard}>
                     <View style={styles.progressHeader}>
                         <Text style={styles.progressLabel}>
@@ -531,7 +899,6 @@ export default function DragDropQuestion({
                     </View>
                 </View>
 
-                {/* ─── QUESTION CARD ──────────────────────────────────────────── */}
                 <View style={[styles.glassCard, styles.questionCard]}>
                     <Text style={styles.questionEmoji}>🧩</Text>
                     <Text style={styles.questionText}>{question.question_text}</Text>
@@ -544,32 +911,8 @@ export default function DragDropQuestion({
                     )}
                 </View>
 
-                {/* ─── DRAG & DROP COLUMNS ────────────────────────────────────── */}
-                <View style={styles.columnsContainer}>
-                    <View style={styles.column}>
-                        <Text style={styles.columnLabel}>{question.drag_drop_left_label || 'Match these'}</Text>
-                        <View style={styles.columnContent}>
-                            {leftItems.map((item, index) => renderLeftItem(item, index))}
-                        </View>
-                    </View>
+                {hasImages ? renderWithImages() : renderWithoutImages()}
 
-                    <View style={styles.columnDivider}>
-                        <View style={styles.dividerLine} />
-                        <View style={styles.dividerIcon}>
-                            <Ionicons name="arrow-forward" size={16} color="#1848c8" />
-                        </View>
-                        <View style={styles.dividerLine} />
-                    </View>
-
-                    <View style={styles.column}>
-                        <Text style={styles.columnLabel}>{question.drag_drop_right_label || 'To these'}</Text>
-                        <View style={styles.columnContent}>
-                            {rightItems.map((item, index) => renderRightItem(item, index))}
-                        </View>
-                    </View>
-                </View>
-
-                {/* ─── SENYA FEEDBACK ──────────────────────────────────────── */}
                 <View style={styles.feedbackRow}>
                     <Animated.View
                         style={{
@@ -602,7 +945,6 @@ export default function DragDropQuestion({
                     </View>
                 </View>
 
-                {/* ─── CONTINUE BUTTON ─────────────────────────────────────────── */}
                 {isComplete && (
                     <Pressable
                         style={[styles.primaryBtn, allMatched && styles.goldBtn]}
@@ -614,6 +956,8 @@ export default function DragDropQuestion({
                     </Pressable>
                 )}
             </ScrollView>
+
+            {renderExitModal()}
         </SafeAreaView>
     );
 }
@@ -629,7 +973,6 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
 
-    // ─── TOP BAR ─────────────────────────────────────────────────────────
     topBar: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -662,7 +1005,6 @@ const styles = StyleSheet.create({
         color: '#10B981',
     },
 
-    // ─── GLASS CARD ──────────────────────────────────────────────────────
     glassCard: {
         backgroundColor: 'rgba(255,255,255,0.62)',
         borderWidth: 1,
@@ -677,7 +1019,6 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
 
-    // ─── PROGRESS ───────────────────────────────────────────────────────────
     progressHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -699,14 +1040,13 @@ const styles = StyleSheet.create({
         borderRadius: 99,
     },
 
-    // ─── QUESTION CARD ──────────────────────────────────────────────────────
     questionCard: {
         alignItems: 'center',
-        paddingVertical: 24,
+        paddingVertical: 20,
     },
     questionEmoji: {
-        fontSize: 48,
-        marginBottom: 8,
+        fontSize: 28,
+        marginBottom: 6,
     },
     questionText: {
         fontSize: 16,
@@ -723,152 +1063,263 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(15,49,114,0.03)',
     },
 
-    // ─── COLUMNS ────────────────────────────────────────────────────────────
-    columnsContainer: {
+    imageLayoutContainer: {
         flexDirection: 'row',
         gap: 6,
         marginBottom: 12,
     },
-    column: {
+    imageLayoutColumn: {
         flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.35)',
-        borderRadius: 14,
-        padding: 8, // Reduced padding
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.6)',
+        gap: 6,
     },
-    columnLabel: {
+    imageLayoutLabel: {
         fontSize: 10,
         fontWeight: '700',
         color: '#4b7bbb',
         textAlign: 'center',
-        marginBottom: 6,
+        marginBottom: 2,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
-    columnContent: {
-        gap: 6,
-    },
-    columnDivider: {
+    imageDivider: {
         justifyContent: 'center',
         alignItems: 'center',
         width: 20,
+        paddingHorizontal: 2,
     },
-    dividerLine: {
-        flex: 1,
-        width: 1.5,
-        backgroundColor: 'rgba(24,72,200,0.08)',
-    },
-    dividerIcon: {
+    imageDividerIcon: {
         width: 24,
         height: 24,
         borderRadius: 12,
         backgroundColor: 'rgba(24,72,200,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginVertical: 4,
     },
-
-    // ─── ITEM CARDS ──────────────────────────────────────────────────────
-    itemCard: {
-        borderRadius: 10,
+    imageCard: {
         backgroundColor: 'rgba(255,255,255,0.9)',
-        borderWidth: 1.5,
-        borderColor: 'rgba(15,49,114,0.12)',
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: 'rgba(15,49,114,0.10)',
         padding: 8,
         alignItems: 'center',
         justifyContent: 'center',
+        minHeight: 70,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
+        position: 'relative',
+    },
+    imageCardDragging: {
+        borderColor: '#1848c8',
+        backgroundColor: 'rgba(24,72,200,0.08)',
+        shadowColor: '#1848c8',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16,
+        elevation: 10,
+        borderWidth: 2,
+    },
+    imageCardMatched: {
+        borderColor: '#10B981',
+        backgroundColor: 'rgba(16,185,129,0.06)',
+        borderStyle: 'dashed',
+        opacity: 0.6,
+    },
+    imageCardWrong: {
+        borderColor: '#EF4444',
+        backgroundColor: 'rgba(239,68,68,0.08)',
+    },
+    imageCardHovered: {
+        borderColor: '#1848c8',
+        backgroundColor: 'rgba(24,72,200,0.06)',
+        borderStyle: 'solid',
+        shadowColor: '#1848c8',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    imageCardSuccess: {
+        borderColor: '#10B981',
+        backgroundColor: 'rgba(16,185,129,0.10)',
+        borderWidth: 2,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 6,
+    },
+    imageCardContent: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+    },
+    imageCardImg: {
+        width: 50,
+        height: 50,
+        borderRadius: 8,
+        backgroundColor: 'rgba(15,49,114,0.02)',
+    },
+    imageCardText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#0f3172',
+        marginTop: 2,
+        textAlign: 'center',
+    },
+    imageDropZone: {
+        borderStyle: 'dashed',
+        borderColor: 'rgba(15,49,114,0.15)',
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        minHeight: 70,
+    },
+    imageDropZoneContent: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+    },
+    imageDropZoneLabel: {
+        fontSize: 11,
+        fontWeight: '500',
+        color: '#94a3b8',
+        textAlign: 'center',
+    },
+
+    textLayoutContainer: {
+        flexDirection: 'row',
+        gap: 4,
+        marginBottom: 12,
+    },
+    textLayoutColumn: {
+        flex: 1,
+        gap: 4,
+    },
+    textLayoutLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#4b7bbb',
+        textAlign: 'center',
+        marginBottom: 2,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    textDivider: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: 16,
+        paddingHorizontal: 2,
+    },
+    textDividerIcon: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(24,72,200,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    textCard: {
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: 'rgba(15,49,114,0.10)',
+        minHeight: 42,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.04,
         shadowRadius: 3,
         elevation: 1,
         position: 'relative',
-        minHeight: 44,
-        width: '100%',
+        overflow: 'hidden',
+        backgroundColor: '#fff',
     },
-    itemCardWithContent: {
+    textCardGradient: {
+        flex: 1,
         padding: 8,
-        minHeight: 90, // Increased from 80 to give more room
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 42,
     },
-    itemCardEmpty: {
-        padding: 8,
-        minHeight: 44,
-        opacity: 0.4,
+    textCardGradientText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+        textAlign: 'center',
+        textShadowColor: 'rgba(0,0,0,0.1)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
-    itemCardWithImage: {
-        padding: 4,
-        minHeight: 80,
-    },
-    itemCardWithText: {
-        padding: 8,
-        minHeight: 44,
-    },
-    itemCardSelected: {
+    textCardDragging: {
         borderColor: '#1848c8',
-        backgroundColor: 'rgba(24,72,200,0.06)',
         shadowColor: '#1848c8',
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-        elevation: 3,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+        elevation: 8,
+        borderWidth: 2,
     },
-    itemCardMatched: {
+    textCardMatched: {
         borderColor: '#10B981',
         backgroundColor: 'rgba(16,185,129,0.04)',
         borderStyle: 'dashed',
         opacity: 0.6,
     },
-    itemCardWrong: {
-        borderColor: '#EF4444',
-        backgroundColor: 'rgba(239,68,68,0.08)',
-    },
-    itemCardDisabled: {
-        opacity: 0.6,
-    },
-    itemImage: {
-        borderRadius: 8,
-        backgroundColor: 'rgba(15,49,114,0.02)',
-    },
-    itemImageWithText: {
-        width: 70, // Increased from 60
-        height: 70, // Increased from 60
-    },
-    itemImageOnly: {
-        width: 100, // Increased from 90
-        height: 100, // Increased from 90
-    },
-    itemText: {
-        fontWeight: '600',
-        color: '#0f3172',
-        textAlign: 'center',
-        lineHeight: 18,
-    },
-    itemTextWithImage: {
-        fontSize: 13, // Increased from 12
-        marginTop: 4,
-    },
-    itemTextOnly: {
-        fontSize: 20, // Increased from 18
-        padding: 6,
-    },
-    itemTextEmpty: {
-        fontSize: 16,
-        color: '#94a3b8',
-    },
-    itemTextMatched: {
+    textCardMatchedText: {
         color: '#10B981',
         textDecorationLine: 'line-through',
         textDecorationColor: '#10B981',
     },
-    itemTextSelected: {
-        color: '#1848c8',
+    textCardWrong: {
+        borderColor: '#EF4444',
+        backgroundColor: 'rgba(239,68,68,0.08)',
     },
-    itemTextWrong: {
-        color: '#EF4444',
+    textCardHovered: {
+        borderColor: '#1848c8',
+        backgroundColor: 'rgba(24,72,200,0.04)',
+        borderStyle: 'solid',
+        shadowColor: '#1848c8',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 3,
     },
-    itemTextDisabled: {
-        color: '#94a3b8',
+    textCardSuccess: {
+        borderColor: '#10B981',
+        backgroundColor: 'rgba(16,185,129,0.10)',
+        borderWidth: 2,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 6,
     },
+    textCardText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#0f3172',
+        textAlign: 'center',
+        padding: 8,
+    },
+    textDropZone: {
+        borderStyle: 'dashed',
+        borderColor: 'rgba(15,49,114,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        minHeight: 42,
+    },
+    textDropHint: {
+        position: 'absolute',
+        bottom: -4,
+        backgroundColor: '#1848c8',
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: 4,
+    },
+    textDropHintText: {
+        fontSize: 7,
+        fontWeight: '700',
+        color: '#fff',
+    },
+
     matchBadge: {
         position: 'absolute',
         top: -4,
@@ -895,8 +1346,19 @@ const styles = StyleSheet.create({
         borderWidth: 1.5,
         borderColor: 'white',
     },
+    dropHintBadge: {
+        marginTop: 2,
+        backgroundColor: '#1848c8',
+        paddingHorizontal: 8,
+        paddingVertical: 1,
+        borderRadius: 6,
+    },
+    dropHintText: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: '#fff',
+    },
 
-    // ─── SENYA FEEDBACK ──────────────────────────────────────────────────
     feedbackRow: {
         flexDirection: 'row',
         alignItems: 'flex-end',
@@ -904,20 +1366,20 @@ const styles = StyleSheet.create({
         marginVertical: 12,
     },
     senyaFeedback: {
-        width: 80,
-        height: 80,
+        width: 70,
+        height: 70,
         flexShrink: 0,
     },
     feedbackBubble: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'flex-start',
-        gap: 7,
+        gap: 6,
         backgroundColor: 'rgba(255,255,255,0.75)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.9)',
-        borderRadius: 16,
-        padding: 12,
+        borderRadius: 14,
+        padding: 10,
     },
     feedbackCorrect: {
         backgroundColor: 'rgba(236,253,245,0.88)',
@@ -929,13 +1391,12 @@ const styles = StyleSheet.create({
     },
     feedbackText: {
         flex: 1,
-        fontSize: 12.5,
+        fontSize: 12,
         fontWeight: '500',
         color: '#0f3172',
-        lineHeight: 18,
+        lineHeight: 17,
     },
 
-    // ─── PRIMARY BUTTON ──────────────────────────────────────────────────
     primaryBtn: {
         backgroundColor: '#1848c8',
         borderRadius: 60,
@@ -957,40 +1418,74 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
 
-    // ─── ERROR STATE ──────────────────────────────────────────────────────
-    errorCard: {
+    modalOverlay: {
         flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.45)',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 30,
-        backgroundColor: 'rgba(255,255,255,0.62)',
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.85)',
-        margin: 16,
+        padding: 20,
     },
-    errorTitle: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#0f3172',
-        marginTop: 12,
+    modalContainer: {
+        width: '88%',
+        maxWidth: 340,
+        borderRadius: 28,
+        overflow: 'hidden',
+        backgroundColor: 'transparent',
     },
-    errorText: {
-        fontSize: 14,
-        color: '#6B7280',
-        textAlign: 'center',
-        marginTop: 4,
+    modalContent: {
+        backgroundColor: '#fff',
+        padding: 28,
+        borderRadius: 28,
+        alignItems: 'center',
+    },
+    modalIconBox: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'rgba(239,68,68,0.10)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(239,68,68,0.18)',
+        alignItems: 'center',
+        justifyContent: 'center',
         marginBottom: 16,
     },
-    skipBtn: {
-        backgroundColor: '#1848c8',
-        paddingHorizontal: 32,
-        paddingVertical: 12,
-        borderRadius: 60,
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#0f3172',
+        marginBottom: 8,
     },
-    skipBtnText: {
-        color: '#fff',
+    modalDescription: {
+        fontSize: 13,
+        color: '#6B7280',
+        fontWeight: '500',
+        lineHeight: 20,
+        marginBottom: 24,
+        textAlign: 'center',
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+        width: '100%',
+    },
+    modalButton: {
+        flex: 1,
+        paddingVertical: 13,
+        borderRadius: 40,
+        alignItems: 'center',
+    },
+    modalButtonCancel: {
+        backgroundColor: '#F1F5F9',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    modalButtonConfirm: {
+        backgroundColor: '#DC2626',
+        flex: 1.3,
+    },
+    modalButtonText: {
         fontSize: 14,
         fontWeight: '700',
+        color: '#0f3172',
     },
 });

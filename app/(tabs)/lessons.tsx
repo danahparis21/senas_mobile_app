@@ -44,9 +44,9 @@ const GRADIENT = {
 const MascotImage = require('../../assets/images/img/senyas_logo.png');
 
 // Design Geometry Constants
-const NODE_ROW_HEIGHT = 145;
-const NODE_RADIUS = 36;
-const HORIZ_PADDING = 50;
+const NODE_ROW_HEIGHT = 168;
+const NODE_RADIUS = 38;
+const HORIZ_PADDING = 44;
 const MAP_WIDTH = screenWidth - HORIZ_PADDING * 2;
 
 // Vibrant, kid-friendly accent colors for unlocked/completed nodes
@@ -69,11 +69,138 @@ const getNodePosition = (index: number) => {
   return { x, y };
 };
 
+// ── PERFORMANCE HELPERS ───────────────────────────────────────────────
+// Same thresholds the lesson/exam result screen uses so the map and the
+// end-of-quiz celebration never disagree about how many stars were earned.
+const getStarsFromScore = (score?: number | null): number => {
+  const pct = Math.round(Number(score) || 0);
+  if (pct >= 100) return 3;
+  if (pct >= 80) return 2;
+  if (pct >= 50) return 1;
+  return 0;
+};
+
+const rankLabel = (rank?: number | null): string => {
+  if (!rank || rank < 1) return '';
+  return `#${rank}`;
+};
+
+// Small reusable star row used on map nodes and inside the detail sheet
+function StarsRow({ count, size = 12, muted = false }: { count: number; size?: number; muted?: boolean }) {
+  return (
+    <View style={styles.starsRow}>
+      {[1, 2, 3].map((i) => (
+        <Text
+          key={i}
+          style={[
+            styles.starGlyph,
+            { fontSize: size },
+            i <= count ? null : styles.starGlyphEmpty,
+            muted && styles.starGlyphMuted,
+          ]}
+        >
+          {i <= count ? '★' : '☆'}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 // Custom Play Icon
 function PlayIcon({ color = '#fff', size = 24 }: { color?: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
       <Path d="M8 5v14l11-7z" />
+    </Svg>
+  );
+}
+
+// ── LINE ICON SET (no emojis anywhere in the UI) ──────────────────────
+type IconProps = { color?: string; size?: number };
+
+function TrophyIcon({ color = '#fff', size = 24 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+      <Path d="M7 6H4v1a4 4 0 0 0 3 3.87M17 6h3v1a4 4 0 0 1-3 3.87" />
+    </Svg>
+  );
+}
+
+function ClockIcon({ color = '#475569', size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Circle cx="12" cy="12" r="9" />
+      <Path d="M12 7v5l3 2" />
+    </Svg>
+  );
+}
+
+function BoltIcon({ color = '#4338CA', size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+    </Svg>
+  );
+}
+
+function TargetIcon({ color = '#6366F1', size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+      <Circle cx="12" cy="12" r="9" />
+      <Circle cx="12" cy="12" r="5" />
+      <Circle cx="12" cy="12" r="1.5" fill={color} />
+    </Svg>
+  );
+}
+
+function ArrowRightIcon({ color = '#3B82F6', size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M5 12h14M13 6l6 6-6 6" />
+    </Svg>
+  );
+}
+
+function SparkIcon({ color = '#8B5CF6', size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M12 2 14 9l7 3-7 3-2 7-2-7-7-3 7-3 2-7Z" />
+    </Svg>
+  );
+}
+
+function PencilIcon({ color = '#F59E0B', size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+    </Svg>
+  );
+}
+
+function AlertIcon({ color = '#EF4444', size = 12 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round">
+      <Path d="M12 3 1.8 20.5h20.4L12 3Z" strokeLinejoin="round" />
+      <Path d="M12 9v5M12 17.5v.01" />
+    </Svg>
+  );
+}
+
+function RefreshIcon({ color = '#fff', size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.5M4 4v4.5h4.5" />
+      <Path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.5M20 20v-4.5h-4.5" />
+    </Svg>
+  );
+}
+
+function HistoryIcon({ color = '#2563EB', size = 15 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <Path d="M3 3v5h5M12 7v5l3 2" />
     </Svg>
   );
 }
@@ -124,6 +251,9 @@ const getCategoryIcon = (category: string, color: string, size: number = 24) => 
   }
 };
 
+const activePosRef = useRef({ x: 0, y: 0 });
+
+
 // ── MODULE/LESSON DATA STRUCTURE ──────────────────────────────────────
 interface Lesson {
   id: number;
@@ -156,6 +286,11 @@ interface Lesson {
   total_points?: number;
   passing_score?: number;
   total_questions?: number;
+  // Performance
+  score?: number;
+  best_score?: number;
+  attempts?: number;
+  stars?: number;
 }
 
 interface WeakSkill {
@@ -176,6 +311,11 @@ interface Module {
   lessons: Lesson[];
 }
 
+interface Position {
+  x: number;
+  y: number;
+}
+
 export default function Lessons() {
   const router = useRouter();
   // Optional deep-link params: navigating here with ?tab=modules&moduleId=5
@@ -191,6 +331,8 @@ export default function Lessons() {
   // was tapped. Comparing against the last-applied key re-syncs whenever
   // the incoming params actually change.
   const lastAppliedDeepLinkKeyRef = useRef<string | null>(null);
+  // Freshest lesson list, readable from effects without extra deps.
+  const currentLessonsRef = useRef<Lesson[]>([]);
   const [activeTab, setActiveTab] = useState<number>(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -232,6 +374,20 @@ export default function Lessons() {
   const [masterySummary, setMasterySummary] = useState<any>(null);
   const [loadingMastery, setLoadingMastery] = useState<boolean>(false);
   const [showWeakSkills, setShowWeakSkills] = useState<boolean>(true);
+
+  // ── SELECTED LESSON / EXAM PERFORMANCE ────────────────────────────────
+  // Attempt history + ranking for whichever node is currently expanded.
+  // Checkpoint exams previously had no history surface here at all even
+  // though the backend already exposes attempts for them.
+  const [perfAttempts, setPerfAttempts] = useState<any[]>([]);
+  const [perfRank, setPerfRank] = useState<number | null>(null);
+  const [perfTotalStudents, setPerfTotalStudents] = useState<number | null>(null);
+  const [loadingPerf, setLoadingPerf] = useState<boolean>(false);
+
+  const [senyaPosition, setSenyaPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const panResponder = useRef<any>(null);
 
   // Sun glow animation
   useEffect(() => {
@@ -337,6 +493,99 @@ export default function Lessons() {
   }, [bobAnim]);
 
 
+  useEffect(() => {
+    const currentActivePos = activePosRef.current;
+    if (!currentActivePos || (currentActivePos.x === 0 && currentActivePos.y === 0)) return;
+
+    const { PanResponder } = require('react-native');
+    panResponder.current = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (_evt: any, gestureState: any) => {
+        setIsDragging(true);
+        const currentPos = senyaPosition || { x: currentActivePos.x || 0, y: currentActivePos.y || 0 }; dragOffset.current = {
+          x: gestureState.x0 - currentPos.x,
+          y: gestureState.y0 - currentPos.y,
+        };
+      },
+      onPanResponderMove: (_evt: any, gestureState: any) => {
+        let newX = gestureState.moveX - dragOffset.current.x;
+        let newY = gestureState.moveY - dragOffset.current.y;
+
+        const minX = 10;
+        const maxX = screenWidth - 160;
+        const minY = 40;
+        const maxY = screenHeight - 180;
+
+        newX = Math.min(Math.max(newX, minX), maxX);
+        newY = Math.min(Math.max(newY, minY), maxY);
+
+        setSenyaPosition({ x: newX, y: newY });
+      },
+      onPanResponderRelease: () => {
+        setIsDragging(false);
+      },
+      onPanResponderTerminate: () => {
+        setIsDragging(false);
+      },
+    });
+  }, [senyaPosition]);
+
+
+  // Load attempts + ranking whenever a node is opened
+  useEffect(() => {
+    const lesson = currentLessonsRef.current.find((l) => l.id === expandedId);
+    if (!lesson) {
+      setPerfAttempts([]);
+      setPerfRank(null);
+      setPerfTotalStudents(null);
+      return;
+    }
+
+    let cancelled = false;
+    const anyApi: any = api;
+    const isExam = !!lesson.is_checkpoint_exam;
+    const targetId = isExam ? (lesson.exam_id ?? lesson.id) : lesson.id;
+
+    const attemptsFn = isExam
+      ? (anyApi.getExamAttempts || anyApi.getCheckpointExamAttempts || anyApi.getAttempts)
+      : anyApi.getAttempts;
+    const rankFn = isExam
+      ? (anyApi.getExamLeaderboard || anyApi.getCheckpointExamLeaderboard || anyApi.getLessonLeaderboard)
+      : anyApi.getLessonLeaderboard;
+
+    const run = async () => {
+      setLoadingPerf(true);
+      setPerfAttempts([]);
+      setPerfRank(null);
+      setPerfTotalStudents(null);
+      try {
+        const [attemptsRes, rankRes] = await Promise.all([
+          attemptsFn ? attemptsFn.call(anyApi, targetId).catch(() => null) : Promise.resolve(null),
+          rankFn ? rankFn.call(anyApi, targetId).catch(() => null) : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        if (attemptsRes?.success) {
+          setPerfAttempts(attemptsRes.attempts || attemptsRes.attempt_history || []);
+        }
+        if (rankRes?.success) {
+          const ur = rankRes.user_rank;
+          setPerfRank(typeof ur === 'object' && ur !== null ? (ur.rank ?? null) : (ur ?? null));
+          setPerfTotalStudents((rankRes.rankings || rankRes.leaderboard || []).length || null);
+        }
+      } catch (error) {
+        console.error('Error loading lesson performance:', error);
+      } finally {
+        if (!cancelled) setLoadingPerf(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedId]);
+
   // ── LOAD MASTERY DATA ──────────────────────────────────────────────────
   const loadMasteryData = async () => {
     try {
@@ -391,6 +640,11 @@ export default function Lessons() {
             }
           }
 
+          // CHANGED: Always use the original description for the desc field
+          // Store recommendation_reason separately for the "Why this lesson?" section
+          const recommendationReason = lesson.recommendation_reason || lesson.description || "Picked for you based on your learning path.";
+          const lessonDescription = lesson.description || "Picked for you based on your learning path.";
+
           return {
             id: lesson.lesson_id,
             lesson_id: lesson.lesson_id,
@@ -401,9 +655,9 @@ export default function Lessons() {
             total_steps: lesson.total_steps,
             has_quiz: lesson.has_quiz,
             module_id: lesson.module_id,
-            recommended_reason: lesson.recommendation_reason,
+            recommended_reason: recommendationReason, // Keep this for the "Why" section
             category: lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson",
-            desc: lesson.recommendation_reason || lesson.description || "Picked for you based on your learning path.",
+            desc: lessonDescription, // CHANGED: Always use the original description, not the recommendation reason
             color: color,
             iconBg: color + '18',
             duration: lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min",
@@ -411,6 +665,10 @@ export default function Lessons() {
             done: !!lesson.done,
             active: !!lesson.active,
             locked: !!lesson.locked,
+            score: Number(lesson.score ?? lesson.best_score ?? 0),
+            best_score: Number(lesson.best_score ?? lesson.score ?? 0),
+            attempts: Number(lesson.attempts ?? lesson.total_attempts ?? 0),
+            stars: getStarsFromScore(lesson.best_score ?? lesson.score ?? 0),
             // 🆕 Store adaptive data
             covered_skills: lesson.covered_skills || [],
             recommendation_type: lesson.recommendation_type || 'recommended',
@@ -507,6 +765,11 @@ export default function Lessons() {
               done: isDone,
               active: isActive,
               locked: isLocked,
+              // Performance data used for the star rating on the map
+              score: Number(lesson.score ?? lesson.best_score ?? 0),
+              best_score: Number(lesson.best_score ?? lesson.score ?? 0),
+              attempts: Number(lesson.attempts ?? lesson.total_attempts ?? 0),
+              stars: getStarsFromScore(lesson.best_score ?? lesson.score ?? 0),
             };
           });
 
@@ -544,6 +807,9 @@ export default function Lessons() {
         const transformed: Lesson[] = response.lessons.map((lesson: any, index: number) => {
           const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
 
+          const recommendationReason = lesson.recommended_reason || lesson.description || "Picked for you based on your learning path.";
+          const lessonDescription = lesson.description || "Picked for you based on your learning path.";
+
           return {
             id: lesson.lesson_id,
             lesson_id: lesson.lesson_id,
@@ -554,9 +820,9 @@ export default function Lessons() {
             total_steps: lesson.total_steps,
             has_quiz: lesson.has_quiz,
             module_id: lesson.module_id,
-            recommended_reason: lesson.recommended_reason,
+            recommended_reason: recommendationReason,
             category: lesson.difficulty ? lesson.difficulty.charAt(0).toUpperCase() + lesson.difficulty.slice(1) : "Lesson",
-            desc: lesson.recommended_reason || lesson.description || "Picked for you based on your learning path.",
+            desc: lessonDescription, // CHANGED: Always use the original description
             color: color,
             iconBg: color + '18',
             duration: lesson.total_steps ? `${lesson.total_steps * 2} min` : "5 min",
@@ -564,6 +830,10 @@ export default function Lessons() {
             done: !!lesson.done,
             active: !!lesson.active,
             locked: !!lesson.locked,
+            score: Number(lesson.score ?? lesson.best_score ?? 0),
+            best_score: Number(lesson.best_score ?? lesson.score ?? 0),
+            attempts: Number(lesson.attempts ?? lesson.total_attempts ?? 0),
+            stars: getStarsFromScore(lesson.best_score ?? lesson.score ?? 0),
           };
         });
 
@@ -624,6 +894,9 @@ export default function Lessons() {
 
   const currentLessons = getCurrentLessons();
   const totalNodes = currentLessons.length;
+  // Kept in a ref so the performance effect can read the freshest list
+  // without re-running every time the array identity changes.
+  currentLessonsRef.current = currentLessons;
 
   // Get module name for display
   const getModuleDisplayName = (): string => {
@@ -666,10 +939,17 @@ export default function Lessons() {
 
   const activePathIndex = getActivePathIndex();
 
+
   // Generate node coordinates
   const points = currentLessons.map((_, i) => getNodePosition(i));
   const backgroundPathD = generateSPath(points);
   const progressPathD = generateSPath(points.slice(0, activePathIndex + 1));
+
+  // Update the ref with the actual position
+  activePosRef.current = points[activePathIndex] || { x: 0, y: 0 };
+
+  const actualActivePos = points[activePathIndex];
+
 
   // Switch between Unit 1 and Teacher Modules
   const switchTab = (targetTab: number) => {
@@ -742,6 +1022,21 @@ export default function Lessons() {
   const pct = getProgressPercentage();
   const completedNodesCount = currentLessons.filter(l => l.done).length;
   const selectedLesson = currentLessons.find(l => l.id === expandedId);
+  // Best score = highest of what the map already knows and what the
+  // attempt history returns (exams only carry it in the attempts list).
+  const bestAttemptScore = Math.max(
+    Number(selectedLesson?.best_score ?? 0),
+    Number(selectedLesson?.score ?? 0),
+    ...perfAttempts.map((a: any) =>
+      Number(
+        a.percentage ??
+        a.score_percentage ??
+        (a.total_points ? (a.score / a.total_points) * 100 : a.score) ??
+        0
+      ) || 0
+    ),
+    0
+  );
 
   // Pulse translations
   const pulseScale = pulseAnim.interpolate({
@@ -766,7 +1061,107 @@ export default function Lessons() {
     outputRange: [0.3, 0.8],
   });
 
-  const activePos = points[activePathIndex];
+
+  const getMascotMessage = (progress: number, completed: number, total: number): string => {
+    if (total === 0) return '🌟 Ready to learn!';
+
+    // Get the current lesson's info if available
+    const currentLesson = currentLessons[activePathIndex];
+    const lessonName = currentLesson?.title || '';
+    const weakSkill = currentLesson?.weakest_skill;
+
+    // If we have a weak skill, give specific advice
+    if (weakSkill && !currentLesson?.done) {
+      const skillName = weakSkill.display_name || weakSkill.gesture_name;
+      const mastery = Math.round(weakSkill.mastery * 100);
+
+      if (mastery < 20) {
+        const messages = [
+          `💪 Let's practice "${skillName}" together!`,
+          `📚 "${skillName}" needs some love! Let's learn!`,
+          `🌟 You can master "${skillName}"! Let's go!`
+        ];
+        return messages[Math.floor(Math.random() * messages.length)];
+      } else if (mastery < 40) {
+        const messages = [
+          `🌟 "${skillName}" - You're getting better! Keep going!`,
+          `💪 "${skillName}" is improving! Practice makes perfect!`,
+          `📚 You're learning "${skillName}" well! Keep it up!`
+        ];
+        return messages[Math.floor(Math.random() * messages.length)];
+      } else if (mastery < 60) {
+        const messages = [
+          `⭐ "${skillName}" - Almost there! You're doing great!`,
+          `🌟 You're so close with "${skillName}"! Keep going!`,
+          `💪 "${skillName}" is getting easier! Way to go!`
+        ];
+        return messages[Math.floor(Math.random() * messages.length)];
+      } else {
+        const messages = [
+          `🎯 "${skillName}" - You're almost a master!`,
+          `⭐ So close with "${skillName}"! You got this!`,
+          `🌟 "${skillName}" is looking great! One more push!`
+        ];
+        return messages[Math.floor(Math.random() * messages.length)];
+      }
+    }
+
+    // General progress messages
+    if (progress === 100) {
+      const messages = [
+        '🎉 You did it! Amazing job!',
+        '⭐ You\'re a superstar! 🏆',
+        '🌟 Perfect! You\'re amazing!',
+        '🎊 You\'ve mastered everything!'
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    if (progress >= 75) {
+      const messages = [
+        '📈 Almost there! Keep going!',
+        '💪 You\'re doing amazing!',
+        '⭐ So close! You got this!'
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    if (progress >= 50) {
+      const messages = [
+        '🌟 You\'re making great progress!',
+        '📚 Learning so well today!',
+        '💪 Keep it up! You\'re awesome!'
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    if (progress >= 25) {
+      const messages = [
+        '🌱 Good start! Let\'s keep going!',
+        '📖 You\'re learning! Great job!',
+        '💪 Every lesson makes you better!'
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    if (completed === 0) {
+      const messages = [
+        '👋 Ready to learn something new?',
+        '🌟 Let\'s start your learning journey!',
+        '📚 Your first lesson awaits!'
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    const messages = [
+      '🌟 You got this! Keep going!',
+      '📚 Every lesson counts!',
+      '💪 You\'re doing great today!',
+      '⭐ You\'re a natural learner!'
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+  };
+
 
 
 
@@ -998,34 +1393,56 @@ export default function Lessons() {
                 </Svg>
               </View>
 
-              {/* Bobbing Mascot */}
-              {activePos && (
+              {activePosRef.current && activePosRef.current.x !== 0 && (
                 <Animated.View
+                  {...(panResponder.current ? panResponder.current.panHandlers : {})}
                   style={[
                     styles.mascotContainer,
                     {
                       left: (() => {
+                        if (senyaPosition) return senyaPosition.x;
                         const cycle = [0.5, 0.76, 0.5, 0.24];
                         const xPct = cycle[activePathIndex % cycle.length];
-                        return xPct > 0.5 ? activePos.x - 95 : activePos.x + 50;
+                        let pos = xPct > 0.5 ? activePosRef.current.x - 280 : activePosRef.current.x + 220;
+                        const minLeft = 10;
+                        const maxLeft = screenWidth - 170;
+                        if (pos < minLeft) pos = minLeft;
+                        if (pos > maxLeft) pos = maxLeft;
+                        return pos;
                       })(),
-                      top: activePos.y - 75,
-                      transform: [{ translateY: bobY }],
+                      top: (() => {
+                        if (senyaPosition) return senyaPosition.y;
+                        const cycle = [0.5, 0.76, 0.5, 0.24];
+                        const xPct = cycle[activePathIndex % cycle.length];
+                        let pos = activePosRef.current.y - 160;
+                        if (Math.abs(xPct - 0.5) < 0.1) {
+                          pos = activePosRef.current.y - 200;
+                        }
+                        const minTop = 40;
+                        const maxTop = screenHeight - 200;
+                        if (pos < minTop) pos = minTop;
+                        if (pos > maxTop) pos = maxTop;
+                        return pos;
+                      })(),
+                      transform: [{ translateY: isDragging ? 0 : bobY }],
+                      opacity: isDragging ? 0.9 : 1,
+                      zIndex: isDragging ? 999 : 12,
                     },
                   ]}
-                  pointerEvents="none"
+                  pointerEvents="auto"
                 >
                   <Image
                     source={MascotImage}
                     style={styles.mascotImage}
                     contentFit="contain"
                   />
-                  <View style={styles.mascotBubble}>
-                    <Text style={styles.mascotBubbleText}>🌟 You got this!</Text>
+                  <View style={[styles.mascotBubble, isDragging && styles.mascotBubbleDragging]}>
+                    <Text style={styles.mascotBubbleText}>
+                      {isDragging ? '👆 Drag me anywhere!' : getMascotMessage(pct, completedNodesCount, totalNodes)}
+                    </Text>
                   </View>
                 </Animated.View>
               )}
-
               {currentLessons.map((lesson, index) => {
                 const pos = points[index];
                 const isSelected = expandedId === lesson.id;
@@ -1038,21 +1455,9 @@ export default function Lessons() {
                   iconColor = '#64748B';
                 }
 
-                // 🆕 Determine badge text
-                let badgeText = '';
-                let badgeColor = '#F59E0B';
-                if (lesson.recommendation_type === 'weak_skill_practice' && lesson.weakest_skill) {
-                  const skillName = lesson.weakest_skill.display_name || lesson.weakest_skill.gesture_name;
-                  const mastery = Math.round(lesson.weakest_skill.mastery * 100);
-                  badgeText = `✏️ ${skillName} (${mastery}%)`;
-                  badgeColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : '#10B981';
-                } else if (lesson.recommendation_type === 'new_skill') {
-                  badgeText = '🌟 New Skill';
-                  badgeColor = '#8B5CF6';
-                } else if (lesson.recommendation_type === 'next_in_path') {
-                  badgeText = '➡️ Next Lesson';
-                  badgeColor = '#3B82F6';
-                }
+
+                const nodeStars = getStarsFromScore(lesson.best_score ?? lesson.score);
+                const showNodeStars = !lesson.locked && (lesson.done || (lesson.attempts || 0) > 0);
 
                 return (
                   <View
@@ -1092,42 +1497,64 @@ export default function Lessons() {
                       {lesson.locked ? (
                         <LockIcon size={24} color={iconColor} />
                       ) : lesson.done ? (
-                        <CheckIcon size={26} color={iconColor} />
+                        <CheckIcon size={28} color={iconColor} />
                       ) : lesson.is_checkpoint_exam ? (
-                        <Text style={{ fontSize: 24 }}>🏆</Text>
+                        <TrophyIcon size={26} color={iconColor} />
                       ) : lesson.active ? (
                         <PlayIcon color={iconColor} size={24} />
                       ) : (
                         getCategoryIcon(lesson.category, iconColor, 24)
                       )}
+
+                      {/* Step number chip so the map reads as a sequence */}
+                      <View style={[styles.nodeIndexChip, lesson.locked && styles.nodeIndexChipLocked]}>
+                        <Text style={styles.nodeIndexChipText}>{index + 1}</Text>
+                      </View>
                     </Pressable>
 
-                    <View style={styles.nodeLabelBox}>
-                      {lesson.active && !lesson.locked && (
-                        <View style={[styles.nextBadge, lesson.is_checkpoint_exam && { backgroundColor: '#F59E0B' }]}>
-                          <Text style={styles.nextBadgeText}>{lesson.is_checkpoint_exam ? "EXAM 🏆" : "NEXT UP"}</Text>
-                        </View>
-                      )}
-                      <Text
-                        style={[
-                          styles.nodeTitleText,
-                          lesson.active && styles.nodeTitleTextActive,
-                          lesson.locked && styles.nodeTitleTextLocked,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {lesson.title}
-                      </Text>
-                    </View>
-
-                    {/* 🆕 SKILL BADGE - below the lesson title */}
-                    {badgeText && !lesson.done && !lesson.locked && (
-                      <View style={[styles.skillBadge, { backgroundColor: badgeColor + '20', borderColor: badgeColor }]}>
-                        <Text style={[styles.skillBadgeText, { color: badgeColor }]} numberOfLines={1}>
-                          {badgeText}
-                        </Text>
+                    {/* Stars sit ON the node itself (badge overlapping the ring),
+                        the way the reference map shows earned progress. */}
+                    {showNodeStars && (
+                      <View style={styles.nodeStarsBadge} pointerEvents="none">
+                        <StarsRow count={nodeStars} size={11} />
                       </View>
                     )}
+
+                    <View style={styles.nodeLabelBox} pointerEvents="box-none">
+                      {lesson.active && !lesson.locked && (
+                        <View style={[styles.nextBadge, lesson.is_checkpoint_exam && { backgroundColor: '#F59E0B' }]}>
+                          <Text style={styles.nextBadgeText}>{lesson.is_checkpoint_exam ? "EXAM" : "NEXT UP"}</Text>
+                        </View>
+                      )}
+
+                      {/* Title card: white pill keeps long titles legible over the
+                          sky background, and wraps to 3 lines instead of clipping. */}
+                      <Pressable
+                        onPress={() => setExpandedId(isSelected ? null : lesson.id)}
+                        style={({ pressed }) => [
+                          styles.nodeTitleCard,
+                          lesson.active && !lesson.locked && { borderColor: lesson.color },
+                          lesson.locked && styles.nodeTitleCardLocked,
+                          pressed && { opacity: 0.85 },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.nodeTitleText,
+                            lesson.active && styles.nodeTitleTextActive,
+                            lesson.locked && styles.nodeTitleTextLocked,
+                          ]}
+                          numberOfLines={3}
+                          ellipsizeMode="tail"
+                        >
+                          {lesson.title}
+                        </Text>
+
+                        {lesson.locked && <Text style={styles.nodeLockedHint}>Locked</Text>}
+                      </Pressable>
+                    </View>
+
+
                   </View>
                 );
               })}
@@ -1159,116 +1586,148 @@ export default function Lessons() {
                 </Pressable>
               </View>
 
-              <Text style={styles.cardDescText}>{selectedLesson.desc}</Text>
+              {/* Everything between the header and the action button scrolls,
+                  so the sheet can never grow past half the screen. */}
+              <ScrollView
+                style={styles.sheetScroll}
+                contentContainerStyle={styles.sheetScrollContent}
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+              >
+                <Text style={styles.cardDescText}>{selectedLesson.desc}</Text>
 
-              {/* 🆕 RECOMMENDATION TYPE BADGE */}
-              {selectedLesson.recommendation_type && (
-                <View style={styles.recommendationTypeContainer}>
-                  <Text style={styles.recommendationTypeText}>
-                    {selectedLesson.recommendation_type === 'weak_skill_practice' && '📝 Practice Lesson'}
-                    {selectedLesson.recommendation_type === 'new_skill' && '🌟 New Skill Lesson'}
-                    {selectedLesson.recommendation_type === 'goal_match' && '🎯 Matches Your Goal'}
-                    {selectedLesson.recommendation_type === 'next_in_path' && '➡️ Next in Path'}
-                    {selectedLesson.recommendation_type === 'recommended' && '📚 Recommended'}
-                  </Text>
-                </View>
-              )}
-
-              {/* 🆕 ADAPTIVE REASON SECTION - Now SCROLLABLE
-                  Previously gated on covered_skills.length > 0, which hid
-                  this whole panel for 'goal_match' and 'next_in_path'
-                  recommendations — those never populate covered_skills
-                  since they're not skill-driven, even though they always
-                  have a perfectly good recommended_reason string. That's
-                  why new students (whose picks mostly come from those two
-                  types before enough mastery data exists) saw an empty
-                  "Why this lesson?" panel. Now it shows whenever there's
-                  a reason at all, with the skill breakdown as an optional
-                  extra when covered_skills is actually populated. */}
-              {selectedLesson.recommended_reason && (
-                <ScrollView
-                  style={styles.adaptiveReasonScrollContainer}
-                  showsVerticalScrollIndicator={true}
-                  nestedScrollEnabled={true}
-                >
-                  <View style={styles.adaptiveReasonContainer}>
-                    <Text style={styles.adaptiveReasonTitle}>🎯 Why this lesson?</Text>
-                    <Text style={styles.adaptiveReasonSubtitle}>
-                      {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0
-                        ? 'This lesson will help you practice these skills:'
-                        : selectedLesson.recommended_reason}
-                    </Text>
-                    {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0 && (
-                      <View style={styles.skillListContainer}>
-                        {selectedLesson.covered_skills.map((skill, idx) => {
-                          const mastery = Math.round(skill.mastery * 100);
-                          const masteryColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : mastery < 60 ? '#8B5CF6' : '#10B981';
-                          return (
-                            <View key={idx} style={styles.skillListItem}>
-                              <View style={[styles.skillDot, { backgroundColor: masteryColor }]} />
-                              <Text style={styles.skillListText}>
-                                <Text style={styles.skillListName}>{skill.display_name || skill.gesture_name}</Text>
-                                <Text style={[styles.skillListMastery, { color: masteryColor }]}>
-                                  {' '}({mastery}% mastery)
-                                </Text>
-                                {mastery < 30 && <Text style={styles.skillListWarning}> ⚠️ Needs practice!</Text>}
-                              </Text>
-                            </View>
-                          );
-                        })}
+                {/* ALWAYS show the "Why this lesson?" section if there's a recommendation reason, regardless of completion status */}
+                {selectedLesson.recommendation_type &&
+                  selectedLesson.recommendation_type !== 'recommended' &&
+                  selectedLesson.recommended_reason && (
+                    <View style={styles.adaptiveReasonContainer}>
+                      <View style={styles.adaptiveReasonTitleRow}>
+                        <TargetIcon size={13} color="#0f3172" />
+                        <Text style={styles.adaptiveReasonTitle}>Why this lesson?</Text>
                       </View>
-                    )}
+                      <Text style={styles.adaptiveReasonSubtitle}>
+                        {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0
+                          ? 'This lesson will help you practice these skills:'
+                          : selectedLesson.recommended_reason}
+                      </Text>
+                      {selectedLesson.covered_skills && selectedLesson.covered_skills.length > 0 && (
+                        <View style={styles.skillListContainer}>
+                          {selectedLesson.covered_skills.map((skill, idx) => {
+                            const mastery = Math.round(skill.mastery * 100);
+                            const masteryColor = mastery < 20 ? '#EF4444' : mastery < 40 ? '#F59E0B' : mastery < 60 ? '#8B5CF6' : '#10B981';
+                            return (
+                              <View key={idx} style={styles.skillListItem}>
+                                <View style={[styles.skillDot, { backgroundColor: masteryColor }]} />
+                                <Text style={styles.skillListText}>
+                                  <Text style={styles.skillListName}>{skill.display_name || skill.gesture_name}</Text>
+                                  <Text style={[styles.skillListMastery, { color: masteryColor }]}>
+                                    {' '}({mastery}% mastery)
+                                  </Text>
+                                </Text>
+                                {mastery < 30 && (
+                                  <View style={styles.skillWarnIcon}>
+                                    <AlertIcon size={12} color="#EF4444" />
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+
+                {/* ── PERFORMANCE SNAPSHOT ───────────────────────────── */}
+                {!selectedLesson.locked && (
+                  <View style={styles.perfRow}>
+                    <View style={styles.perfCard}>
+                      <Text style={styles.perfCardLabel}>Stars</Text>
+                      <StarsRow count={getStarsFromScore(bestAttemptScore)} size={15} />
+                    </View>
+                    <View style={styles.perfCard}>
+                      <Text style={styles.perfCardLabel}>Best score</Text>
+                      <Text style={styles.perfCardValue}>
+                        {bestAttemptScore > 0 ? `${Math.round(bestAttemptScore)}%` : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.perfCard}>
+                      <Text style={styles.perfCardLabel}>Rank</Text>
+                      <Text style={styles.perfCardValue}>
+                        {loadingPerf ? '…' : (rankLabel(perfRank) || '—')}
+                      </Text>
+                    </View>
+                    <View style={styles.perfCard}>
+                      <Text style={styles.perfCardLabel}>Attempts</Text>
+                      <Text style={styles.perfCardValue}>
+                        {loadingPerf ? '…' : (perfAttempts.length || selectedLesson.attempts || 0)}
+                      </Text>
+                    </View>
                   </View>
-                </ScrollView>
-              )}
+                )}
 
-              <View style={styles.cardInfoRow}>
-                <View style={styles.cardInfoBadge}>
-                  <Text style={styles.cardInfoBadgeText}>⏱️ {selectedLesson.duration}</Text>
+                <View style={styles.cardInfoRow}>
+                  <View style={styles.cardInfoBadge}>
+                    <ClockIcon size={13} color="#475569" />
+                    <Text style={styles.cardInfoBadgeText}>{selectedLesson.duration}</Text>
+                  </View>
+                  <View style={[styles.cardInfoBadge, { backgroundColor: '#EEF2FF' }]}>
+                    <BoltIcon size={13} color="#4338CA" />
+                    <Text style={[styles.cardInfoBadgeText, { color: '#4338CA' }]}>
+                      Up to +{selectedLesson.xp} XP
+                    </Text>
+                  </View>
                 </View>
-                <View style={[styles.cardInfoBadge, { backgroundColor: '#EEF2FF' }]}>
-                  <Text style={[styles.cardInfoBadgeText, { color: '#4338CA' }]}>
-                    ⚡ Up to +{selectedLesson.xp} XP
-                  </Text>
-                </View>
-              </View>
 
-              {/* Attempt History Button - Only show if regular lesson has a quiz */}
-              {selectedLesson.has_quiz && !selectedLesson.is_checkpoint_exam && (
+                {/* Full attempt-history screen (regular lessons only) */}
+                {selectedLesson.has_quiz && !selectedLesson.is_checkpoint_exam && (
+                  <Pressable
+                    style={styles.attemptHistoryBtn}
+                    onPress={() => {
+                      setExpandedId(null);
+                      router.push(`/lesson/history/${selectedLesson.id}` as any);
+                    }}
+                  >
+                    <HistoryIcon size={15} color="#2563EB" />
+                    <Text style={styles.attemptHistoryBtnText}>View Full History</Text>
+                  </Pressable>
+                )}
+              </ScrollView>
+
+              <View style={styles.sheetFooter}>
                 <Pressable
-                  style={styles.attemptHistoryBtn}
                   onPress={() => {
                     setExpandedId(null);
-                    router.push(`/lesson/history/${selectedLesson.id}` as any);
+                    if (selectedLesson.is_checkpoint_exam) {
+                      router.push(`/checkpoint-exam/${selectedLesson.exam_id}` as any);
+                    } else {
+                      router.push(`/lesson/${selectedLesson.id}` as any);
+                    }
                   }}
+                  style={[
+                    styles.cardActionBtn,
+                    { backgroundColor: selectedLesson.locked ? '#CBD5E1' : selectedLesson.color },
+                  ]}
+                  disabled={selectedLesson.locked}
                 >
-                  <Text style={styles.attemptHistoryBtnText}>📊 Attempt History</Text>
+                  {selectedLesson.locked ? (
+                    <LockIcon size={16} color="#fff" />
+                  ) : selectedLesson.done ? (
+                    <RefreshIcon size={16} color="#fff" />
+                  ) : selectedLesson.is_checkpoint_exam ? (
+                    <TrophyIcon size={16} color="#fff" />
+                  ) : (
+                    <PlayIcon size={16} color="#fff" />
+                  )}
+                  <Text style={styles.cardActionBtnText}>
+                    {selectedLesson.locked
+                      ? "LOCKED"
+                      : selectedLesson.is_checkpoint_exam
+                        ? (selectedLesson.done ? "RETAKE EXAM" : "START EXAM")
+                        : (selectedLesson.done ? "REVIEW LESSON" : "START LESSON")}
+                  </Text>
                 </Pressable>
-              )}
-
-              <Pressable
-                onPress={() => {
-                  setExpandedId(null);
-                  if (selectedLesson.is_checkpoint_exam) {
-                    router.push(`/checkpoint-exam/${selectedLesson.exam_id}` as any);
-                  } else {
-                    router.push(`/lesson/${selectedLesson.id}` as any);
-                  }
-                }}
-                style={[
-                  styles.cardActionBtn,
-                  { backgroundColor: selectedLesson.locked ? '#CBD5E1' : selectedLesson.color },
-                ]}
-                disabled={selectedLesson.locked}
-              >
-                <Text style={styles.cardActionBtnText}>
-                  {selectedLesson.locked
-                    ? "🔒 LOCKED"
-                    : selectedLesson.is_checkpoint_exam
-                      ? (selectedLesson.done ? "🔄 RETAKE EXAM" : "🏆 START EXAM")
-                      : (selectedLesson.done ? "🔄 REVIEW LESSON" : "🚀 START LESSON")}
-                </Text>
-              </Pressable>
+              </View>
             </View>
           </View>
         )}
@@ -1504,9 +1963,204 @@ const styles = StyleSheet.create({
   },
   nodeLabelBox: {
     position: 'absolute',
-    top: NODE_RADIUS * 2 + 6,
-    width: 140,
+    top: NODE_RADIUS * 2 + 14,
+    width: 156,
     alignItems: 'center',
+  },
+  nodeStarsBadge: {
+    position: 'absolute',
+    top: NODE_RADIUS * 2 - 12,
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1.5,
+    borderColor: 'rgba(147, 197, 253, 0.7)',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 5,
+  },
+  nodeTitleCard: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1.5,
+    borderColor: 'rgba(147, 197, 253, 0.55)',
+    alignItems: 'center',
+    maxWidth: 156,
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  nodeTitleCardLocked: {
+    backgroundColor: 'rgba(241, 245, 249, 0.9)',
+    borderColor: 'rgba(203, 213, 225, 0.8)',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  nodeStarsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  nodeScoreText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  nodeLockedHint: {
+    marginTop: 3,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.3,
+  },
+  nodeIndexChip: {
+    position: 'absolute',
+    top: -6,
+    left: -6,
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    backgroundColor: '#0f3172',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  nodeIndexChipLocked: {
+    backgroundColor: '#94A3B8',
+  },
+  nodeIndexChipText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  starGlyph: {
+    color: '#F59E0B',
+    fontWeight: '900',
+  },
+  starGlyphEmpty: {
+    color: '#CBD5E1',
+  },
+  starGlyphMuted: {
+    opacity: 0.6,
+  },
+
+  // Performance panel inside the detail sheet
+  perfRow: {
+    flexDirection: 'row',
+    gap: 6, // Reduced from 8 to 6
+    marginTop: 4,
+    marginBottom: 10,
+    flexWrap: 'nowrap', // Ensure all items stay on one row
+  },
+  perfCard: {
+    flex: 1,
+    minWidth: 0, // Allow flex items to shrink
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 6, // Reduced from 8 to 6
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  perfCardLabel: {
+    fontSize: 9, // Reduced from 10 to 9
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.3, // Reduced from 0.4
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    textAlign: 'center', // Center the text
+  },
+  perfCardValue: {
+    fontSize: 15, // Reduced from 16 to 15
+    fontWeight: '900',
+    color: '#0f3172',
+    textAlign: 'center',
+  },
+  historyPanel: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 10,
+    marginBottom: 10,
+  },
+  historyTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  historyTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0f3172',
+  },
+  historyCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  historyScroll: {
+    maxHeight: 148,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+  },
+  historyItemLeft: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  historyItemTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  historyItemDate: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  historyItemRight: {
+    alignItems: 'flex-end',
+  },
+  historyItemScore: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  historyEmpty: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    textAlign: 'center',
+    paddingVertical: 10,
   },
   nextBadge: {
     backgroundColor: '#F59E0B',
@@ -1526,7 +2180,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   nodeTitleText: {
-    fontSize: 12,
+    fontSize: 13.5,
+    lineHeight: 17,
     fontWeight: '800',
     color: '#1E293B',
     textAlign: 'center',
@@ -1609,11 +2264,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     zIndex: 12,
-    width: 85,
+    width: 150, // Increased from 120
   },
   mascotImage: {
-    width: 60,
-    height: 60,
+    width: 100, // Increased from 80
+    height: 100, // Increased from 80
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -1621,30 +2276,33 @@ const styles = StyleSheet.create({
   },
   mascotBubble: {
     backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderWidth: 2,
+    borderRadius: 18, // Increased from 16
+    paddingVertical: 8, // Increased from 6
+    paddingHorizontal: 16, // Increased from 14
+    borderWidth: 2.5, // Slightly thicker
     borderColor: '#2563EB',
-    marginTop: 2,
+    marginTop: 6, // Increased from 4
     shadowColor: '#0f3172',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 3,
+    maxWidth: 150, // Increased from 130
   },
   mascotBubbleText: {
-    fontSize: 9,
+    fontSize: 13, // Increased from 11
     fontWeight: '900',
     color: '#2563EB',
     textAlign: 'center',
+    lineHeight: 18, // Added for better readability
   },
 
   overlayContainer: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end', // Keep this
     alignItems: 'center',
     zIndex: 999,
+    paddingBottom: 0, // Add this
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -1652,10 +2310,13 @@ const styles = StyleSheet.create({
   },
   bottomCard: {
     width: screenWidth - 32,
+    maxHeight: screenHeight * 0.5,
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderRadius: 24,
-    padding: 20,
-    marginBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
+    marginBottom: 20, // Add small margin from bottom
     shadowColor: '#0f3172',
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.1,
@@ -1664,6 +2325,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
   },
+
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1708,6 +2370,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   cardInfoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: '#F1F5F9',
     borderRadius: 12,
     paddingVertical: 5,
@@ -1718,9 +2383,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#475569',
   },
+  sheetScroll: {
+    flexGrow: 0,
+  },
+  sheetScrollContent: {
+    paddingBottom: 6,
+  },
+  sheetFooter: {
+    paddingTop: 12, // Increased from 10
+    paddingBottom: 12, // Increased from 6
+    borderTopWidth: 1,
+    borderTopColor: '#EEF2F7',
+  },
+  adaptiveReasonTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  skillWarnIcon: {
+    marginLeft: 4,
+  },
   cardActionBtn: {
+    flexDirection: 'row',
+    gap: 8,
     borderRadius: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 4 },
@@ -1735,6 +2423,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   attemptHistoryBtn: {
+    flexDirection: 'row',
+    gap: 7,
     backgroundColor: '#EFF6FF',
     borderWidth: 1.5,
     borderColor: '#BFDBFE',
@@ -1742,7 +2432,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   attemptHistoryBtnText: {
     fontSize: 13,
@@ -1752,21 +2442,28 @@ const styles = StyleSheet.create({
   skillBadge: {
     position: 'absolute',
     top: NODE_RADIUS * 2 + 32,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
     borderColor: '#F59E0B',
-    maxWidth: 120,
+    maxWidth: 140,
     alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   skillBadgeText: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '700',
     color: '#F59E0B',
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
+
   // ─── ADAPTIVE REASON STYLES ────────────────────────────────────────────
   adaptiveReasonContainer: {
     backgroundColor: '#F8FAFC',
@@ -1817,6 +2514,9 @@ const styles = StyleSheet.create({
     color: '#EF4444',
   },
   recommendationTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: 'rgba(99, 102, 241, 0.08)',
     borderRadius: 8,
     paddingVertical: 4,
@@ -1833,5 +2533,17 @@ const styles = StyleSheet.create({
     maxHeight: 160, // Limit height so it doesn't take over the screen
     marginVertical: 4,
   },
+
+  mascotBubbleDragging: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderColor: '#8B5CF6',
+    borderWidth: 3,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+
 
 });
