@@ -65,12 +65,7 @@ interface DragDropQuestionProps {
     totalQuestions: number;
     onComplete: (success: boolean) => void;
     onBack: () => void;
-    // Optional: fires true when a card drag starts and false when it ends,
-    // so a parent screen that wraps this component in its own ScrollView
-    // can disable that outer scroll for the duration of the drag. Without
-    // this, a vertical/diagonal drag can get stolen by the *outer*
-    // ScrollView even though this component's own inner ScrollView is
-    // already disabled while dragging.
+    isExamMode?: boolean;
     onDragActiveChange?: (active: boolean) => void;
 }
 
@@ -78,9 +73,6 @@ const MAX_WRONG_ATTEMPTS = 2;
 
 type Rect = { x: number; y: number; width: number; height: number };
 
-// ─── SHUFFLE (Fisher-Yates) ────────────────────────────────────────────────
-// Used to randomize the right column so a card's match isn't always
-// sitting directly across from it.
 function shuffle<T>(arr: T[]): T[] {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
@@ -90,7 +82,6 @@ function shuffle<T>(arr: T[]): T[] {
     return a;
 }
 
-// ─── COLOR PAIRS FOR TEXT-ONLY LAYOUT ─────────────────────────────────────
 type ColorPair = {
     gradient: [string, string];
     bg: string;
@@ -105,7 +96,6 @@ const COLOR_PAIRS: ColorPair[] = [
     { gradient: ['#8B5CF6', '#7C3AED'], bg: '#F5F3FF' },
 ];
 
-// ─── DRAG STATE FOR EACH ITEM ─────────────────────────────────────────────
 interface DragState {
     pan: Animated.ValueXY;
     scale: Animated.Value;
@@ -113,9 +103,6 @@ interface DragState {
     opacity: Animated.Value;
 }
 
-// ─── MATCH BURST (fireworks on a correct match) ───────────────────────────
-// Small confetti-style burst, native-driver only so it can't add any jank
-// to the drag gesture. Fires once per correct match via the `trigger` count.
 function MatchBurst({ trigger, anchor }: { trigger: number; anchor: { x: number; y: number } | null }) {
     const bits = React.useMemo(
         () => Array.from({ length: 16 }).map((_, i) => ({
@@ -167,6 +154,7 @@ export default function DragDropQuestion({
     totalQuestions,
     onComplete,
     onBack,
+    isExamMode = false,
     onDragActiveChange,
 }: DragDropQuestionProps) {
     const { settings } = useSettings();
@@ -186,7 +174,8 @@ export default function DragDropQuestion({
     const [dropSuccess, setDropSuccess] = useState<number | null>(null);
     const [burstTick, setBurstTick] = useState(0);
     const [burstAnchor, setBurstAnchor] = useState<{ x: number; y: number } | null>(null);
-
+    const [examMatches, setExamMatches] = useState<Record<number, number>>({});
+    const [allPairsMatched, setAllPairsMatched] = useState(false);
 
     // ─── INDEPENDENT DRAG STATES PER ITEM ────────────────────────────────
     const dragStatesRef = useRef<Map<string, DragState>>(new Map());
@@ -218,13 +207,10 @@ export default function DragDropQuestion({
     const scrollViewRef = useRef<ScrollView>(null);
 
     // ─── "LATEST VALUE" REFS ───────────────────────────────────────────
-    // The PanResponder for each card is created ONCE (see getPanResponder
-    // below) and never rebuilt, so its callbacks close over these refs
-    // instead of the state variables directly. That keeps every callback
-    // reading fresh data without ever forcing React to hand out a new
-    // PanResponder mid-gesture (which is what was causing the glitchiness).
     const matchesRef = useRef(matches);
     matchesRef.current = matches;
+    const examMatchesRef = useRef(examMatches);
+    examMatchesRef.current = examMatches;
     const leftItemsRef = useRef(leftItems);
     leftItemsRef.current = leftItems;
     const rightItemsRef = useRef(rightItems);
@@ -236,8 +222,9 @@ export default function DragDropQuestion({
     const panResponderCacheRef = useRef<Map<string, ReturnType<typeof PanResponder.create>>>(new Map());
     const onDragActiveChangeRef = useRef(onDragActiveChange);
     onDragActiveChangeRef.current = onDragActiveChange;
+    const isExamModeRef = useRef(isExamMode);
+    isExamModeRef.current = isExamMode;
 
-    // Helper function to get full image URL
     const getFullImageUrl = (path: string | null | undefined): string | null => {
         if (!path) return null;
         if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -247,7 +234,6 @@ export default function DragDropQuestion({
         return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
     };
 
-    // Check if ANY item has images
     const hasImages = React.useMemo(() => {
         const hasLeftImages = question.drag_drop_pairs?.some(pair =>
             pair.left_image && pair.left_image.length > 0
@@ -258,8 +244,9 @@ export default function DragDropQuestion({
         return hasLeftImages || hasRightImages;
     }, [question.drag_drop_pairs]);
 
-    // ── Sound effects ──
+    // ── Sound effects (only in lesson mode) ──
     async function playCorrectSoundEffect() {
+        if (isExamModeRef.current) return;
         if (!settings.soundEnabled) return;
         try {
             if (isSoundPlaying) return;
@@ -284,6 +271,7 @@ export default function DragDropQuestion({
     }
 
     async function playWrongSoundEffect() {
+        if (isExamModeRef.current) return;
         if (!settings.soundEnabled) return;
         try {
             if (isSoundPlaying) return;
@@ -307,8 +295,8 @@ export default function DragDropQuestion({
         }
     }
 
-    // ── Senya animations ──
     const animateSenyaBounce = () => {
+        if (isExamModeRef.current) return;
         senyaBounceAnim.setValue(0);
         Animated.spring(senyaBounceAnim, {
             toValue: 1,
@@ -319,6 +307,7 @@ export default function DragDropQuestion({
     };
 
     const animateSenyaShake = () => {
+        if (isExamModeRef.current) return;
         senyaShakeAnim.setValue(0);
         Animated.sequence([
             Animated.timing(senyaShakeAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
@@ -329,15 +318,14 @@ export default function DragDropQuestion({
         ]).start();
     };
 
-    // Rotate motivation every ~6s
     useEffect(() => {
+        if (isExamMode) return;
         const t = setInterval(() => {
             setMotivationIndex(i => (i + 1) % SENYA_MOTIVATIONS.length);
         }, 6000);
         return () => clearInterval(t);
-    }, []);
+    }, [isExamMode]);
 
-    // Cleanup sounds
     useEffect(() => {
         return () => {
             if (correctSound) correctSound.unloadAsync();
@@ -345,11 +333,10 @@ export default function DragDropQuestion({
         };
     }, []);
 
-    // ── Zone measurement ──
     const measureZone = useCallback((id: number) => {
         const node = zoneRefs.current[id];
         if (node) {
-            // @ts-ignore - measureInWindow exists on View
+            // @ts-ignore
             node.measureInWindow?.((x: number, y: number, width: number, height: number) => {
                 if (width > 0) {
                     zoneRectsRef.current[id] = { x, y, width, height };
@@ -363,13 +350,6 @@ export default function DragDropQuestion({
         allIds.forEach(id => measureZone(id));
     }, [measureZone]);
 
-    // ── Throttled remeasure while actively scrolling ──
-    // ScrollView's onScroll only fires continuously if scrollEventThrottle
-    // is set — without it, drop-zone rects captured before a scroll go
-    // stale, so a zone you can clearly see and are hovering over doesn't
-    // register as a hit. We now feed onScroll (throttled to ~10/sec so it
-    // doesn't hammer measureInWindow) plus a guaranteed remeasure the
-    // instant a scroll/drag ends, whether or not it had momentum.
     const lastScrollRemeasureRef = useRef(0);
     const handleScrollRemeasure = useCallback(() => {
         const now = Date.now();
@@ -378,17 +358,20 @@ export default function DragDropQuestion({
         remeasureAllZones();
     }, [remeasureAllZones]);
 
-    // ── Hit test ──
     const findZoneAt = useCallback((pageX: number, pageY: number): number | null => {
         let best: number | null = null;
         let bestDist = Infinity;
-        const pad = 44; // generous forgiveness margin — kids' fingers (and thumbs) aren't pixel-precise
+        const pad = 44;
+
+        // In exam mode, check against examMatches
+        const currentMatches = isExamModeRef.current ? examMatchesRef.current : matchesRef.current;
+        const matchedRightIds = Object.values(currentMatches);
 
         for (const key in zoneRectsRef.current) {
             const r = zoneRectsRef.current[key];
             if (!r) continue;
             const index = parseInt(key);
-            if (Object.values(matchesRef.current).includes(index)) continue;
+            if (matchedRightIds.includes(index)) continue;
 
             if (pageX >= r.x - pad && pageX <= r.x + r.width + pad &&
                 pageY >= r.y - pad && pageY <= r.y + r.height + pad) {
@@ -402,7 +385,47 @@ export default function DragDropQuestion({
             }
         }
         return best;
-    }, []); // stable forever — reads matchesRef.current instead of closing over `matches`
+    }, []);
+
+    // ── Unmatch function (for exam mode) ──
+    const unmatchPair = useCallback((rightIndex: number) => {
+        if (!isExamMode) return;
+
+        // Find which left index is matched to this right index
+        let leftToRemove: number | null = null;
+        for (const [left, right] of Object.entries(examMatches)) {
+            if (right === rightIndex) {
+                leftToRemove = parseInt(left);
+                break;
+            }
+        }
+
+        if (leftToRemove !== null) {
+            const newMatches = { ...examMatches };
+            delete newMatches[leftToRemove];
+            setExamMatches(newMatches);
+            setAllPairsMatched(Object.keys(newMatches).length === leftItems.length);
+            setIsComplete(false); // 🔥 Reset complete state so items can be dragged again
+
+            // 🔥 Reset the drag state for the left item so it becomes draggable again
+            const dragKey = `left-${leftToRemove}`;
+            const dragState = dragStatesRef.current.get(dragKey);
+            if (dragState) {
+                dragState.pan.setValue({ x: 0, y: 0 });
+                dragState.scale.setValue(1);
+                dragState.opacity.setValue(1);
+            }
+
+            // Also reset the right item's drag state if it exists
+            const rightDragKey = `right-${rightIndex}`;
+            const rightDragState = dragStatesRef.current.get(rightDragKey);
+            if (rightDragState) {
+                rightDragState.pan.setValue({ x: 0, y: 0 });
+                rightDragState.scale.setValue(1);
+                rightDragState.opacity.setValue(1);
+            }
+        }
+    }, [examMatches, leftItems.length, isExamMode]);
 
     // ── Attempt match ──
     const attemptMatch = useCallback((leftIndex: number, rightIndex: number, dragKey: string) => {
@@ -426,9 +449,62 @@ export default function DragDropQuestion({
         }
 
         const { pan, scale } = dragState;
+        const isCorrect = leftItem.match_id === rightItem.match_id;
 
-        if (leftItem.match_id === rightItem.match_id) {
-            // ✅ Correct match!
+        // ─── EXAM MODE: Always match, regardless of correctness ───
+        if (isExamModeRef.current) {
+            // Check if left is already matched
+            if (examMatchesRef.current[leftIndex] !== undefined) {
+                // Left already matched, don't allow
+                Animated.parallel([
+                    Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 10, tension: 80, useNativeDriver: true }),
+                    Animated.spring(scale, { toValue: 1, friction: 8, useNativeDriver: true }),
+                ]).start(() => {
+                    setDraggingItem(null);
+                    setIsAnimating(false);
+                    onDragActiveChangeRef.current?.(false);
+                });
+                return;
+            }
+
+            // Check if right is already matched
+            if (Object.values(examMatchesRef.current).includes(rightIndex)) {
+                Animated.parallel([
+                    Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 10, tension: 80, useNativeDriver: true }),
+                    Animated.spring(scale, { toValue: 1, friction: 8, useNativeDriver: true }),
+                ]).start(() => {
+                    setDraggingItem(null);
+                    setIsAnimating(false);
+                    onDragActiveChangeRef.current?.(false);
+                });
+                return;
+            }
+
+            // ✅ In exam mode: match ANY items together (no correctness check)
+            setExamMatches(prev => {
+                const newMatches = { ...prev, [leftIndex]: rightIndex };
+                const allMatched = Object.keys(newMatches).length === leftItems.length;
+                setAllPairsMatched(allMatched);
+                if (allMatched) {
+                    setIsComplete(true);
+                }
+                return newMatches;
+            });
+
+            // Reset drag state
+            Animated.parallel([
+                Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 6, tension: 40, useNativeDriver: true }),
+                Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }),
+            ]).start(() => {
+                setDraggingItem(null);
+                setIsAnimating(false);
+                onDragActiveChangeRef.current?.(false);
+            });
+            return;
+        }
+
+        // ─── LESSON MODE: Show feedback ───
+        if (isCorrect) {
             playCorrectSoundEffect();
             animateSenyaBounce();
             setDropSuccess(rightIndex);
@@ -447,19 +523,9 @@ export default function DragDropQuestion({
                 return newMatches;
             });
 
-            // Reset drag state with animation
             Animated.parallel([
-                Animated.spring(pan, {
-                    toValue: { x: 0, y: 0 },
-                    friction: 6,
-                    tension: 40,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(scale, {
-                    toValue: 1,
-                    friction: 6,
-                    useNativeDriver: true,
-                }),
+                Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 6, tension: 40, useNativeDriver: true }),
+                Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }),
             ]).start(() => {
                 setDraggingItem(null);
                 setIsAnimating(false);
@@ -468,7 +534,6 @@ export default function DragDropQuestion({
 
             setTimeout(() => setDropSuccess(null), 400);
         } else {
-            // ❌ Wrong match
             playWrongSoundEffect();
             animateSenyaShake();
 
@@ -477,17 +542,8 @@ export default function DragDropQuestion({
             setWrongPair({ left: leftIndex, right: rightIndex });
 
             Animated.parallel([
-                Animated.spring(pan, {
-                    toValue: { x: 0, y: 0 },
-                    friction: 8,
-                    tension: 60,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(scale, {
-                    toValue: 1,
-                    friction: 6,
-                    useNativeDriver: true,
-                }),
+                Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 8, tension: 60, useNativeDriver: true }),
+                Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: true }),
             ]).start(() => {
                 setDraggingItem(null);
                 setIsAnimating(false);
@@ -503,22 +559,12 @@ export default function DragDropQuestion({
                 setWrongPair({ left: null, right: null });
             }, 500);
         }
-    }, [leftItems, rightItems, matches, attempts, isAnimating, leftItems.length]);
+    }, [leftItems, rightItems, attempts, isAnimating, leftItems.length, onComplete]);
 
     const attemptMatchRef = useRef(attemptMatch);
     attemptMatchRef.current = attemptMatch;
 
-    // ── Get (or lazily create) a PanResponder for a drag item ──
-    // IMPORTANT: this is built ONCE per card and cached in panResponderCacheRef.
-    // Previously a brand-new PanResponder (with brand-new panHandlers) was
-    // created on every render — and because hoverZoneId/matches/etc changed
-    // constantly *during* a drag, React kept swapping out the responder
-    // attached to the Animated.View mid-gesture. RN's gesture system tracks
-    // an in-progress touch against the specific responder instance that was
-    // granted it, so swapping the instance mid-drag is exactly what made
-    // drops feel "right on top of it but won't register." Reading everything
-    // through refs below means the callbacks always see fresh state without
-    // the identity of the responder ever changing.
+    // ── Get PanResponder ──
     const getPanResponder = useCallback((index: number, side: 'left' | 'right') => {
         const dragKey = `${side}-${index}`;
         const cached = panResponderCacheRef.current.get(dragKey);
@@ -530,6 +576,15 @@ export default function DragDropQuestion({
         const responder = PanResponder.create({
             onStartShouldSetPanResponder: () => {
                 if (isCompleteRef.current || isAnimatingRef.current) return false;
+
+                // In exam mode, check against examMatches
+                if (isExamModeRef.current) {
+                    const isMatched = side === 'left'
+                        ? examMatchesRef.current[index] !== undefined
+                        : Object.values(examMatchesRef.current).includes(index);
+                    return !isMatched;
+                }
+
                 const isMatched = side === 'left'
                     ? matchesRef.current[index] !== undefined
                     : Object.values(matchesRef.current).includes(index);
@@ -538,12 +593,6 @@ export default function DragDropQuestion({
             onMoveShouldSetPanResponder: (_e, g) =>
                 !isCompleteRef.current && !isAnimatingRef.current &&
                 (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3),
-            // Without this, a vertical (or diagonal) drag can get taken away
-            // mid-gesture by an ancestor ScrollView's own gesture recognizer —
-            // a vertical ScrollView never contests purely horizontal moves
-            // (which is why "sideways" already worked), but it WILL try to
-            // claim any gesture with vertical movement in it unless we
-            // explicitly refuse to hand the responder back.
             onPanResponderTerminationRequest: () => false,
             onShouldBlockNativeResponder: () => true,
             onPanResponderGrant: () => {
@@ -567,26 +616,31 @@ export default function DragDropQuestion({
                 const zoneId = findZoneAt(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
                 setHoverZoneId(null);
 
-                const matches = matchesRef.current;
+                const currentMatches = isExamModeRef.current ? examMatchesRef.current : matchesRef.current;
                 const leftItems = leftItemsRef.current;
                 const rightItems = rightItemsRef.current;
 
                 let matched = false;
 
                 if (side === 'left' && zoneId !== null) {
-                    const isRightMatched = Object.values(matches).includes(zoneId);
+                    const isRightMatched = Object.values(currentMatches).includes(zoneId);
                     if (!isRightMatched) {
-                        attemptMatchRef.current(index, zoneId, dragKey);
-                        matched = true;
+                        // In exam mode, check if left is already matched
+                        if (isExamModeRef.current && currentMatches[index] !== undefined) {
+                            // Already matched, skip
+                        } else {
+                            attemptMatchRef.current(index, zoneId, dragKey);
+                            matched = true;
+                        }
                     }
                 } else if (side === 'right' && zoneId !== null) {
-                    const isLeftMatched = matches[zoneId] !== undefined;
+                    const isLeftMatched = currentMatches[zoneId] !== undefined;
                     if (!isLeftMatched) {
                         const rightItem = rightItems[index];
                         const leftMatchIndex = leftItems.findIndex(
                             item => item.match_id === rightItem?.match_id
                         );
-                        if (leftMatchIndex !== -1 && matches[leftMatchIndex] === undefined) {
+                        if (leftMatchIndex !== -1 && currentMatches[leftMatchIndex] === undefined) {
                             attemptMatchRef.current(leftMatchIndex, index, dragKey);
                             matched = true;
                         }
@@ -595,17 +649,8 @@ export default function DragDropQuestion({
 
                 if (!matched) {
                     Animated.parallel([
-                        Animated.spring(pan, {
-                            toValue: { x: 0, y: 0 },
-                            friction: 10,
-                            tension: 80,
-                            useNativeDriver: true,
-                        }),
-                        Animated.spring(scale, {
-                            toValue: 1,
-                            friction: 8,
-                            useNativeDriver: true,
-                        }),
+                        Animated.spring(pan, { toValue: { x: 0, y: 0 }, friction: 10, tension: 80, useNativeDriver: true }),
+                        Animated.spring(scale, { toValue: 1, friction: 8, useNativeDriver: true }),
                     ]).start(() => {
                         setDraggingItem(null);
                         onDragActiveChangeRef.current?.(false);
@@ -632,6 +677,17 @@ export default function DragDropQuestion({
 
     // ─── RENDER WITH IMAGES ──────────────────────────────────────────────
     const renderWithImages = () => {
+        // Determine which matches to use
+        const currentMatches = isExamMode ? examMatches : matches;
+        const isMatchedLeft = (index: number) => currentMatches[index] !== undefined;
+        const isMatchedRight = (index: number) => Object.values(currentMatches).includes(index);
+        const getMatchedLeft = (rightIndex: number) => {
+            for (const [left, right] of Object.entries(currentMatches)) {
+                if (right === rightIndex) return parseInt(left);
+            }
+            return null;
+        };
+
         return (
             <View style={styles.imageLayoutContainer}>
                 <View style={styles.imageLayoutColumn}>
@@ -639,7 +695,7 @@ export default function DragDropQuestion({
                         {question.drag_drop_left_label || 'Signs'}
                     </Text>
                     {leftItems.map((item, index) => {
-                        const isMatched = matches[index] !== undefined;
+                        const isMatched = isMatchedLeft(index);
                         const isDragging = draggingItem?.index === index && draggingItem?.side === 'left';
                         const isWrongItem = wrongPair.left === index;
                         const imageUrl = getFullImageUrl(item.left_image);
@@ -647,16 +703,21 @@ export default function DragDropQuestion({
 
                         if (isMatched) {
                             return (
-                                <View key={`left-${index}`} style={[styles.imageCard, styles.imageCardMatched]}>
+                                <View key={`left-${index}`} style={[
+                                    styles.imageCard,
+                                    isExamMode ? styles.imageCardExamMatched : styles.imageCardMatched,
+                                ]}>
                                     <View style={styles.imageCardContent}>
                                         {imageUrl && (
                                             <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
                                         )}
                                         {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
                                     </View>
-                                    <View style={styles.matchBadge}>
-                                        <Ionicons name="checkmark" size={14} color="#fff" />
-                                    </View>
+                                    {!isExamMode && (
+                                        <View style={styles.matchBadge}>
+                                            <Ionicons name="checkmark" size={14} color="#fff" />
+                                        </View>
+                                    )}
                                 </View>
                             );
                         }
@@ -673,7 +734,7 @@ export default function DragDropQuestion({
                                 style={[
                                     styles.imageCard,
                                     isDragging && styles.imageCardDragging,
-                                    isWrongItem && styles.imageCardWrong,
+                                    isWrongItem && !isExamMode && styles.imageCardWrong,
                                     {
                                         transform: [
                                             { translateX: pan.x },
@@ -691,7 +752,7 @@ export default function DragDropQuestion({
                                         <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
                                     )}
                                     {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
-                                    {isWrongItem && (
+                                    {isWrongItem && !isExamMode && (
                                         <View style={styles.wrongIndicator}>
                                             <Ionicons name="close" size={14} color="#fff" />
                                         </View>
@@ -713,12 +774,13 @@ export default function DragDropQuestion({
                         {question.drag_drop_right_label || 'Meanings'}
                     </Text>
                     {rightItems.map((item, index) => {
-                        const isMatched = Object.values(matches).includes(index);
+                        const isMatched = isMatchedRight(index);
                         const isHovered = hoverZoneId === index && !isMatched;
                         const isWrongItem = wrongPair.right === index;
                         const isSuccess = dropSuccess === index;
                         const imageUrl = getFullImageUrl(item.right_image);
                         const hasText = item.right_text && item.right_text.length > 0;
+                        const matchedLeftIndex = getMatchedLeft(index);
 
                         return (
                             <View
@@ -734,10 +796,10 @@ export default function DragDropQuestion({
                                 <Animated.View style={[
                                     styles.imageCard,
                                     styles.imageDropZone,
-                                    isMatched && styles.imageCardMatched,
+                                    isMatched && (isExamMode ? styles.imageCardExamMatched : styles.imageCardMatched),
                                     isHovered && styles.imageCardHovered,
-                                    isWrongItem && styles.imageCardWrong,
-                                    isSuccess && styles.imageCardSuccess,
+                                    isWrongItem && !isExamMode && styles.imageCardWrong,
+                                    isSuccess && !isExamMode && styles.imageCardSuccess,
                                     {
                                         transform: [
                                             { scale: isSuccess ? 1.04 : isHovered ? 1.02 : 1 },
@@ -755,12 +817,20 @@ export default function DragDropQuestion({
                                                 <Text style={styles.imageDropZoneLabel}>Drop here</Text>
                                             )
                                         )}
-                                        {isMatched && (
+                                        {isMatched && !isExamMode && (
                                             <View style={styles.matchBadge}>
                                                 <Ionicons name="checkmark" size={14} color="#fff" />
                                             </View>
                                         )}
-                                        {isHovered && !isMatched && (
+                                        {isMatched && isExamMode && (
+                                            <Pressable
+                                                style={styles.unmatchBtn}
+                                                onPress={() => unmatchPair(index)}
+                                            >
+                                                <Ionicons name="close" size={16} color="#EF4444" />
+                                            </Pressable>
+                                        )}
+                                        {isHovered && !isMatched && !isExamMode && (
                                             <View style={styles.dropHintBadge}>
                                                 <Text style={styles.dropHintText}>Drop here!</Text>
                                             </View>
@@ -777,6 +847,16 @@ export default function DragDropQuestion({
 
     // ─── RENDER WITHOUT IMAGES ──────────────────────────────────────────
     const renderWithoutImages = () => {
+        const currentMatches = isExamMode ? examMatches : matches;
+        const isMatchedLeft = (index: number) => currentMatches[index] !== undefined;
+        const isMatchedRight = (index: number) => Object.values(currentMatches).includes(index);
+        const getMatchedLeft = (rightIndex: number) => {
+            for (const [left, right] of Object.entries(currentMatches)) {
+                if (right === rightIndex) return parseInt(left);
+            }
+            return null;
+        };
+
         return (
             <View style={styles.textLayoutContainer}>
                 <View style={styles.textLayoutColumn}>
@@ -784,18 +864,20 @@ export default function DragDropQuestion({
                         {question.drag_drop_left_label || 'Signs'}
                     </Text>
                     {leftItems.map((item, index) => {
-                        const isMatched = matches[index] !== undefined;
+                        const isMatched = isMatchedLeft(index);
                         const isDragging = draggingItem?.index === index && draggingItem?.side === 'left';
                         const isWrongItem = wrongPair.left === index;
                         const colors = COLOR_PAIRS[index % COLOR_PAIRS.length];
 
                         if (isMatched) {
                             return (
-                                <View key={`left-${index}`} style={[styles.textCard, styles.textCardMatched]}>
-                                    <Text style={[styles.textCardText, styles.textCardMatchedText]}>{item.left_text}</Text>
-                                    <View style={styles.matchBadge}>
-                                        <Ionicons name="checkmark" size={12} color="#fff" />
-                                    </View>
+                                <View key={`left-${index}`} style={[styles.textCard, isExamMode ? styles.textCardExamMatched : styles.textCardMatched]}>
+                                    <Text style={[styles.textCardText, isExamMode ? styles.textCardExamMatchedText : styles.textCardMatchedText]}>{item.left_text}</Text>
+                                    {!isExamMode && (
+                                        <View style={styles.matchBadge}>
+                                            <Ionicons name="checkmark" size={12} color="#fff" />
+                                        </View>
+                                    )}
                                 </View>
                             );
                         }
@@ -812,7 +894,7 @@ export default function DragDropQuestion({
                                 style={[
                                     styles.textCard,
                                     isDragging && styles.textCardDragging,
-                                    isWrongItem && styles.textCardWrong,
+                                    isWrongItem && !isExamMode && styles.textCardWrong,
                                     {
                                         transform: [
                                             { translateX: pan.x },
@@ -839,7 +921,7 @@ export default function DragDropQuestion({
                                 >
                                     <Text style={styles.textCardGradientText}>{item.left_text}</Text>
                                 </LinearGradient>
-                                {isWrongItem && (
+                                {isWrongItem && !isExamMode && (
                                     <View style={styles.wrongIndicator}>
                                         <Ionicons name="close" size={12} color="#fff" />
                                     </View>
@@ -860,10 +942,11 @@ export default function DragDropQuestion({
                         {question.drag_drop_right_label || 'Meanings'}
                     </Text>
                     {rightItems.map((item, index) => {
-                        const isMatched = Object.values(matches).includes(index);
+                        const isMatched = isMatchedRight(index);
                         const isHovered = hoverZoneId === index && !isMatched;
                         const isWrongItem = wrongPair.right === index;
                         const isSuccess = dropSuccess === index;
+                        const matchedLeftIndex = getMatchedLeft(index);
 
                         return (
                             <View
@@ -879,10 +962,10 @@ export default function DragDropQuestion({
                                 <Animated.View style={[
                                     styles.textCard,
                                     styles.textDropZone,
-                                    isMatched && styles.textCardMatched,
+                                    isMatched && (isExamMode ? styles.textCardExamMatched : styles.textCardMatched),
                                     isHovered && styles.textCardHovered,
-                                    isWrongItem && styles.textCardWrong,
-                                    isSuccess && styles.textCardSuccess,
+                                    isWrongItem && !isExamMode && styles.textCardWrong,
+                                    isSuccess && !isExamMode && styles.textCardSuccess,
                                     {
                                         transform: [
                                             { scale: isSuccess ? 1.04 : isHovered ? 1.02 : 1 },
@@ -891,19 +974,29 @@ export default function DragDropQuestion({
                                 ]}>
                                     {isMatched ? (
                                         <>
-                                            <Text style={[styles.textCardText, styles.textCardMatchedText]}>
+                                            <Text style={[styles.textCardText, isExamMode ? styles.textCardExamMatchedText : styles.textCardMatchedText]}>
                                                 {item.right_text}
                                             </Text>
-                                            <View style={styles.matchBadge}>
-                                                <Ionicons name="checkmark" size={12} color="#fff" />
-                                            </View>
+                                            {!isExamMode && (
+                                                <View style={styles.matchBadge}>
+                                                    <Ionicons name="checkmark" size={12} color="#fff" />
+                                                </View>
+                                            )}
+                                            {isExamMode && (
+                                                <Pressable
+                                                    style={styles.unmatchBtnText}
+                                                    onPress={() => unmatchPair(index)}
+                                                >
+                                                    <Ionicons name="close" size={14} color="#EF4444" />
+                                                </Pressable>
+                                            )}
                                         </>
                                     ) : (
                                         <>
                                             <Text style={styles.textCardText}>
                                                 {item.right_text || 'Drop here'}
                                             </Text>
-                                            {isHovered && (
+                                            {isHovered && !isExamMode && (
                                                 <View style={styles.textDropHint}>
                                                     <Text style={styles.textDropHintText}>Drop here!</Text>
                                                 </View>
@@ -956,6 +1049,8 @@ export default function DragDropQuestion({
     // ─── RESET STATE ────────────────────────────────────────────────────
     useEffect(() => {
         setMatches({});
+        setExamMatches({});
+        setAllPairsMatched(false);
         setIsComplete(false);
         setAttempts(0);
         setWrongPair({ left: null, right: null });
@@ -977,13 +1072,15 @@ export default function DragDropQuestion({
         }
     }, [question.drag_drop_pairs, question.question_id]);
 
-    // ─── MEASURE ZONES AFTER RENDER ──────────────────────────────────
     useEffect(() => {
         const timer = setTimeout(remeasureAllZones, 500);
         return () => clearTimeout(timer);
-    }, [leftItems, rightItems, matches]);
+    }, [leftItems, rightItems, matches, examMatches]);
 
-    const allMatched = Object.keys(matches).length === leftItems.length;
+    // ─── Determine if all matched ──
+    const allMatched = isExamMode
+        ? allPairsMatched
+        : Object.keys(matches).length === leftItems.length;
     const isGameOver = showContinue && !allMatched;
 
     const senyaTranslate = senyaBounceAnim.interpolate({
@@ -996,6 +1093,7 @@ export default function DragDropQuestion({
     });
 
     const getMotivationText = () => {
+        if (isExamMode) return "🧩 Match the items by dragging them!";
         if (isGameOver) {
             return "😅 Oops! Don't worry, let's move to the next question!";
         }
@@ -1024,9 +1122,9 @@ export default function DragDropQuestion({
                         <Ionicons name="arrow-back" size={20} color="#0f3172" />
                     </Pressable>
                     <Text style={styles.logoText}>SEÑAS</Text>
-                    <View style={styles.statusBadge}>
-                        <Text style={styles.statusText}>
-                            {allMatched ? 'Done' : isGameOver ? 'Wrong' : 'Match'}
+                    <View style={[styles.statusBadge, isExamMode && { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+                        <Text style={[styles.statusText, isExamMode && { color: '#2563EB' }]}>
+                            {isExamMode ? '📝 Exam' : allMatched ? 'Done' : isGameOver ? 'Wrong' : 'Match'}
                         </Text>
                     </View>
                 </View>
@@ -1049,7 +1147,7 @@ export default function DragDropQuestion({
                 </View>
 
                 <View style={[styles.glassCard, styles.questionCard]}>
-                    <Text style={styles.questionEmoji}>🧩</Text>
+                    <Text style={styles.questionEmoji}>{isExamMode ? '📝' : '🧩'}</Text>
                     <Text style={styles.questionText}>{question.question_text}</Text>
                     {question.media_url && (
                         <Image
@@ -1062,39 +1160,52 @@ export default function DragDropQuestion({
 
                 {hasImages ? renderWithImages() : renderWithoutImages()}
 
-                <View style={styles.feedbackRow}>
-                    <Animated.View
-                        style={{
-                            transform: [
-                                { translateY: senyaTranslate },
-                                { translateX: senyaShake },
-                            ],
-                        }}
-                    >
-                        <Image
-                            source={require('../../assets/images/img/senya_teaching.png')}
-                            style={styles.senyaFeedback}
-                            contentFit="contain"
-                        />
-                    </Animated.View>
-                    <View style={[
-                        styles.feedbackBubble,
-                        isComplete && allMatched && styles.feedbackCorrect,
-                        isComplete && !allMatched && styles.feedbackWrong,
-                    ]}>
-                        {(isComplete && allMatched) && <Ionicons name="checkmark-circle" size={18} color="#10B981" />}
-                        {(isComplete && !allMatched) && <Ionicons name="close-circle" size={18} color="#EF4444" />}
-                        <Text style={[
-                            styles.feedbackText,
-                            isComplete && allMatched && { color: '#065f46' },
-                            isComplete && !allMatched && { color: '#991b1b' },
+                {!isExamMode && (
+                    <View style={styles.feedbackRow}>
+                        <Animated.View
+                            style={{
+                                transform: [
+                                    { translateY: senyaTranslate },
+                                    { translateX: senyaShake },
+                                ],
+                            }}
+                        >
+                            <Image
+                                source={require('../../assets/images/img/senya_teaching.png')}
+                                style={styles.senyaFeedback}
+                                contentFit="contain"
+                            />
+                        </Animated.View>
+                        <View style={[
+                            styles.feedbackBubble,
+                            isComplete && allMatched && styles.feedbackCorrect,
+                            isComplete && !allMatched && styles.feedbackWrong,
                         ]}>
-                            {getMotivationText()}
-                        </Text>
+                            {(isComplete && allMatched) && <Ionicons name="checkmark-circle" size={18} color="#10B981" />}
+                            {(isComplete && !allMatched) && <Ionicons name="close-circle" size={18} color="#EF4444" />}
+                            <Text style={[
+                                styles.feedbackText,
+                                isComplete && allMatched && { color: '#065f46' },
+                                isComplete && !allMatched && { color: '#991b1b' },
+                            ]}>
+                                {getMotivationText()}
+                            </Text>
+                        </View>
                     </View>
-                </View>
+                )}
 
-                {isComplete && (
+                {isExamMode && (
+                    <View style={styles.examProgressContainer}>
+                        <Text style={styles.examProgressText}>
+                            {Object.keys(examMatches).length} / {leftItems.length} matched
+                        </Text>
+                        <View style={styles.examProgressBar}>
+                            <View style={[styles.examProgressFill, { width: `${(Object.keys(examMatches).length / leftItems.length) * 100}%` }]} />
+                        </View>
+                    </View>
+                )}
+
+                {isComplete && !isExamMode && (
                     <Pressable
                         style={[styles.primaryBtn, allMatched && styles.goldBtn]}
                         onPress={() => onComplete(allMatched)}
@@ -1102,6 +1213,15 @@ export default function DragDropQuestion({
                         <Text style={styles.primaryBtnText}>
                             {allMatched ? '✅ Continue →' : 'Continue →'}
                         </Text>
+                    </Pressable>
+                )}
+
+                {isExamMode && allMatched && (
+                    <Pressable
+                        style={[styles.primaryBtn, styles.goldBtn]}
+                        onPress={() => onComplete(true)}
+                    >
+                        <Text style={styles.primaryBtnText}>✅ Continue →</Text>
                     </Pressable>
                 )}
             </ScrollView>
@@ -1115,536 +1235,102 @@ export default function DragDropQuestion({
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#eaf5fd',
-    },
-    scrollContent: {
-        padding: 16,
-        paddingBottom: 40,
-    },
-    burstLayer: {
-        position: 'absolute',
-        width: 1,
-        height: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 999,
-    },
+    container: { flex: 1, backgroundColor: '#eaf5fd' },
+    scrollContent: { padding: 16, paddingBottom: 40 },
+    burstLayer: { position: 'absolute', width: 1, height: 1, alignItems: 'center', justifyContent: 'center', zIndex: 999 },
 
-    topBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 14,
-    },
-    logoText: {
-        color: '#0f3172',
-        fontSize: 22,
-        fontWeight: '800',
-        letterSpacing: 2,
-    },
-    exitBtn: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        borderRadius: 12,
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.85)',
-    },
-    statusBadge: {
-        backgroundColor: 'rgba(16,185,129,0.15)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 12,
-    },
-    statusText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#10B981',
-    },
+    topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+    logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
+    exitBtn: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 12, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
+    statusBadge: { backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+    statusText: { fontSize: 12, fontWeight: '700', color: '#10B981' },
 
-    glassCard: {
-        backgroundColor: 'rgba(255,255,255,0.62)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.85)',
-        borderRadius: 20,
-        padding: 18,
-        marginBottom: 12,
-        shadowColor: '#0f3172',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.09,
-        shadowRadius: 12,
-        elevation: 4,
-    },
+    glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 12, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
+    progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    progressLabel: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
+    progressDots: { flexDirection: 'row', gap: 4 },
+    progressDot: { flex: 1, height: 5, borderRadius: 99 },
 
-    progressHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-    },
-    progressLabel: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#0f3172',
-    },
-    progressDots: {
-        flexDirection: 'row',
-        gap: 4,
-    },
-    progressDot: {
-        flex: 1,
-        height: 5,
-        borderRadius: 99,
-    },
+    questionCard: { alignItems: 'center', paddingVertical: 20 },
+    questionEmoji: { fontSize: 28, marginBottom: 6 },
+    questionText: { fontSize: 16, fontWeight: '800', color: '#0f3172', textAlign: 'center', lineHeight: 24 },
+    questionImage: { width: '100%', height: 120, borderRadius: 12, marginTop: 12, backgroundColor: 'rgba(15,49,114,0.03)' },
 
-    questionCard: {
-        alignItems: 'center',
-        paddingVertical: 20,
-    },
-    questionEmoji: {
-        fontSize: 28,
-        marginBottom: 6,
-    },
-    questionText: {
-        fontSize: 16,
-        fontWeight: '800',
-        color: '#0f3172',
-        textAlign: 'center',
-        lineHeight: 24,
-    },
-    questionImage: {
-        width: '100%',
-        height: 120,
-        borderRadius: 12,
-        marginTop: 12,
-        backgroundColor: 'rgba(15,49,114,0.03)',
-    },
+    imageLayoutContainer: { flexDirection: 'row', gap: 6, marginBottom: 12 },
+    imageLayoutColumn: { flex: 1, gap: 6 },
+    imageLayoutLabel: { fontSize: 10, fontWeight: '700', color: '#4b7bbb', textAlign: 'center', marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+    imageDivider: { justifyContent: 'center', alignItems: 'center', width: 20, paddingHorizontal: 2 },
+    imageDividerIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(24,72,200,0.06)', alignItems: 'center', justifyContent: 'center' },
 
-    imageLayoutContainer: {
-        flexDirection: 'row',
-        gap: 6,
-        marginBottom: 12,
-    },
-    imageLayoutColumn: {
-        flex: 1,
-        gap: 6,
-    },
-    imageLayoutLabel: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#4b7bbb',
-        textAlign: 'center',
-        marginBottom: 2,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    imageDivider: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        width: 20,
-        paddingHorizontal: 2,
-    },
-    imageDividerIcon: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: 'rgba(24,72,200,0.06)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    imageCard: {
-        backgroundColor: 'rgba(255,255,255,0.9)',
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: 'rgba(15,49,114,0.10)',
-        padding: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 132,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
-        position: 'relative',
-    },
-    imageCardDragging: {
-        borderColor: '#1848c8',
-        backgroundColor: 'rgba(24,72,200,0.08)',
-        shadowColor: '#1848c8',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.25,
-        shadowRadius: 16,
-        elevation: 10,
-        borderWidth: 2,
-    },
-    imageCardMatched: {
-        borderColor: '#10B981',
-        backgroundColor: 'rgba(16,185,129,0.06)',
-        borderStyle: 'dashed',
-        opacity: 0.6,
-    },
-    imageCardWrong: {
-        borderColor: '#EF4444',
-        backgroundColor: 'rgba(239,68,68,0.08)',
-    },
-    imageCardHovered: {
-        borderColor: '#1848c8',
-        backgroundColor: 'rgba(24,72,200,0.06)',
-        borderStyle: 'solid',
-        shadowColor: '#1848c8',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
-        elevation: 4,
-    },
-    imageCardSuccess: {
-        borderColor: '#10B981',
-        backgroundColor: 'rgba(16,185,129,0.10)',
-        borderWidth: 2,
-        shadowColor: '#10B981',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-        elevation: 6,
-    },
-    imageCardContent: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '100%',
-    },
-    imageCardImg: {
-        width: 96,
-        height: 96,
-        borderRadius: 14,
-        backgroundColor: 'rgba(15,49,114,0.02)',
-    },
-    imageCardText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#0f3172',
-        marginTop: 4,
-        textAlign: 'center',
-    },
-    imageDropZone: {
-        borderStyle: 'dashed',
-        borderColor: 'rgba(15,49,114,0.15)',
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        minHeight: 132,
-    },
-    imageDropZoneContent: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '100%',
-    },
-    imageDropZoneLabel: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#94a3b8',
-        textAlign: 'center',
-    },
+    imageCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12, borderWidth: 2, borderColor: 'rgba(15,49,114,0.10)', padding: 10, alignItems: 'center', justifyContent: 'center', minHeight: 132, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, position: 'relative' },
+    imageCardDragging: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.08)', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 10, borderWidth: 2 },
+    imageCardMatched: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.06)', borderStyle: 'dashed', opacity: 0.6 },
+    imageCardExamMatched: { borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.06)', borderStyle: 'solid', opacity: 0.8 },
+    imageCardWrong: { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.08)' },
+    imageCardHovered: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.06)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
+    imageCardSuccess: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+    imageCardContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
+    imageCardImg: { width: 96, height: 96, borderRadius: 14, backgroundColor: 'rgba(15,49,114,0.02)' },
+    imageCardText: { fontSize: 13, fontWeight: '600', color: '#0f3172', marginTop: 4, textAlign: 'center' },
+    imageDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.15)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 132 },
+    imageDropZoneContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
+    imageDropZoneLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8', textAlign: 'center' },
 
-    textLayoutContainer: {
-        flexDirection: 'row',
-        gap: 4,
-        marginBottom: 12,
-    },
-    textLayoutColumn: {
-        flex: 1,
-        gap: 4,
-    },
-    textLayoutLabel: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#4b7bbb',
-        textAlign: 'center',
-        marginBottom: 2,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    textDivider: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        width: 16,
-        paddingHorizontal: 2,
-    },
-    textDividerIcon: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        backgroundColor: 'rgba(24,72,200,0.06)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    textCard: {
-        borderRadius: 10,
-        borderWidth: 1.5,
-        borderColor: 'rgba(15,49,114,0.10)',
-        minHeight: 42,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.04,
-        shadowRadius: 3,
-        elevation: 1,
-        position: 'relative',
-        overflow: 'hidden',
-        backgroundColor: '#fff',
-    },
-    textCardGradient: {
-        flex: 1,
-        padding: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 42,
-    },
-    textCardGradientText: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#fff',
-        textAlign: 'center',
-        textShadowColor: 'rgba(0,0,0,0.1)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 2,
-    },
-    textCardDragging: {
-        borderColor: '#1848c8',
-        shadowColor: '#1848c8',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.2,
-        shadowRadius: 12,
-        elevation: 8,
-        borderWidth: 2,
-    },
-    textCardMatched: {
-        borderColor: '#10B981',
-        backgroundColor: 'rgba(16,185,129,0.04)',
-        borderStyle: 'dashed',
-        opacity: 0.6,
-    },
-    textCardMatchedText: {
-        color: '#10B981',
-        textDecorationLine: 'line-through',
-        textDecorationColor: '#10B981',
-    },
-    textCardWrong: {
-        borderColor: '#EF4444',
-        backgroundColor: 'rgba(239,68,68,0.08)',
-    },
-    textCardHovered: {
-        borderColor: '#1848c8',
-        backgroundColor: 'rgba(24,72,200,0.04)',
-        borderStyle: 'solid',
-        shadowColor: '#1848c8',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 3,
-    },
-    textCardSuccess: {
-        borderColor: '#10B981',
-        backgroundColor: 'rgba(16,185,129,0.10)',
-        borderWidth: 2,
-        shadowColor: '#10B981',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-        elevation: 6,
-    },
-    textCardText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#0f3172',
-        textAlign: 'center',
-        padding: 8,
-    },
-    textDropZone: {
-        borderStyle: 'dashed',
-        borderColor: 'rgba(15,49,114,0.12)',
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        minHeight: 42,
-    },
-    textDropHint: {
-        position: 'absolute',
-        bottom: -4,
-        backgroundColor: '#1848c8',
-        paddingHorizontal: 6,
-        paddingVertical: 1,
-        borderRadius: 4,
-    },
-    textDropHintText: {
-        fontSize: 7,
-        fontWeight: '700',
-        color: '#fff',
-    },
+    textLayoutContainer: { flexDirection: 'row', gap: 4, marginBottom: 12 },
+    textLayoutColumn: { flex: 1, gap: 4 },
+    textLayoutLabel: { fontSize: 10, fontWeight: '700', color: '#4b7bbb', textAlign: 'center', marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+    textDivider: { justifyContent: 'center', alignItems: 'center', width: 16, paddingHorizontal: 2 },
+    textDividerIcon: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(24,72,200,0.06)', alignItems: 'center', justifyContent: 'center' },
 
-    matchBadge: {
-        position: 'absolute',
-        top: -4,
-        right: -4,
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: '#10B981',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: 'white',
-    },
-    wrongIndicator: {
-        position: 'absolute',
-        top: -4,
-        right: -4,
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: '#EF4444',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: 'white',
-    },
-    dropHintBadge: {
-        marginTop: 2,
-        backgroundColor: '#1848c8',
-        paddingHorizontal: 8,
-        paddingVertical: 1,
-        borderRadius: 6,
-    },
-    dropHintText: {
-        fontSize: 8,
-        fontWeight: '700',
-        color: '#fff',
-    },
+    textCard: { borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,49,114,0.10)', minHeight: 42, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#fff' },
+    textCardGradient: { flex: 1, padding: 8, alignItems: 'center', justifyContent: 'center', minHeight: 42 },
+    textCardGradientText: { fontSize: 14, fontWeight: '700', color: '#fff', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.1)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+    textCardDragging: { borderColor: '#1848c8', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8, borderWidth: 2 },
+    textCardMatched: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.04)', borderStyle: 'dashed', opacity: 0.6 },
+    textCardExamMatched: { borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.04)', borderStyle: 'solid', opacity: 0.8 },
+    textCardMatchedText: { color: '#10B981', textDecorationLine: 'line-through', textDecorationColor: '#10B981' },
+    textCardExamMatchedText: { color: '#2563EB' },
+    textCardWrong: { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.08)' },
+    textCardHovered: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.04)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3 },
+    textCardSuccess: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+    textCardText: { fontSize: 14, fontWeight: '600', color: '#0f3172', textAlign: 'center', padding: 8 },
+    textDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.12)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 42 },
+    textDropHint: { position: 'absolute', bottom: -4, backgroundColor: '#1848c8', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
+    textDropHintText: { fontSize: 7, fontWeight: '700', color: '#fff' },
 
-    feedbackRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: 10,
-        marginVertical: 12,
-    },
-    senyaFeedback: {
-        width: 70,
-        height: 70,
-        flexShrink: 0,
-    },
-    feedbackBubble: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 6,
-        backgroundColor: 'rgba(255,255,255,0.75)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.9)',
-        borderRadius: 14,
-        padding: 10,
-    },
-    feedbackCorrect: {
-        backgroundColor: 'rgba(236,253,245,0.88)',
-        borderColor: '#a7f3d0',
-    },
-    feedbackWrong: {
-        backgroundColor: 'rgba(254,242,242,0.88)',
-        borderColor: '#fecaca',
-    },
-    feedbackText: {
-        flex: 1,
-        fontSize: 12,
-        fontWeight: '500',
-        color: '#0f3172',
-        lineHeight: 17,
-    },
+    matchBadge: { position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'white' },
+    wrongIndicator: { position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'white' },
+    dropHintBadge: { marginTop: 2, backgroundColor: '#1848c8', paddingHorizontal: 8, paddingVertical: 1, borderRadius: 6 },
+    dropHintText: { fontSize: 8, fontWeight: '700', color: '#fff' },
 
-    primaryBtn: {
-        backgroundColor: '#1848c8',
-        borderRadius: 60,
-        paddingVertical: 14,
-        alignItems: 'center',
-        shadowColor: '#1848c8',
-        shadowOffset: { width: 0, height: 5 },
-        shadowOpacity: 0.28,
-        shadowRadius: 18,
-        elevation: 10,
-    },
-    goldBtn: {
-        backgroundColor: '#D97706',
-        shadowColor: '#D97706',
-    },
-    primaryBtnText: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#fff',
-    },
+    unmatchBtn: { position: 'absolute', top: -4, right: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FCA5A5' },
+    unmatchBtnText: { position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FCA5A5' },
 
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.45)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-    },
-    modalContainer: {
-        width: '88%',
-        maxWidth: 340,
-        borderRadius: 28,
-        overflow: 'hidden',
-        backgroundColor: 'transparent',
-    },
-    modalContent: {
-        backgroundColor: '#fff',
-        padding: 28,
-        borderRadius: 28,
-        alignItems: 'center',
-    },
-    modalIconBox: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: 'rgba(239,68,68,0.10)',
-        borderWidth: 1.5,
-        borderColor: 'rgba(239,68,68,0.18)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 16,
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: '800',
-        color: '#0f3172',
-        marginBottom: 8,
-    },
-    modalDescription: {
-        fontSize: 13,
-        color: '#6B7280',
-        fontWeight: '500',
-        lineHeight: 20,
-        marginBottom: 24,
-        textAlign: 'center',
-    },
-    modalButtons: {
-        flexDirection: 'row',
-        gap: 12,
-        width: '100%',
-    },
-    modalButton: {
-        flex: 1,
-        paddingVertical: 13,
-        borderRadius: 40,
-        alignItems: 'center',
-    },
-    modalButtonCancel: {
-        backgroundColor: '#F1F5F9',
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-    },
-    modalButtonConfirm: {
-        backgroundColor: '#DC2626',
-        flex: 1.3,
-    },
-    modalButtonText: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#0f3172',
-    },
+    feedbackRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginVertical: 12 },
+    senyaFeedback: { width: 70, height: 70, flexShrink: 0 },
+    feedbackBubble: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 14, padding: 10 },
+    feedbackCorrect: { backgroundColor: 'rgba(236,253,245,0.88)', borderColor: '#a7f3d0' },
+    feedbackWrong: { backgroundColor: 'rgba(254,242,242,0.88)', borderColor: '#fecaca' },
+    feedbackText: { flex: 1, fontSize: 12, fontWeight: '500', color: '#0f3172', lineHeight: 17 },
+
+    examProgressContainer: { marginVertical: 12, paddingHorizontal: 4 },
+    examProgressText: { fontSize: 12, fontWeight: '600', color: '#0f3172', textAlign: 'center', marginBottom: 6 },
+    examProgressBar: { height: 6, backgroundColor: 'rgba(15,49,114,0.10)', borderRadius: 99, overflow: 'hidden' },
+    examProgressFill: { height: '100%', backgroundColor: '#2563EB', borderRadius: 99 },
+
+    primaryBtn: { backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 14, alignItems: 'center', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 10 },
+    goldBtn: { backgroundColor: '#D97706', shadowColor: '#D97706' },
+    primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+    modalContainer: { width: '88%', maxWidth: 340, borderRadius: 28, overflow: 'hidden', backgroundColor: 'transparent' },
+    modalContent: { backgroundColor: '#fff', padding: 28, borderRadius: 28, alignItems: 'center' },
+    modalIconBox: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(239,68,68,0.10)', borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+    modalTitle: { fontSize: 20, fontWeight: '800', color: '#0f3172', marginBottom: 8 },
+    modalDescription: { fontSize: 13, color: '#6B7280', fontWeight: '500', lineHeight: 20, marginBottom: 24, textAlign: 'center' },
+    modalButtons: { flexDirection: 'row', gap: 12, width: '100%' },
+    modalButton: { flex: 1, paddingVertical: 13, borderRadius: 40, alignItems: 'center' },
+    modalButtonCancel: { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
+    modalButtonConfirm: { backgroundColor: '#DC2626', flex: 1.3 },
+    modalButtonText: { fontSize: 14, fontWeight: '700', color: '#0f3172' },
 });

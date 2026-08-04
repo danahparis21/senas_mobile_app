@@ -1,5 +1,5 @@
 // app/checkpoint-exam/[id].tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -69,6 +69,7 @@ interface ExamData {
   total_questions: number;
   questions: Question[];
   is_locked: boolean;
+  time_limit_minutes?: number; // Add this
 }
 interface Attempt {
   attempt_id: number;
@@ -106,7 +107,7 @@ interface ResultData {
   streak_days: number;
 }
 
-// ─── SVG Icons (matching lesson/[id].tsx) ───────────────────────────────────
+// ─── SVG Icons ──────────────────────────────────────────────────────────────
 function CheckCircleIcon({ color = '#10B981' }: { color?: string }) {
   return <Svg width="18" height="18" viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Polyline points="8 12 11 15 16 9" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></Svg>;
 }
@@ -237,6 +238,41 @@ function StudentDetailModal({ visible, onClose, student }: { visible: boolean; o
   );
 }
 
+// ─── Timer Component ──────────────────────────────────────────────────────
+function TimerDisplay({
+  minutes,
+  seconds,
+  isWarning,
+  isExpired
+}: {
+  minutes: number;
+  seconds: number;
+  isWarning: boolean;
+  isExpired: boolean;
+}) {
+  const formatNumber = (num: number) => String(num).padStart(2, '0');
+  const color = isExpired ? '#EF4444' : isWarning ? '#DC2626' : '#1848c8';
+  const backgroundColor = isExpired ? '#FEE2E2' : isWarning ? '#FEF3C7' : '#EFF6FF';
+  const borderColor = isExpired ? '#FCA5A5' : isWarning ? '#FCD34D' : '#BFDBFE';
+
+  return (
+    <View style={[s.timerContainer, { backgroundColor, borderColor }]}>
+      <Svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+        <Circle cx="12" cy="12" r="10" />
+        <Polyline points="12 6 12 12 16 14" />
+      </Svg>
+      <Text style={[s.timerText, { color }]}>
+        {formatNumber(minutes)}:{formatNumber(seconds)}
+      </Text>
+      {isExpired && (
+        <View style={s.timerExpiredBadge}>
+          <Text style={s.timerExpiredText}>⏰ TIME'S UP!</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function CheckpointExamScreen() {
   const router = useRouter();
@@ -252,6 +288,13 @@ export default function CheckpointExamScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [confettiFired, setConfettiFired] = useState(false);
+
+  // ─── Timer State ────────────────────────────────────────────────────────
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null); // in seconds
+  const [isTimerWarning, setIsTimerWarning] = useState(false);
+  const [isTimerExpired, setIsTimerExpired] = useState(false);
+  const timerRef = useRef<number | null>(null);
+  const isTimeUpRef = useRef(false);
 
   const [attemptHistory, setAttemptHistory] = useState<Attempt[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -276,13 +319,120 @@ export default function CheckpointExamScreen() {
     }
   }, [id]);
 
+  // ─── Timer Effect - FIXED ──────────────────────────────────────────────
+  useEffect(() => {
+    // Don't start timer if no time remaining or already expired
+    if (timeRemaining === null || timeRemaining <= 0) {
+      return;
+    }
+
+    // Clear any existing interval first
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    const intervalId = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev === null || prev <= 1) {
+          // Time's up!
+          clearInterval(intervalId);
+          timerRef.current = null;
+
+          if (!isTimeUpRef.current) {
+            isTimeUpRef.current = true;
+            setIsTimerExpired(true);
+            handleTimeUp();
+          }
+          return 0;
+        }
+
+        const newTime = prev - 1;
+        // Show warning when less than 1 minute (60 seconds) remaining
+        if (newTime <= 60 && !isTimerWarning) {
+          setIsTimerWarning(true);
+        }
+        return newTime;
+      });
+    }, 1000);
+
+    timerRef.current = intervalId;
+
+    // Cleanup function
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [timeRemaining]);
+
+
+  // ─── Handle Time Up ────────────────────────────────────────────────────
+  const handleTimeUp = useCallback(() => {
+    if (submitted || isSubmitting) return;
+
+    Alert.alert(
+      '⏰ Time\'s Up!',
+      'Your exam time has expired. Your answers will be submitted automatically.',
+      [
+        {
+          text: 'Submit Now',
+          onPress: () => {
+            setIsTimerExpired(true);
+            performSubmission();
+          }
+        }
+      ],
+      { cancelable: false }
+    );
+  }, [submitted, isSubmitting]);
+
+  // ─── Start Timer ────────────────────────────────────────────────────────
+  const startTimer = (timeLimitMinutes: number) => {
+    if (!timeLimitMinutes || timeLimitMinutes <= 0) {
+      // No time limit - don't start timer
+      setTimeRemaining(null);
+      return;
+    }
+
+    // Clear any existing timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    const totalSeconds = timeLimitMinutes * 60;
+    setTimeRemaining(totalSeconds);
+    setIsTimerWarning(false);
+    setIsTimerExpired(false);
+    isTimeUpRef.current = false;
+  };
+
+  // ─── Clean up timer on unmount ──────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
   const loadExam = async () => {
     try {
       setLoading(true);
       const res = await api.getCheckpointExamById(Number(id));
+      console.log('🔍 Full API response:', JSON.stringify(res, null, 2));
+
       if (res.success && res.exam) {
         setExam(res.exam);
         setAttemptHistory(res.attempts || []);
+
+        // 🔥 Start the timer if there's a time limit
+        if (res.exam.time_limit_minutes && res.exam.time_limit_minutes > 0) {
+          startTimer(res.exam.time_limit_minutes);
+        }
       } else {
         Alert.alert('Error', res.error || 'Failed to load exam details.');
         router.back();
@@ -342,6 +492,13 @@ export default function CheckpointExamScreen() {
 
   const handleSubmitExam = () => {
     if (!exam) return;
+
+    // Don't allow submission if timer expired
+    if (isTimerExpired) {
+      Alert.alert('⏰ Time\'s Up!', 'Your exam time has expired. Please wait for automatic submission.');
+      return;
+    }
+
     const answeredCount = Object.keys(userAnswers).length;
     if (answeredCount < totalQuestions) {
       Alert.alert(
@@ -361,6 +518,13 @@ export default function CheckpointExamScreen() {
     if (!exam) return;
     try {
       setIsSubmitting(true);
+
+      // Clear timer on submission
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
       const formattedAnswers = exam.questions.map(q => {
         const ans = userAnswers[q.question_id] || {};
         return {
@@ -424,14 +588,104 @@ export default function CheckpointExamScreen() {
     setUserAnswers({});
     setResultData(null);
     setConfettiFired(false);
+    setIsTimerExpired(false);
+    setIsTimerWarning(false);
+    isTimeUpRef.current = false;
     resultsFadeAnim.setValue(0);
     resultsScaleAnim.setValue(0.85);
     resultsScrollRef.current?.scrollTo?.({ y: 0, animated: true });
+
+    // Restart timer if exam has time limit
+    if (exam?.time_limit_minutes && exam.time_limit_minutes > 0) {
+      startTimer(exam.time_limit_minutes);
+    }
   };
 
   const handleExitPress = () => setShowExitModal(true);
-  const handleExit = () => { setShowExitModal(false); router.back(); };
+  const handleExit = () => {
+    setShowExitModal(false);
+    // Clear timer on exit
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    router.back();
+  };
   const handleStudentPress = (student: LeaderboardEntry) => { setSelectedStudent(student); setShowStudentDetail(true); };
+
+  // ─── Helper to format timer display ────────────────────────────────────
+  const getTimerDisplay = () => {
+    if (timeRemaining === null) return null;
+
+    const minutes = Math.floor(timeRemaining / 60);
+    const seconds = timeRemaining % 60;
+    return { minutes, seconds };
+  };
+
+  // ─── Memoized DragDropQuestion ─────────────────────────────────────────────
+  const renderDragDropQuestion = useMemo(() => {
+    if (!currentQuestion || currentQuestion.question_type !== 'drag_drop') {
+      return null;
+    }
+
+    let pairs = [];
+
+    if (currentQuestion.drag_drop_pairs) {
+      if (Array.isArray(currentQuestion.drag_drop_pairs)) {
+        pairs = currentQuestion.drag_drop_pairs;
+      } else if (typeof currentQuestion.drag_drop_pairs === 'string') {
+        try {
+          const parsed = JSON.parse(currentQuestion.drag_drop_pairs);
+          pairs = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          pairs = [];
+        }
+      }
+    }
+
+    if (pairs.length === 0) {
+      return (
+        <View style={s.glassCard}>
+          <Text style={s.errorText}>No drag and drop pairs found for this question.</Text>
+          <Text style={[s.errorText, { fontSize: 12, color: '#6B7280' }]}>Question ID: {currentQuestion.question_id}</Text>
+          <Pressable style={s.primaryBtn} onPress={handleNext}>
+            <Text style={s.primaryBtnText}>Skip →</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    const formattedPairs = pairs.map((p, idx) => ({
+      left_text: p.left_text ?? p.left ?? '',
+      right_text: p.right_text ?? p.right ?? '',
+      left_image: p.left_image ?? null,
+      right_image: p.right_image ?? null,
+      match_id: p.match_id ?? idx,
+    }));
+
+    // Use a stable key - only changes when the question changes
+    return (
+      <DragDropQuestion
+        key={`dd-${currentQuestion.question_id}`}
+        question={{
+          question_id: currentQuestion.question_id,
+          question_text: currentQuestion.question_text,
+          drag_drop_pairs: formattedPairs,
+          drag_drop_left_label: currentQuestion.drag_drop_left_label ?? undefined,
+          drag_drop_right_label: currentQuestion.drag_drop_right_label ?? undefined,
+          media_url: currentQuestion.media_url,
+        }}
+        questionIndex={currentIndex}
+        totalQuestions={totalQuestions}
+        onComplete={(success: boolean) => handleDragDropSuccess(currentQuestion.question_id, success)}
+        onBack={handlePrev}
+        isExamMode={true}
+      />
+    );
+  }, [currentQuestion, currentIndex, totalQuestions]);
+
+
+
 
   // ─── Loading / Error ───────────────────────────────────────────────────
   if (loading) {
@@ -454,27 +708,54 @@ export default function CheckpointExamScreen() {
     );
   }
 
+
+
   // ─── Render: Question (gesture / drag-drop / multiple choice) ─────────────
   const renderQuestion = () => {
     if (!currentQuestion) return null;
 
     if (currentQuestion.question_type === 'gesture') {
-      const gestureData = currentQuestion.gesture_data;
-      const gestureIds = Array.isArray(gestureData?.gesture_ids) ? gestureData!.gesture_ids : [];
+      let gestureData: any = currentQuestion.gesture_data;
+
+      if (typeof gestureData === 'string') {
+        try {
+          gestureData = JSON.parse(gestureData);
+        } catch (e) {
+          gestureData = null;
+        }
+      }
+
+      let moduleId: string | number | null = null;
+      let gestureIds: (string | number)[] = [];
+
+      if (gestureData) {
+        moduleId = (gestureData as any).module_id ?? (gestureData as any).moduleId ?? null;
+        const ids = (gestureData as any).gesture_ids ?? (gestureData as any).ids ?? [];
+        gestureIds = Array.isArray(ids) ? ids : [];
+      }
+
       if (!gestureData || gestureIds.length === 0) {
+        console.warn('⚠️ No gesture_data found for question:', currentQuestion.question_id, currentQuestion.gesture_data);
         return (
           <View style={s.glassCard}>
             <Text style={s.errorText}>No gesture data found for this question.</Text>
-            <Pressable style={s.primaryBtn} onPress={handleNext}><Text style={s.primaryBtnText}>Skip →</Text></Pressable>
+            <Text style={[s.errorText, { fontSize: 12, color: '#6B7280' }]}>Question ID: {currentQuestion.question_id}</Text>
+            <Pressable style={s.primaryBtn} onPress={handleNext}>
+              <Text style={s.primaryBtnText}>Skip →</Text>
+            </Pressable>
           </View>
         );
       }
+
       return (
         <GesturePractice
           question={{
             question_id: currentQuestion.question_id,
             question_text: currentQuestion.question_text,
-            gesture_data: { module_id: String(gestureData.module_id), gesture_ids: gestureIds.map(gid => String(gid)) },
+            gesture_data: {
+              module_id: String(moduleId),
+              gesture_ids: gestureIds.map(gid => String(gid))
+            },
             question_number: currentQuestion.question_number || (currentIndex + 1),
           }}
           questionIndex={currentIndex}
@@ -488,40 +769,8 @@ export default function CheckpointExamScreen() {
     }
 
     if (currentQuestion.question_type === 'drag_drop') {
-      const pairs = (currentQuestion.drag_drop_pairs || []).map((p, idx) => ({
-        left_text: p.left_text ?? p.left ?? '',
-        right_text: p.right_text ?? p.right ?? '',
-        left_image: p.left_image ?? null,
-        right_image: p.right_image ?? null,
-        match_id: p.match_id ?? idx,
-      }));
-
-      if (pairs.length === 0) {
-        return (
-          <View style={s.glassCard}>
-            <Text style={s.errorText}>No drag and drop pairs found for this question.</Text>
-            <Pressable style={s.primaryBtn} onPress={handleNext}><Text style={s.primaryBtnText}>Skip →</Text></Pressable>
-          </View>
-        );
-      }
-
-      return (
-        <DragDropQuestion
-          key={currentQuestion.question_id}
-          question={{
-            question_id: currentQuestion.question_id,
-            question_text: currentQuestion.question_text,
-            drag_drop_pairs: pairs,
-            drag_drop_left_label: currentQuestion.drag_drop_left_label ?? undefined,
-            drag_drop_right_label: currentQuestion.drag_drop_right_label ?? undefined,
-            media_url: currentQuestion.media_url,
-          }}
-          questionIndex={currentIndex}
-          totalQuestions={totalQuestions}
-          onComplete={(success: boolean) => handleDragDropSuccess(currentQuestion.question_id, success)}
-          onBack={handlePrev}
-        />
-      );
+      // Use the memoized version
+      return renderDragDropQuestion;
     }
 
     // Multiple choice / True-False
@@ -843,6 +1092,9 @@ export default function CheckpointExamScreen() {
     );
   };
 
+  // ─── Timer display for exam header ──────────────────────────────────────
+  const timerDisplay = getTimerDisplay();
+
   return (
     <SafeAreaView style={[s.container, { backgroundColor: '#eaf5fd' }]}>
       {resultData?.passed && (
@@ -869,25 +1121,43 @@ export default function CheckpointExamScreen() {
         <ScrollView contentContainerStyle={s.moduleScroll}>
           <View style={s.topBar}>
             <Text style={s.logoText}>SEÑAS</Text>
-            <Pressable style={s.exitBtn} onPress={handleExitPress}><Text style={s.exitBtnText}>✕ Exit</Text></Pressable>
+            <View style={s.topBarRight}>
+              {/* Timer display */}
+              {timerDisplay && (
+                <TimerDisplay
+                  minutes={timerDisplay.minutes}
+                  seconds={timerDisplay.seconds}
+                  isWarning={isTimerWarning}
+                  isExpired={isTimerExpired}
+                />
+              )}
+              <Pressable style={s.exitBtn} onPress={handleExitPress}>
+                <Text style={s.exitBtnText}>✕ Exit</Text>
+              </Pressable>
+            </View>
           </View>
           <View style={s.examHeroRow}>
             <TrophyIcon color="#D97706" size={28} />
             <Text style={s.examTitle} numberOfLines={1}>{exam.title}</Text>
           </View>
+          {isTimerExpired && (
+            <View style={s.timeUpBanner}>
+              <Text style={s.timeUpBannerText}>⏰ Time's Up! Your exam is being submitted...</Text>
+            </View>
+          )}
           {renderQuestion()}
 
           {currentQuestion && (currentQuestion.question_type === 'multiple_choice' || currentQuestion.question_type === 'true_false') && (
             <View style={s.navRow}>
-              <Pressable style={[s.ghostBtn, currentIndex === 0 && { opacity: 0.4 }]} onPress={handlePrev} disabled={currentIndex === 0}>
+              <Pressable style={[s.ghostBtn, currentIndex === 0 && { opacity: 0.4 }]} onPress={handlePrev} disabled={currentIndex === 0 || isTimerExpired}>
                 <Text style={s.ghostBtnText}>◀ Previous</Text>
               </Pressable>
               {currentIndex < totalQuestions - 1 ? (
-                <Pressable style={[s.primaryBtn, !currentAnswer && { opacity: 0.5 }]} onPress={handleNext} disabled={!currentAnswer}>
+                <Pressable style={[s.primaryBtn, (!currentAnswer || isTimerExpired) && { opacity: 0.5 }]} onPress={handleNext} disabled={!currentAnswer || isTimerExpired}>
                   <Text style={s.primaryBtnText}>Next Question →</Text>
                 </Pressable>
               ) : (
-                <Pressable style={[s.primaryBtn, s.goldBtn]} onPress={handleSubmitExam} disabled={isSubmitting}>
+                <Pressable style={[s.primaryBtn, s.goldBtn, isTimerExpired && { opacity: 0.5 }]} onPress={handleSubmitExam} disabled={isSubmitting || isTimerExpired}>
                   {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={s.primaryBtnText}>Submit Exam 🏆</Text>}
                 </Pressable>
               )}
@@ -899,7 +1169,7 @@ export default function CheckpointExamScreen() {
   );
 }
 
-// ─── Styles (ported 1:1 from lesson/[id].tsx for visual parity) ────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1 },
   confettiWrapper: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, pointerEvents: 'none', elevation: 9999 },
@@ -922,12 +1192,21 @@ const s = StyleSheet.create({
 
   moduleScroll: { padding: 16, paddingBottom: 60 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
   exitBtn: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 12, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
   exitBtnText: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
 
   examHeroRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   examTitle: { flex: 1, fontSize: 19, fontWeight: '800', color: '#0f3172' },
+
+  // ─── Timer Styles ──────────────────────────────────────────────────────
+  timerContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1.5 },
+  timerText: { fontSize: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  timerExpiredBadge: { backgroundColor: '#EF4444', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 4 },
+  timerExpiredText: { fontSize: 9, fontWeight: '800', color: '#fff' },
+  timeUpBanner: { backgroundColor: '#FEE2E2', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FCA5A5' },
+  timeUpBannerText: { fontSize: 14, fontWeight: '700', color: '#DC2626', textAlign: 'center' },
 
   glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 12, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
 

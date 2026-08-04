@@ -251,7 +251,6 @@ const getCategoryIcon = (category: string, color: string, size: number = 24) => 
   }
 };
 
-const activePosRef = useRef({ x: 0, y: 0 });
 
 
 // ── MODULE/LESSON DATA STRUCTURE ──────────────────────────────────────
@@ -335,6 +334,7 @@ export default function Lessons() {
   const currentLessonsRef = useRef<Lesson[]>([]);
   const [activeTab, setActiveTab] = useState<number>(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const activePosRef = useRef({ x: 0, y: 0 });
 
   // Profile status
   const [streak, setStreak] = useState<number>(12);
@@ -678,7 +678,22 @@ export default function Lessons() {
           };
         });
 
-        setLearningPathLessons(transformed);
+        // ✅ FIX: Deduplicate lessons by lesson_id
+        const uniqueLessonsMap = new Map<number, Lesson>();
+        transformed.forEach(lesson => {
+          // Use lesson_id as the key for uniqueness
+          const key = lesson.lesson_id || lesson.id;
+          if (!uniqueLessonsMap.has(key)) {
+            uniqueLessonsMap.set(key, lesson);
+          }
+        });
+
+        // Convert map back to array
+        const uniqueLessons = Array.from(uniqueLessonsMap.values());
+
+        console.log(`📚 Deduplicated lessons: ${transformed.length} → ${uniqueLessons.length} unique`);
+
+        setLearningPathLessons(uniqueLessons);
         setGoalMastered(!!response.learning_path?.goal_mastered);
 
         // Also update weak skills from the response
