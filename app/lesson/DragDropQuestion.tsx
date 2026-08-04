@@ -7,6 +7,7 @@ import {
     Pressable,
     Dimensions,
     Animated,
+    Easing,
     SafeAreaView,
     Platform,
     ScrollView,
@@ -64,11 +65,30 @@ interface DragDropQuestionProps {
     totalQuestions: number;
     onComplete: (success: boolean) => void;
     onBack: () => void;
+    // Optional: fires true when a card drag starts and false when it ends,
+    // so a parent screen that wraps this component in its own ScrollView
+    // can disable that outer scroll for the duration of the drag. Without
+    // this, a vertical/diagonal drag can get stolen by the *outer*
+    // ScrollView even though this component's own inner ScrollView is
+    // already disabled while dragging.
+    onDragActiveChange?: (active: boolean) => void;
 }
 
 const MAX_WRONG_ATTEMPTS = 2;
 
 type Rect = { x: number; y: number; width: number; height: number };
+
+// ─── SHUFFLE (Fisher-Yates) ────────────────────────────────────────────────
+// Used to randomize the right column so a card's match isn't always
+// sitting directly across from it.
+function shuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
 
 // ─── COLOR PAIRS FOR TEXT-ONLY LAYOUT ─────────────────────────────────────
 type ColorPair = {
@@ -93,12 +113,61 @@ interface DragState {
     opacity: Animated.Value;
 }
 
+// ─── MATCH BURST (fireworks on a correct match) ───────────────────────────
+// Small confetti-style burst, native-driver only so it can't add any jank
+// to the drag gesture. Fires once per correct match via the `trigger` count.
+function MatchBurst({ trigger, anchor }: { trigger: number; anchor: { x: number; y: number } | null }) {
+    const bits = React.useMemo(
+        () => Array.from({ length: 16 }).map((_, i) => ({
+            i,
+            dx: (Math.random() - 0.5) * 240,
+            dy: -90 - Math.random() * 170,
+            color: ['#FCD34D', '#34D399', '#60A5FA', '#F472B6', '#A78BFA', '#FF8A3D'][i % 6],
+            size: 6 + Math.random() * 8,
+        })),
+        [trigger]
+    );
+    const t = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (!trigger) return;
+        t.setValue(0);
+        Animated.timing(t, { toValue: 1, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+    }, [trigger]);
+
+    if (!trigger || !anchor) return null;
+
+    return (
+        <View pointerEvents="none" style={[styles.burstLayer, { left: anchor.x, top: anchor.y }]}>
+            {bits.map(b => (
+                <Animated.View
+                    key={`${trigger}-${b.i}`}
+                    style={{
+                        position: 'absolute',
+                        width: b.size,
+                        height: b.size,
+                        borderRadius: 2,
+                        backgroundColor: b.color,
+                        opacity: t.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }),
+                        transform: [
+                            { translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, b.dx] }) },
+                            { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, b.dy] }) },
+                            { rotate: t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '420deg'] }) },
+                        ],
+                    }}
+                />
+            ))}
+        </View>
+    );
+}
+
 export default function DragDropQuestion({
     question,
     questionIndex,
     totalQuestions,
     onComplete,
     onBack,
+    onDragActiveChange,
 }: DragDropQuestionProps) {
     const { settings } = useSettings();
 
@@ -115,6 +184,9 @@ export default function DragDropQuestion({
     const [draggingItem, setDraggingItem] = useState<{ index: number; side: 'left' | 'right' } | null>(null);
     const [showExitModal, setShowExitModal] = useState(false);
     const [dropSuccess, setDropSuccess] = useState<number | null>(null);
+    const [burstTick, setBurstTick] = useState(0);
+    const [burstAnchor, setBurstAnchor] = useState<{ x: number; y: number } | null>(null);
+
 
     // ─── INDEPENDENT DRAG STATES PER ITEM ────────────────────────────────
     const dragStatesRef = useRef<Map<string, DragState>>(new Map());
@@ -144,6 +216,26 @@ export default function DragDropQuestion({
     const zoneRectsRef = useRef<Record<number, Rect>>({});
     const zoneRefs = useRef<Record<number, View | null>>({});
     const scrollViewRef = useRef<ScrollView>(null);
+
+    // ─── "LATEST VALUE" REFS ───────────────────────────────────────────
+    // The PanResponder for each card is created ONCE (see getPanResponder
+    // below) and never rebuilt, so its callbacks close over these refs
+    // instead of the state variables directly. That keeps every callback
+    // reading fresh data without ever forcing React to hand out a new
+    // PanResponder mid-gesture (which is what was causing the glitchiness).
+    const matchesRef = useRef(matches);
+    matchesRef.current = matches;
+    const leftItemsRef = useRef(leftItems);
+    leftItemsRef.current = leftItems;
+    const rightItemsRef = useRef(rightItems);
+    rightItemsRef.current = rightItems;
+    const isCompleteRef = useRef(isComplete);
+    isCompleteRef.current = isComplete;
+    const isAnimatingRef = useRef(isAnimating);
+    isAnimatingRef.current = isAnimating;
+    const panResponderCacheRef = useRef<Map<string, ReturnType<typeof PanResponder.create>>>(new Map());
+    const onDragActiveChangeRef = useRef(onDragActiveChange);
+    onDragActiveChangeRef.current = onDragActiveChange;
 
     // Helper function to get full image URL
     const getFullImageUrl = (path: string | null | undefined): string | null => {
@@ -271,17 +363,32 @@ export default function DragDropQuestion({
         allIds.forEach(id => measureZone(id));
     }, [measureZone]);
 
+    // ── Throttled remeasure while actively scrolling ──
+    // ScrollView's onScroll only fires continuously if scrollEventThrottle
+    // is set — without it, drop-zone rects captured before a scroll go
+    // stale, so a zone you can clearly see and are hovering over doesn't
+    // register as a hit. We now feed onScroll (throttled to ~10/sec so it
+    // doesn't hammer measureInWindow) plus a guaranteed remeasure the
+    // instant a scroll/drag ends, whether or not it had momentum.
+    const lastScrollRemeasureRef = useRef(0);
+    const handleScrollRemeasure = useCallback(() => {
+        const now = Date.now();
+        if (now - lastScrollRemeasureRef.current < 100) return;
+        lastScrollRemeasureRef.current = now;
+        remeasureAllZones();
+    }, [remeasureAllZones]);
+
     // ── Hit test ──
     const findZoneAt = useCallback((pageX: number, pageY: number): number | null => {
         let best: number | null = null;
         let bestDist = Infinity;
-        const pad = 20;
+        const pad = 44; // generous forgiveness margin — kids' fingers (and thumbs) aren't pixel-precise
 
         for (const key in zoneRectsRef.current) {
             const r = zoneRectsRef.current[key];
             if (!r) continue;
             const index = parseInt(key);
-            if (Object.values(matches).includes(index)) continue;
+            if (Object.values(matchesRef.current).includes(index)) continue;
 
             if (pageX >= r.x - pad && pageX <= r.x + r.width + pad &&
                 pageY >= r.y - pad && pageY <= r.y + r.height + pad) {
@@ -295,7 +402,7 @@ export default function DragDropQuestion({
             }
         }
         return best;
-    }, [matches]);
+    }, []); // stable forever — reads matchesRef.current instead of closing over `matches`
 
     // ── Attempt match ──
     const attemptMatch = useCallback((leftIndex: number, rightIndex: number, dragKey: string) => {
@@ -326,6 +433,12 @@ export default function DragDropQuestion({
             animateSenyaBounce();
             setDropSuccess(rightIndex);
 
+            const zoneRect = zoneRectsRef.current[rightIndex];
+            if (zoneRect) {
+                setBurstAnchor({ x: zoneRect.x + zoneRect.width / 2, y: zoneRect.y + zoneRect.height / 2 });
+            }
+            setBurstTick(t => t + 1);
+
             setMatches(prev => {
                 const newMatches = { ...prev, [leftIndex]: rightIndex };
                 if (Object.keys(newMatches).length === leftItems.length) {
@@ -350,6 +463,7 @@ export default function DragDropQuestion({
             ]).start(() => {
                 setDraggingItem(null);
                 setIsAnimating(false);
+                onDragActiveChangeRef.current?.(false);
             });
 
             setTimeout(() => setDropSuccess(null), 400);
@@ -377,6 +491,7 @@ export default function DragDropQuestion({
             ]).start(() => {
                 setDraggingItem(null);
                 setIsAnimating(false);
+                onDragActiveChangeRef.current?.(false);
 
                 if (newAttempts >= MAX_WRONG_ATTEMPTS) {
                     setShowContinue(true);
@@ -390,23 +505,47 @@ export default function DragDropQuestion({
         }
     }, [leftItems, rightItems, matches, attempts, isAnimating, leftItems.length]);
 
-    // ── Create PanResponder for drag items ──
-    const createPanResponder = useCallback((index: number, side: 'left' | 'right') => {
-        const isMatched = side === 'left'
-            ? matches[index] !== undefined
-            : Object.values(matches).includes(index);
+    const attemptMatchRef = useRef(attemptMatch);
+    attemptMatchRef.current = attemptMatch;
 
-        if (isMatched || isComplete || isAnimating) {
-            return null;
-        }
-
+    // ── Get (or lazily create) a PanResponder for a drag item ──
+    // IMPORTANT: this is built ONCE per card and cached in panResponderCacheRef.
+    // Previously a brand-new PanResponder (with brand-new panHandlers) was
+    // created on every render — and because hoverZoneId/matches/etc changed
+    // constantly *during* a drag, React kept swapping out the responder
+    // attached to the Animated.View mid-gesture. RN's gesture system tracks
+    // an in-progress touch against the specific responder instance that was
+    // granted it, so swapping the instance mid-drag is exactly what made
+    // drops feel "right on top of it but won't register." Reading everything
+    // through refs below means the callbacks always see fresh state without
+    // the identity of the responder ever changing.
+    const getPanResponder = useCallback((index: number, side: 'left' | 'right') => {
         const dragKey = `${side}-${index}`;
+        const cached = panResponderCacheRef.current.get(dragKey);
+        if (cached) return cached;
+
         const dragState = getDragState(dragKey);
         const { pan, scale, rotate, opacity } = dragState;
 
-        return PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+        const responder = PanResponder.create({
+            onStartShouldSetPanResponder: () => {
+                if (isCompleteRef.current || isAnimatingRef.current) return false;
+                const isMatched = side === 'left'
+                    ? matchesRef.current[index] !== undefined
+                    : Object.values(matchesRef.current).includes(index);
+                return !isMatched;
+            },
+            onMoveShouldSetPanResponder: (_e, g) =>
+                !isCompleteRef.current && !isAnimatingRef.current &&
+                (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3),
+            // Without this, a vertical (or diagonal) drag can get taken away
+            // mid-gesture by an ancestor ScrollView's own gesture recognizer —
+            // a vertical ScrollView never contests purely horizontal moves
+            // (which is why "sideways" already worked), but it WILL try to
+            // claim any gesture with vertical movement in it unless we
+            // explicitly refuse to hand the responder back.
+            onPanResponderTerminationRequest: () => false,
+            onShouldBlockNativeResponder: () => true,
             onPanResponderGrant: () => {
                 pan.setValue({ x: 0, y: 0 });
                 scale.setValue(1.08);
@@ -414,6 +553,7 @@ export default function DragDropQuestion({
                 rotate.setValue(0);
                 setDraggingItem({ index, side });
                 setHoverZoneId(null);
+                onDragActiveChangeRef.current?.(true);
                 setTimeout(remeasureAllZones, 50);
             },
             onPanResponderMove: (evt, gesture) => {
@@ -421,20 +561,22 @@ export default function DragDropQuestion({
                 rotate.setValue(gesture.dx * 0.02);
 
                 const zoneId = findZoneAt(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
-                if (zoneId !== hoverZoneId) {
-                    setHoverZoneId(zoneId);
-                }
+                setHoverZoneId(prev => (prev === zoneId ? prev : zoneId));
             },
             onPanResponderRelease: (evt) => {
                 const zoneId = findZoneAt(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
                 setHoverZoneId(null);
+
+                const matches = matchesRef.current;
+                const leftItems = leftItemsRef.current;
+                const rightItems = rightItemsRef.current;
 
                 let matched = false;
 
                 if (side === 'left' && zoneId !== null) {
                     const isRightMatched = Object.values(matches).includes(zoneId);
                     if (!isRightMatched) {
-                        attemptMatch(index, zoneId, dragKey);
+                        attemptMatchRef.current(index, zoneId, dragKey);
                         matched = true;
                     }
                 } else if (side === 'right' && zoneId !== null) {
@@ -445,7 +587,7 @@ export default function DragDropQuestion({
                             item => item.match_id === rightItem?.match_id
                         );
                         if (leftMatchIndex !== -1 && matches[leftMatchIndex] === undefined) {
-                            attemptMatch(leftMatchIndex, index, dragKey);
+                            attemptMatchRef.current(leftMatchIndex, index, dragKey);
                             matched = true;
                         }
                     }
@@ -466,6 +608,7 @@ export default function DragDropQuestion({
                         }),
                     ]).start(() => {
                         setDraggingItem(null);
+                        onDragActiveChangeRef.current?.(false);
                     });
                 }
             },
@@ -478,10 +621,14 @@ export default function DragDropQuestion({
                 }).start(() => {
                     setDraggingItem(null);
                     setHoverZoneId(null);
+                    onDragActiveChangeRef.current?.(false);
                 });
             },
         });
-    }, [matches, isComplete, isAnimating, findZoneAt, attemptMatch, remeasureAllZones, leftItems, rightItems, hoverZoneId, getDragState]);
+
+        panResponderCacheRef.current.set(dragKey, responder);
+        return responder;
+    }, [findZoneAt, remeasureAllZones, getDragState]);
 
     // ─── RENDER WITH IMAGES ──────────────────────────────────────────────
     const renderWithImages = () => {
@@ -517,7 +664,7 @@ export default function DragDropQuestion({
                         const dragKey = `left-${index}`;
                         const dragState = getDragState(dragKey);
                         const { pan, scale } = dragState;
-                        const responder = createPanResponder(index, 'left');
+                        const responder = getPanResponder(index, 'left');
 
                         return (
                             <Animated.View
@@ -598,27 +745,25 @@ export default function DragDropQuestion({
                                     },
                                 ]}>
                                     <View style={styles.imageDropZoneContent}>
-                                        {isMatched ? (
-                                            <>
-                                                {imageUrl && (
-                                                    <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
-                                                )}
-                                                {hasText && <Text style={styles.imageCardText}>{item.right_text}</Text>}
-                                                <View style={styles.matchBadge}>
-                                                    <Ionicons name="checkmark" size={14} color="#fff" />
-                                                </View>
-                                            </>
+                                        {imageUrl && (
+                                            <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                        )}
+                                        {hasText ? (
+                                            <Text style={styles.imageCardText}>{item.right_text}</Text>
                                         ) : (
-                                            <>
-                                                <Text style={styles.imageDropZoneLabel}>
-                                                    {item.right_text || 'Drop here'}
-                                                </Text>
-                                                {isHovered && (
-                                                    <View style={styles.dropHintBadge}>
-                                                        <Text style={styles.dropHintText}>Drop here!</Text>
-                                                    </View>
-                                                )}
-                                            </>
+                                            !imageUrl && (
+                                                <Text style={styles.imageDropZoneLabel}>Drop here</Text>
+                                            )
+                                        )}
+                                        {isMatched && (
+                                            <View style={styles.matchBadge}>
+                                                <Ionicons name="checkmark" size={14} color="#fff" />
+                                            </View>
+                                        )}
+                                        {isHovered && !isMatched && (
+                                            <View style={styles.dropHintBadge}>
+                                                <Text style={styles.dropHintText}>Drop here!</Text>
+                                            </View>
                                         )}
                                     </View>
                                 </Animated.View>
@@ -658,7 +803,7 @@ export default function DragDropQuestion({
                         const dragKey = `left-${index}`;
                         const dragState = getDragState(dragKey);
                         const { pan, scale, rotate } = dragState;
-                        const responder = createPanResponder(index, 'left');
+                        const responder = getPanResponder(index, 'left');
 
                         return (
                             <Animated.View
@@ -822,11 +967,13 @@ export default function DragDropQuestion({
         zoneRectsRef.current = {};
         zoneRefs.current = {};
         dragStatesRef.current.clear();
+        panResponderCacheRef.current.clear();
+        onDragActiveChangeRef.current?.(false);
 
         if (question.drag_drop_pairs && question.drag_drop_pairs.length > 0) {
             const pairs = question.drag_drop_pairs;
             setLeftItems(pairs);
-            setRightItems([...pairs]);
+            setRightItems(shuffle(pairs));
         }
     }, [question.drag_drop_pairs, question.question_id]);
 
@@ -866,7 +1013,9 @@ export default function DragDropQuestion({
                 ref={scrollViewRef}
                 contentContainerStyle={styles.scrollContent}
                 scrollEnabled={!draggingItem}
-                onScroll={remeasureAllZones}
+                scrollEventThrottle={16}
+                onScroll={handleScrollRemeasure}
+                onScrollEndDrag={remeasureAllZones}
                 onMomentumScrollEnd={remeasureAllZones}
                 showsVerticalScrollIndicator={false}
             >
@@ -957,6 +1106,8 @@ export default function DragDropQuestion({
                 )}
             </ScrollView>
 
+            <MatchBurst trigger={burstTick} anchor={burstAnchor} />
+
             {renderExitModal()}
         </SafeAreaView>
     );
@@ -971,6 +1122,14 @@ const styles = StyleSheet.create({
     scrollContent: {
         padding: 16,
         paddingBottom: 40,
+    },
+    burstLayer: {
+        position: 'absolute',
+        width: 1,
+        height: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 999,
     },
 
     topBar: {
@@ -1100,10 +1259,10 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 2,
         borderColor: 'rgba(15,49,114,0.10)',
-        padding: 8,
+        padding: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: 70,
+        minHeight: 132,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
@@ -1157,23 +1316,23 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     imageCardImg: {
-        width: 50,
-        height: 50,
-        borderRadius: 8,
+        width: 96,
+        height: 96,
+        borderRadius: 14,
         backgroundColor: 'rgba(15,49,114,0.02)',
     },
     imageCardText: {
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: '600',
         color: '#0f3172',
-        marginTop: 2,
+        marginTop: 4,
         textAlign: 'center',
     },
     imageDropZone: {
         borderStyle: 'dashed',
         borderColor: 'rgba(15,49,114,0.15)',
         backgroundColor: 'rgba(255,255,255,0.3)',
-        minHeight: 70,
+        minHeight: 132,
     },
     imageDropZoneContent: {
         alignItems: 'center',
@@ -1181,8 +1340,8 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     imageDropZoneLabel: {
-        fontSize: 11,
-        fontWeight: '500',
+        fontSize: 13,
+        fontWeight: '600',
         color: '#94a3b8',
         textAlign: 'center',
     },

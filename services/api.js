@@ -1788,5 +1788,40 @@ export const api = {
     },
 
 
+    /**
+     * 👨‍🏫 Get teacher details by ID
+     * GET /api/teacher/{teacherId}
+     */
+    getTeacher: async (teacherId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`👨‍🏫 Fetching teacher ${teacherId}...`);
+
+            const response = await fetch(`${API_URL}/teacher/${teacherId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('👨‍🏫 Teacher response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch teacher');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching teacher:', error);
+            throw error;
+        }
+    },
 
 };

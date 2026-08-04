@@ -371,6 +371,7 @@ export default function LessonViewer() {
     xpEarned: number; totalXp: number; level: number; streakDays: number;
   } | null>(null);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
+  const [dragDropActive, setDragDropActive] = useState<boolean>(false);
   const [attemptHistory, setAttemptHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [confettiFired, setConfettiFired] = useState(false);
@@ -757,6 +758,7 @@ export default function LessonViewer() {
 
   const handleNextQuestion = () => {
     const questions = lesson?.quiz?.questions || [];
+    setDragDropActive(false); // safety reset in case the previous question unmounted mid-drag
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(i => i + 1);
       setSelectedOption(null);
@@ -1101,6 +1103,7 @@ export default function LessonViewer() {
           }}
           questionIndex={currentQuestionIndex}
           totalQuestions={lesson.quiz.questions.length}
+          onDragActiveChange={setDragDropActive}
           onComplete={(success) => {
             console.log('📝 DragDrop onComplete called:', { success, questionId: currentQuestion.question_id });
 
@@ -1835,7 +1838,10 @@ export default function LessonViewer() {
       {quizSubmitted ? (
         renderResults()
       ) : (
-        <ScrollView contentContainerStyle={s.moduleScroll}>
+        <ScrollView
+          contentContainerStyle={s.moduleScroll}
+          scrollEnabled={!dragDropActive}
+        >
           <View style={s.topBar}>
             <Text style={s.logoText}>SEÑAS</Text>
             <Pressable style={s.exitBtn} onPress={() => setShowExitModal(true)}>

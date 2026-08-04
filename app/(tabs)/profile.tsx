@@ -1,17 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
-  Pressable, Switch, Modal, Alert, TextInput, ActivityIndicator
+  Pressable, Switch, Modal, Alert, TextInput, ActivityIndicator,
+  Dimensions, Animated, Easing
 } from 'react-native';
 
 import { Image } from 'expo-image';
-import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
+import Svg, { Path, Circle, Rect, Line, Polyline, Defs, LinearGradient, Stop } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { GlassCard } from '../../components/ui/GlassCard';
 import PromotionModal from '../../components/PromotionModal';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSettings } from '../../contexts/SettingsContext';
+import Constants from 'expo-constants';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+const getBaseUrl = () => {
+  const apiUrl = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
+  return apiUrl.replace('/api', '');
+};
+
+// ── SUNNY SKY PALETTE ────────────────────────────────────────────────
+const GRADIENT = {
+  start: '#c1eaffff',
+  mid: '#BFE7FB',
+  mid2: '#E6F4FE',
+  end: '#F8FCFF',
+};
 
 // ── SVG Icons ──────────────────────────────────────────────────────────
 function BellIcon({ size = 20 }: { size?: number }) {
@@ -70,6 +87,34 @@ function SignOutIcon() {
       <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <Polyline points="16 17 21 12 16 7" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <Line x1="21" y1="12" x2="9" y2="12" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function TeacherIcon({ size = 20 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M12 2L2 7l10 5 10-5-10-5z" />
+      <Path d="M2 17l10 5 10-5" />
+      <Path d="M2 12l10 5 10-5" />
+    </Svg>
+  );
+}
+
+// ── Animated Cloud Component ──────────────────────────────────────────
+function AnimatedCloud({ scale = 1, opacity = 0.5 }) {
+  return (
+    <Svg width={120 * scale} height={60 * scale} viewBox="0 0 120 60" opacity={opacity}>
+      <Defs>
+        <LinearGradient id="cloudGradProfile" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+          <Stop offset="100%" stopColor="#E0F2FE" stopOpacity="0.5" />
+        </LinearGradient>
+      </Defs>
+      <Path
+        d="M20 40 C10 40 5 30 12 22 C8 12 20 5 30 10 C38 2 52 2 60 8 C68 3 80 5 85 14 C95 12 105 18 100 28 C110 35 108 48 95 50 L25 50 C18 50 14 45 20 40Z"
+        fill="url(#cloudGradProfile)"
+      />
     </Svg>
   );
 }
@@ -155,7 +200,6 @@ function EditProfileModal({
 
   const handleSave = async () => {
     try {
-      // Save the avatar to backend
       await api.updateProfilePicture(selectedAvatar);
       onAvatarChange(selectedAvatar);
       onSave(name);
@@ -269,7 +313,6 @@ function HelpSupportModal({ visible, onClose }: { visible: boolean; onClose: () 
       return;
     }
     setSending(true);
-    // Simulate sending
     setTimeout(() => {
       setSending(false);
       Alert.alert('✅ Message Sent!', 'We\'ll get back to you within 24 hours.');
@@ -370,7 +413,6 @@ export default function Profile() {
   const router = useRouter();
   const { settings, updateSetting, refreshSettings } = useSettings();
 
-
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('Student');
   const [studentLevel, setStudentLevel] = useState('Beginner');
@@ -386,6 +428,10 @@ export default function Profile() {
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [showPromotionModal, setShowPromotionModal] = useState(false);
 
+  // ── Teacher Info ──
+  const [teacherName, setTeacherName] = useState<string | null>(null);
+  const [teacherPhoto, setTeacherPhoto] = useState<string | null>(null);
+  const [loadingTeacher, setLoadingTeacher] = useState(false);
 
   // Modal states
   const [showEditModal, setShowEditModal] = useState(false);
@@ -395,45 +441,102 @@ export default function Profile() {
 
   const [selectedAvatar, setSelectedAvatar] = useState('senya');
 
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  // Cloud animations
+  const cloud1Anim = useRef(new Animated.Value(-200)).current;
+  const cloud2Anim = useRef(new Animated.Value(screenWidth + 200)).current;
+  const cloud3Anim = useRef(new Animated.Value(-250)).current;
 
-  const [notifs, setNotifs] = useState(settings.notificationsEnabled);
-  const [sound, setSound] = useState(settings.soundEnabled);
+  // Sun glow animation
+  const sunAnim = useRef(new Animated.Value(0)).current;
 
+  // ── Cloud Animations ──────────────────────────────────────────────────
+  useEffect(() => {
+    const startCloud1 = () => {
+      cloud1Anim.setValue(-200);
+      Animated.timing(cloud1Anim, {
+        toValue: screenWidth + 200,
+        duration: 45000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(() => startCloud1());
+    };
 
+    const startCloud2 = () => {
+      cloud2Anim.setValue(screenWidth + 200);
+      Animated.timing(cloud2Anim, {
+        toValue: -200,
+        duration: 55000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(() => startCloud2());
+    };
 
-  // Update the switch handlers
-  const handleSoundToggle = async (value: boolean) => {
-    try {
-      await updateSetting('soundEnabled', value);
-    } catch (error) {
-      console.error('Error updating sound setting:', error);
-    }
-  };
+    const startCloud3 = () => {
+      cloud3Anim.setValue(-250);
+      Animated.timing(cloud3Anim, {
+        toValue: screenWidth + 250,
+        duration: 50000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(() => startCloud3());
+    };
 
-  const handleNotificationToggle = async (value: boolean) => {
-    try {
-      await updateSetting('notificationsEnabled', value);
-    } catch (error) {
-      console.error('Error updating notification setting:', error);
-    }
-  };
+    startCloud1();
+    startCloud2();
+    startCloud3();
+  }, []);
 
-  // ── Settings Items (only working features) ──
+  // ── Sun Glow Animation ───────────────────────────────────────────────
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(sunAnim, {
+          toValue: 1,
+          duration: 3000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(sunAnim, {
+          toValue: 0,
+          duration: 3000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const sunGlow = sunAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.8],
+  });
+
+  // ── Settings Items ──
   const settingsItems = [
     {
       label: 'Daily Reminders',
       sub: 'Get notified to practice',
-      val: settings.notificationsEnabled,  // ✅ Use context value directly
-      set: handleNotificationToggle,
+      val: settings.notificationsEnabled,
+      set: async (value: boolean) => {
+        try {
+          await updateSetting('notificationsEnabled', value);
+        } catch (error) {
+          console.error('Error updating notification setting:', error);
+        }
+      },
       Icon: BellIcon
     },
     {
       label: 'Sound Effects',
       sub: 'Play sounds during lessons',
-      val: settings.soundEnabled,  // ✅ Use context value directly
-      set: handleSoundToggle,
+      val: settings.soundEnabled,
+      set: async (value: boolean) => {
+        try {
+          await updateSetting('soundEnabled', value);
+        } catch (error) {
+          console.error('Error updating sound setting:', error);
+        }
+      },
       Icon: SoundIcon
     },
   ];
@@ -444,7 +547,49 @@ export default function Profile() {
     { label: 'About SEÑAS', Icon: InfoIcon, route: '/about' },
   ];
 
+  // ── Fetch Teacher Info ──
+  const fetchTeacherInfo = async (teacherId: number) => {
+    if (!teacherId) return;
 
+    try {
+      setLoadingTeacher(true);
+      const response = await api.getTeacher(teacherId);
+      if (response.success && response.teacher) {
+        const teacher = response.teacher;
+        const fullName = `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim();
+        setTeacherName(fullName || 'Unknown Teacher');
+
+        // ✅ Set teacher photo
+        if (teacher.profile_photo) {
+          const baseUrl = getBaseUrl();
+          setTeacherPhoto(`${baseUrl}/storage/${teacher.profile_photo}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching teacher info:', error);
+      // Fallback: try to get from student data if available
+      try {
+        const userData = await AsyncStorage.getItem('userData');
+        if (userData) {
+          const user = JSON.parse(userData);
+          const student = user.student;
+          if (student?.teacher) {
+            const teacher = student.teacher;
+            const fullName = `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim();
+            setTeacherName(fullName || 'Unknown Teacher');
+            if (teacher.profile_photo) {
+              const baseUrl = getBaseUrl();
+              setTeacherPhoto(`${baseUrl}/storage/${teacher.profile_photo}`);
+            }
+          }
+        }
+      } catch (fallbackError) {
+        console.error('Fallback teacher fetch failed:', fallbackError);
+      }
+    } finally {
+      setLoadingTeacher(false);
+    }
+  };
 
   const fetchProfileData = async () => {
     try {
@@ -457,10 +602,13 @@ export default function Profile() {
         const fullName = `${student?.first_name || ''} ${student?.last_name || ''}`.trim();
         setUserName(fullName || 'Student');
         setStudentLevel(student?.fsl_mastery_level || 'Beginner');
-
-        // ✅ Load avatar from stored data
         const avatar = student?.profile_picture || 'senya';
         setSelectedAvatar(avatar);
+
+        // ── Fetch teacher info if teacher_id exists ──
+        if (student?.teacher_id) {
+          await fetchTeacherInfo(student.teacher_id);
+        }
       }
 
       const response = await api.getStudentLessons();
@@ -473,9 +621,13 @@ export default function Profile() {
           setStudentLevel(student.fsl_mastery_level);
         }
 
-        // ✅ Also check if avatar came from the API response
         if (student?.profile_picture) {
           setSelectedAvatar(student.profile_picture);
+        }
+
+        // ── Also check if teacher data comes from API response ──
+        if (student?.teacher_id && !teacherName) {
+          await fetchTeacherInfo(student.teacher_id);
         }
 
         let completedCount = 0;
@@ -546,6 +698,7 @@ export default function Profile() {
       setLoading(false);
     }
   };
+
   const handleOpenDocument = async (promotion: any) => {
     try {
       const response = await api.getPromotionDetails(promotion.id);
@@ -603,11 +756,9 @@ export default function Profile() {
   useFocusEffect(
     useCallback(() => {
       fetchProfileData();
-      // ✅ Use refreshSettings from context instead of fetchSettings
       refreshSettings();
     }, [])
   );
-
 
   // Stats data
   const stats = [
@@ -661,38 +812,88 @@ export default function Profile() {
       )}
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* ── Header ── */}
+        {/* ── HEADER WITH SUNNY SKY BACKGROUND ── */}
         <View style={styles.header}>
-          <View style={styles.headerBubble1} />
-          <View style={styles.headerBubble2} />
-
-          <View style={styles.avatarWrapper}>
-            <View style={styles.avatarRing}>
-              <Image
-                source={
-                  selectedAvatar === 'senya' ? require('../../assets/images/img/senya_blue.png') :
-                    selectedAvatar === 'boy' ? require('../../assets/characters/boy.png') :
-                      selectedAvatar === 'girl' ? require('../../assets/characters/girl.png') :
-                        require('../../assets/characters/catto.png')
-                }
-                style={styles.avatarImg}
-                contentFit="cover"
-              />
-            </View>
-            <Pressable style={styles.editAvatarBtn} onPress={() => setShowEditModal(true)}>
-              <Text style={styles.editAvatarIcon}>✎</Text>
-            </Pressable>
+          {/* Gradient Background */}
+          <View style={StyleSheet.absoluteFillObject}>
+            <Svg width={screenWidth} height={260}>
+              <Defs>
+                <LinearGradient id="headerBgGrad" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0%" stopColor={GRADIENT.start} stopOpacity="1" />
+                  <Stop offset="40%" stopColor={GRADIENT.mid} stopOpacity="0.95" />
+                  <Stop offset="70%" stopColor={GRADIENT.mid2} stopOpacity="0.9" />
+                  <Stop offset="100%" stopColor={GRADIENT.end} stopOpacity="0.85" />
+                </LinearGradient>
+              </Defs>
+              <Rect width={screenWidth} height={260} fill="url(#headerBgGrad)" />
+            </Svg>
           </View>
-          <Text style={styles.headerName}>{userName}</Text>
-          <Text style={styles.headerRole}>FSL {studentLevel} Learner</Text>
 
-          <View style={styles.headerBadgeRow}>
-            <View style={styles.headerBadge}>
-              <Image source={require('../../assets/images/img/energy.png')} style={{ width: 12, height: 12 }} contentFit="contain" />
-              <Text style={styles.headerBadgeTextYellow}>{studentLevel}</Text>
+          {/* Sun with animated glow */}
+          <Animated.View style={[styles.sunContainer, { opacity: sunGlow }]}>
+            <Svg width="80" height="80" viewBox="0 0 120 120">
+              <Circle cx="60" cy="60" r="45" fill="#FCD34D" opacity="0.9" />
+              <Circle cx="60" cy="60" r="55" fill="#FCD34D" opacity="0.3" />
+              <Circle cx="60" cy="60" r="70" fill="#FCD34D" opacity="0.1" />
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+                <Rect
+                  key={i}
+                  x="54"
+                  y="5"
+                  width="12"
+                  height="20"
+                  rx="6"
+                  fill="#FCD34D"
+                  opacity="0.6"
+                  transform={`rotate(${angle}, 60, 60)`}
+                />
+              ))}
+            </Svg>
+          </Animated.View>
+
+          {/* Floating Clouds */}
+          <View style={styles.floatingSky} pointerEvents="none">
+            <Animated.View style={[styles.cloudWrapper, { top: 20, transform: [{ translateX: cloud1Anim }] }]}>
+              <AnimatedCloud scale={1.2} opacity={0.4} />
+            </Animated.View>
+            <Animated.View style={[styles.cloudWrapper, { top: 80, transform: [{ translateX: cloud2Anim }] }]}>
+              <AnimatedCloud scale={0.9} opacity={0.3} />
+            </Animated.View>
+            <Animated.View style={[styles.cloudWrapper, { top: 160, transform: [{ translateX: cloud3Anim }] }]}>
+              <AnimatedCloud scale={1.4} opacity={0.35} />
+            </Animated.View>
+          </View>
+
+          {/* Header Content */}
+          <View style={styles.headerContent}>
+            <View style={styles.avatarWrapper}>
+              <View style={styles.avatarRing}>
+                <Image
+                  source={
+                    selectedAvatar === 'senya' ? require('../../assets/images/img/senya_blue.png') :
+                      selectedAvatar === 'boy' ? require('../../assets/characters/boy.png') :
+                        selectedAvatar === 'girl' ? require('../../assets/characters/girl.png') :
+                          require('../../assets/characters/catto.png')
+                  }
+                  style={styles.avatarImg}
+                  contentFit="cover"
+                />
+              </View>
+              <Pressable style={styles.editAvatarBtn} onPress={() => setShowEditModal(true)}>
+                <Text style={styles.editAvatarIcon}>✎</Text>
+              </Pressable>
             </View>
-            <View style={styles.headerBadgeTransp}>
-              <Text style={styles.headerBadgeTextWhite}>Member since {memberSince}</Text>
+            <Text style={styles.headerName}>{userName}</Text>
+            <Text style={styles.headerRole}>FSL {studentLevel} Learner</Text>
+
+            <View style={styles.headerBadgeRow}>
+              <View style={styles.headerBadge}>
+                <Image source={require('../../assets/images/img/energy.png')} style={{ width: 12, height: 12 }} contentFit="contain" />
+                <Text style={styles.headerBadgeTextYellow}>{studentLevel}</Text>
+              </View>
+              <View style={styles.headerBadgeTransp}>
+                <Text style={styles.headerBadgeTextWhite}>Member since {memberSince}</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -713,6 +914,33 @@ export default function Profile() {
             </View>
           </GlassCard>
         </View>
+
+        {/* ── Teacher Info ── */}
+        {teacherName && (
+          <View style={styles.section}>
+            <GlassCard style={styles.teacherCard}>
+              <View style={styles.teacherRow}>
+                <View style={styles.teacherAvatarWrapper}>
+                  {teacherPhoto ? (
+                    <Image
+                      source={{ uri: teacherPhoto }}
+                      style={styles.teacherAvatar}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={styles.teacherAvatarPlaceholder}>
+                      <TeacherIcon size={28} />
+                    </View>
+                  )}
+                </View>
+                <View style={styles.teacherInfo}>
+                  <Text style={styles.teacherLabel}>Teacher</Text>
+                  <Text style={styles.teacherName}>{teacherName}</Text>
+                </View>
+              </View>
+            </GlassCard>
+          </View>
+        )}
 
         {/* ── Learning Path ── */}
         <View style={styles.section}>
@@ -823,7 +1051,7 @@ export default function Profile() {
           </GlassCard>
         </View>
 
-        {/* ── Settings (Only Working Features) ── */}
+        {/* ── Settings ── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <GlassCard style={styles.settingsCard}>
@@ -885,24 +1113,110 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    backgroundColor: '#065bc2ff',
-    paddingTop: 32, paddingBottom: 40,
-    alignItems: 'center', position: 'relative', overflow: 'hidden',
+    height: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
   },
-  headerBubble1: { position: 'absolute', top: -30, right: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.06)' },
-  headerBubble2: { position: 'absolute', bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.04)' },
-  avatarWrapper: { position: 'relative', marginBottom: 12 },
-  avatarRing: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)', overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.15)' },
+  headerContent: {
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  sunContainer: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1,
+  },
+  floatingSky: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+    overflow: 'hidden',
+  },
+  cloudWrapper: {
+    position: 'absolute',
+    left: 0,
+  },
+  avatarWrapper: { position: 'relative', marginBottom: 10 },
+  avatarRing: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.6)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
   avatarImg: { width: '100%', height: '100%' },
-  editAvatarBtn: { position: 'absolute', bottom: 0, right: -4, width: 30, height: 30, borderRadius: 15, backgroundColor: '#FBBF24', borderWidth: 2, borderColor: '#1848c8', alignItems: 'center', justifyContent: 'center' },
+  editAvatarBtn: {
+    position: 'absolute',
+    bottom: 0,
+    right: -4,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FBBF24',
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   editAvatarIcon: { color: '#1848c8', fontSize: 14, fontWeight: '700' },
-  headerName: { color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 4 },
-  headerRole: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '500', marginBottom: 10 },
+  headerName: {
+    color: '#0f3172',
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 2,
+    textShadowColor: 'rgba(255,255,255,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  headerRole: {
+    color: '#1E40AF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 10,
+    textShadowColor: 'rgba(255,255,255,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
   headerBadgeRow: { flexDirection: 'row', gap: 8 },
-  headerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 12 },
-  headerBadgeTextYellow: { color: '#FBBF24', fontSize: 12, fontWeight: '700' },
-  headerBadgeTransp: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 12 },
-  headerBadgeTextWhite: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  headerBadgeTextYellow: { color: '#0f3172', fontSize: 12, fontWeight: '700' },
+  headerBadgeTransp: {
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  headerBadgeTextWhite: { color: '#0f3172', fontSize: 12, fontWeight: '600' },
 
   // Stats
   statsSection: { paddingHorizontal: 16, marginTop: -24 },
@@ -913,6 +1227,74 @@ const styles = StyleSheet.create({
   statIcon: { width: 22, height: 22 },
   statValue: { fontSize: 22, fontWeight: '800', color: '#0f3172' },
   statLabel: { fontSize: 10, color: '#6B7280', fontWeight: '600', textAlign: 'center' },
+
+  // Teacher Card
+  teacherCard: {
+    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    backdropFilter: 'blur(10px)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  teacherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  teacherAvatarWrapper: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(37,99,235,0.10)',
+    borderWidth: 2,
+    borderColor: 'rgba(37,99,235,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  teacherAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  teacherAvatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(37,99,235,0.08)',
+  },
+  teacherInfo: {
+    flex: 1,
+  },
+  teacherLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  teacherName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f3172',
+    marginTop: 2,
+  },
+  teacherIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(37,99,235,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.15)',
+  },
+
 
   // Sections
   sectionHeader: {
@@ -1209,6 +1591,4 @@ const styles = StyleSheet.create({
     color: '#2563EB',
     fontWeight: '700',
   },
-
-
 });

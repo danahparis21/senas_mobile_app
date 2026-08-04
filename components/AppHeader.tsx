@@ -81,6 +81,9 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
         else if (segments && segments.length > 0 && segments.includes('dashboard')) {
             return '#c1eaffff';
         }
+        else if (segments && segments.length > 0 && segments.includes('profile')) {
+            return '#c1eaffff';
+        }
         return 'transparent';
     };
 
