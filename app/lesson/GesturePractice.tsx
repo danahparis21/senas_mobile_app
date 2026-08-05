@@ -51,6 +51,8 @@ interface GestureQuestion {
     gesture_data: {
         module_id: string;
         gesture_ids: string[];
+        is_fingerspelling?: boolean;  // 🆕 Add this
+        words?: string[];              // 🆕 Add this
     };
     question_number: number;
 }
@@ -127,6 +129,7 @@ export default function GesturePractice({
     const gestureData = question.gesture_data;
     const moduleId = gestureData?.module_id || '1';
     const gestureIds = gestureData?.gesture_ids || [];
+    const isFingerspelling = gestureData?.is_fingerspelling || false;
 
     // ─── Map database IDs to actual letters/numbers ────────────────────────
     const ID_TO_GESTURE: Record<string, string> = {
@@ -159,15 +162,69 @@ export default function GesturePractice({
     const [isProcessing, setIsProcessing] = useState(false);
     const [hasCompleted, setHasCompleted] = useState(false);
 
+    // Fingerspelling specific state & refs
+    const [fingerspellingWords, setFingerspellingWords] = useState<string[]>([]);
+    const [currentWordIndex, setCurrentWordIndex] = useState(0);
+    const [currentLetterIndex, setCurrentLetterIndex] = useState(0);
+
+    const lastProcessedLetterRef = useRef<string>('');
+    const letterStableCountRef = useRef<number>(0);
+    const lastAcceptedAtRef = useRef<number>(0);
+    const LETTER_ACCEPT_COOLDOWN = 400;
+
+    const wordsRef = useRef<string[]>([]);
+    const wordIndexRef = useRef<number>(0);
+    const letterIndexRef = useRef<number>(0);
+
     const targetGestures = gestureIds.map(id => ID_TO_GESTURE[id] || id);
     const currentTarget = targetGestures[currentIndex] || targetGestures[0];
-    const currentDisplayName = ID_TO_GESTURE[gestureIds[currentIndex]] || targetGestures[currentIndex] || '?';
+
+    const getCurrentWord = () => {
+        if (!isFingerspelling || fingerspellingWords.length === 0) return null;
+        return fingerspellingWords[currentWordIndex] || null;
+    };
+
+    const currentWord = getCurrentWord();
+
+    // Get current display name for HUD card
+    const getCurrentDisplayName = () => {
+        if (isFingerspelling && currentWord) {
+            if (currentLetterIndex < currentWord.length) {
+                return currentWord[currentLetterIndex];
+            }
+            return '✓';
+        }
+        return ID_TO_GESTURE[gestureIds[currentIndex]] || targetGestures[currentIndex] || '?';
+    };
+
+    const currentDisplayName = getCurrentDisplayName();
 
     const prevQuestionIdRef = useRef<number | null>(null);
     useEffect(() => {
         const questionId = question?.question_id;
         if (prevQuestionIdRef.current !== questionId) {
-            console.log('🔄 Question changed, resetting state for:', gestureIds);
+            console.log('🔄 Question changed, resetting state for question:', questionId);
+
+            const gestureData = question.gesture_data;
+            const wordsFromData = gestureData?.words || [];
+            const isFingerspellingQuestion = gestureData?.is_fingerspelling || false;
+
+            let parsedWords: string[] = [];
+            if (isFingerspellingQuestion) {
+                if (wordsFromData.length > 0) {
+                    parsedWords = wordsFromData.map(w => w.toUpperCase());
+                } else {
+                    const wordFromIds = (gestureData?.gesture_ids || [])
+                        .map(id => ID_TO_GESTURE[String(id)] || String(id))
+                        .join('');
+                    if (wordFromIds) parsedWords = [wordFromIds.toUpperCase()];
+                }
+            }
+
+            setFingerspellingWords(parsedWords);
+            setCurrentWordIndex(0);
+            setCurrentLetterIndex(0);
+
             setCurrentIndex(0);
             setCompletedGestures(new Set());
             setIsProcessing(false);
@@ -176,6 +233,14 @@ export default function GesturePractice({
             setIsConnected(false);
             setLiveLetter('—');
             setLiveConfidence(0);
+
+            wordsRef.current = parsedWords;
+            wordIndexRef.current = 0;
+            letterIndexRef.current = 0;
+            lastProcessedLetterRef.current = '';
+            letterStableCountRef.current = 0;
+            lastAcceptedAtRef.current = 0;
+
             prevQuestionIdRef.current = questionId;
         }
     }, [question]);
@@ -287,10 +352,6 @@ export default function GesturePractice({
             }
 
             const now = Date.now();
-            if (now - detectionCooldownRef.current < DETECTION_COOLDOWN_MS) {
-                return;
-            }
-
             let detectedValue = data.letter || data.greeting || '';
             const confidence = data.confidence || 0;
 
@@ -328,11 +389,9 @@ export default function GesturePractice({
 
             if (SURVIVAL_TO_DISPLAY[detectedValue] !== undefined) {
                 matchValue = SURVIVAL_TO_DISPLAY[detectedValue];
-            }
-            else if (GREETING_TO_DISPLAY[detectedValue] !== undefined) {
+            } else if (GREETING_TO_DISPLAY[detectedValue] !== undefined) {
                 matchValue = GREETING_TO_DISPLAY[detectedValue];
-            }
-            else if (GESTURE_TO_DISPLAY[detectedValue] !== undefined) {
+            } else if (GESTURE_TO_DISPLAY[detectedValue] !== undefined) {
                 matchValue = GESTURE_TO_DISPLAY[detectedValue];
             }
 
@@ -365,6 +424,88 @@ export default function GesturePractice({
             setLiveLetter(detectedForDisplay);
             setLiveConfidence(Math.round(confidence * 100));
 
+            // ─────────────────────────────────────────────────────────────
+            // FINGERSPELLING DETECTION LOGIC
+            // ─────────────────────────────────────────────────────────────
+            if (isFingerspelling) {
+                const words = wordsRef.current;
+                const wIndex = wordIndexRef.current;
+                const lIndex = letterIndexRef.current;
+                const activeWord = words[wIndex] || '';
+                const targetLetter = activeWord[lIndex] || '';
+
+                if (!activeWord || lIndex >= activeWord.length || hasCompleted) {
+                    return;
+                }
+
+                // Stability tracking
+                if (detectedValue === lastProcessedLetterRef.current) {
+                    letterStableCountRef.current += 1;
+                } else {
+                    lastProcessedLetterRef.current = detectedValue;
+                    letterStableCountRef.current = 0;
+                    return;
+                }
+
+                if (letterStableCountRef.current < 2) {
+                    return;
+                }
+
+                // Letter match check
+                if (detectedValue === targetLetter) {
+                    if (now - lastAcceptedAtRef.current < LETTER_ACCEPT_COOLDOWN) {
+                        return;
+                    }
+                    lastAcceptedAtRef.current = now;
+
+                    // Reset stability refs so next letter needs a new/fresh pose
+                    lastProcessedLetterRef.current = '';
+                    letterStableCountRef.current = 0;
+
+                    playGestureSound();
+                    animateSenyaBounce();
+
+                    const nextLIndex = lIndex + 1;
+                    letterIndexRef.current = nextLIndex;
+                    setCurrentLetterIndex(nextLIndex);
+
+                    if (nextLIndex < activeWord.length) {
+                        // Letter in current word completed
+                        showCutePopup(`${detectedValue} ✓`, `${nextLIndex}/${activeWord.length}`);
+                    } else {
+                        // Current word completed!
+                        const nextWIndex = wIndex + 1;
+                        if (nextWIndex < words.length) {
+                            showCutePopup(`✅ ${activeWord}`, `Word ${nextWIndex}/${words.length} complete!`);
+                            setTimeout(() => {
+                                wordIndexRef.current = nextWIndex;
+                                letterIndexRef.current = 0;
+                                lastProcessedLetterRef.current = '';
+                                letterStableCountRef.current = 0;
+                                lastAcceptedAtRef.current = 0;
+                                setCurrentWordIndex(nextWIndex);
+                                setCurrentLetterIndex(0);
+                            }, 800);
+                        } else {
+                            // All words complete!
+                            setHasCompleted(true);
+                            showCutePopup(`✅ ${activeWord}`, `All words complete!`);
+                            setTimeout(() => {
+                                onComplete(true, []);
+                            }, 800);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // REGULAR GESTURE DETECTION LOGIC
+            // ─────────────────────────────────────────────────────────────
+            if (now - detectionCooldownRef.current < DETECTION_COOLDOWN_MS) {
+                return;
+            }
+
             if (detectedValue !== lastLoggedValueRef.current || confidence > 0.85) {
                 lastLoggedValueRef.current = detectedValue;
                 console.log(`🔍 Detected: "${detectedValue}" → "${matchValue}", Target: "${currentTarget}", Conf: ${Math.round(confidence * 100)}%`);
@@ -384,28 +525,22 @@ export default function GesturePractice({
                     playGestureSound();
                     animateSenyaBounce();
 
-                    // 🎯 ADD THIS: Update mastery in real-time
                     try {
                         const gestureId = gestureIds[currentIndex];
                         if (gestureId) {
                             const response = await api.updateMasteryAfterPractice(
                                 parseInt(gestureId),
-                                1, // 1 new attempt
-                                1  // 1 success
+                                1,
+                                1
                             );
                             console.log('✅ Mastery updated:', response);
-
-                            // If this unlocked new lessons, show a notification
-                            if (response.unlocked_lessons && response.unlocked_lessons.length > 0) {
-                                // You could show a popup here
-                                console.log(`🎉 Unlocked: ${response.unlocked_lessons.join(', ')}`);
-                            }
                         }
                     } catch (error) {
                         console.error('Failed to update mastery:', error);
                     }
 
                     const displayName = ID_TO_GESTURE[gestureIds[currentIndex]] || currentTarget;
+
                     showCutePopup(
                         displayName,
                         `${currentIndex + 1} / ${targetGestures.length} — Amazing!`
@@ -537,7 +672,9 @@ export default function GesturePractice({
 
     // ─── Render ──────────────────────────────────────────────────────────────
     const gestureUrl = getGestureUrl(moduleId);
-    const questionProgress = completedGestures.size / Math.max(targetGestures.length, 1);
+    const questionProgress = isFingerspelling && fingerspellingWords.length > 0
+        ? (currentWordIndex + (currentWord ? currentLetterIndex / currentWord.length : 0)) / fingerspellingWords.length
+        : completedGestures.size / Math.max(targetGestures.length, 1);
     const senyaTranslate = senyaBounceAnim.interpolate({
         inputRange: [0, 1], outputRange: [0, -10],
     });
@@ -613,7 +750,9 @@ export default function GesturePractice({
                 />
                 {/* ─── HUD: TOP-LEFT — target letter overlay ───────────── */}
                 <View style={styles.targetOverlay} pointerEvents="none">
-                    <Text style={styles.targetLabelOverlay}>Sign this</Text>
+                    <Text style={styles.targetLabelOverlay}>
+                        {isFingerspelling && currentWord ? `Word ${currentWordIndex + 1}: ${currentWord}` : 'Sign this'}
+                    </Text>
                     <View style={styles.targetLetterCard}>
                         <Text
                             style={[
@@ -628,15 +767,16 @@ export default function GesturePractice({
                                 currentDisplayName && currentDisplayName.length > 15 && { fontSize: 20, lineHeight: 24 },
                             ]}
                             numberOfLines={2}
-                        // REMOVE THESE TWO LINES:
-                        // adjustsFontSizeToFit
-                        // minimumFontScale={0.6}
                         >
                             {currentDisplayName}
                         </Text>
                     </View>
                     <Text style={styles.targetHint}>
-                        {currentIndex + 1} of {targetGestures.length}
+                        {isFingerspelling && currentWord ? (
+                            `${currentLetterIndex + 1} of ${currentWord.length} letters • Word ${currentWordIndex + 1}/${fingerspellingWords.length}`
+                        ) : (
+                            `${currentIndex + 1} of ${targetGestures.length}`
+                        )}
                     </Text>
                 </View>
 
@@ -690,36 +830,68 @@ export default function GesturePractice({
                         ]} />
                     </View>
                     <View style={styles.gestureDots}>
-                        {targetGestures.map((gesture, index) => {
-                            const isCompleted = completedGestures.has(gesture);
-                            const isActive = index === currentIndex && !isCompleted && !isSkipped;
-                            const dynamicFontSize = getDotFontSize(gesture);
-                            return (
-                                <View
-                                    key={index}
-                                    style={[
-                                        styles.gestureDot,
-                                        isCompleted && styles.gestureDotCompleted,
-                                        isActive && styles.gestureDotActive,
-                                    ]}
-                                >
-                                    <Text
-                                        numberOfLines={1}
+                        {isFingerspelling && currentWord ? (
+                            // Fingerspelling: Show ONLY the active word's letters one by one
+                            currentWord.split('').map((letter, letterIdx) => {
+                                const isCompleted = letterIdx < currentLetterIndex;
+                                const isActive = letterIdx === currentLetterIndex && !isSkipped;
+
+                                return (
+                                    <View
+                                        key={letterIdx}
                                         style={[
-                                            styles.gestureDotText,
-                                            { fontSize: dynamicFontSize },
-                                            isCompleted && styles.gestureDotTextCompleted,
-                                            isActive && [
-                                                styles.gestureDotTextActive,
-                                                { fontSize: dynamicFontSize + 2 },
-                                            ],
+                                            styles.gestureDot,
+                                            isCompleted && styles.gestureDotCompleted,
+                                            isActive && styles.gestureDotActive,
                                         ]}
                                     >
-                                        {gesture}
-                                    </Text>
-                                </View>
-                            );
-                        })}
+                                        <Text
+                                            numberOfLines={1}
+                                            style={[
+                                                styles.gestureDotText,
+                                                { fontSize: 18 },
+                                                isCompleted && styles.gestureDotTextCompleted,
+                                                isActive && [styles.gestureDotTextActive, { fontSize: 20 }],
+                                            ]}
+                                        >
+                                            {letter}
+                                        </Text>
+                                    </View>
+                                );
+                            })
+                        ) : (
+                            // Regular gesture mode
+                            targetGestures.map((gesture, index) => {
+                                const isCompleted = completedGestures.has(gesture);
+                                const isActive = index === currentIndex && !isCompleted && !isSkipped;
+                                const dynamicFontSize = getDotFontSize(gesture);
+                                return (
+                                    <View
+                                        key={index}
+                                        style={[
+                                            styles.gestureDot,
+                                            isCompleted && styles.gestureDotCompleted,
+                                            isActive && styles.gestureDotActive,
+                                        ]}
+                                    >
+                                        <Text
+                                            numberOfLines={1}
+                                            style={[
+                                                styles.gestureDotText,
+                                                { fontSize: dynamicFontSize },
+                                                isCompleted && styles.gestureDotTextCompleted,
+                                                isActive && [
+                                                    styles.gestureDotTextActive,
+                                                    { fontSize: dynamicFontSize + 2 },
+                                                ],
+                                            ]}
+                                        >
+                                            {gesture}
+                                        </Text>
+                                    </View>
+                                );
+                            })
+                        )}
                     </View>
                 </View>
 
@@ -1225,5 +1397,16 @@ const styles = StyleSheet.create({
     popupSkipIcon: {
         fontSize: 32,
         marginBottom: 4,
+    },
+    wordSeparator: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 4,
+    },
+    wordSeparatorText: {
+        color: 'rgba(255,255,255,0.3)',
+        fontSize: 20,
+        fontWeight: '300',
     },
 });

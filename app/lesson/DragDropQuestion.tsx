@@ -23,6 +23,7 @@ import Constants from 'expo-constants';
 import { useSettings } from '../../contexts/SettingsContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { WebViewMedia } from '../../components/WebViewMedia';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
 const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
@@ -168,32 +169,26 @@ function MatchBurst({ trigger, anchor }: { trigger: number; anchor: { x: number;
     );
 }
 
-// ─── Media Renderer for Drag & Drop Items ──────────────────────────────
-function DragDropMedia({ path, style }: { path: string | null | undefined; style?: any }) {
+function DragDropMedia({ path, style, mediaType = 'option' }: {
+    path: string | null | undefined;
+    style?: any;
+    mediaType?: 'content' | 'quiz' | 'option';
+}) {
     const mediaUrl = getFullMediaUrl(path);
     const isVideo = isVideoFile(path);
 
     if (!mediaUrl) return null;
 
-    if (isVideo) {
-        return (
-            <Video
-                source={{ uri: mediaUrl }}
-                style={[styles.imageCardImg, style]}
-                resizeMode={ResizeMode.CONTAIN}
-                shouldPlay={true}
-                isLooping={true}
-                isMuted={true}
-                useNativeControls={false}
-            />
-        );
-    }
-
+    // For drag and drop, use WebView with option styling (compact)
     return (
-        <Image
-            source={{ uri: mediaUrl }}
+        <WebViewMedia
+            url={mediaUrl}
+            isVideo={isVideo}
+            caption={''}
+            autoplay={true}
+            hideControls={true}  // ✅ Hide controls for drag & drop items
+            mediaType={mediaType}
             style={[styles.imageCardImg, style]}
-            contentFit="contain"
         />
     );
 }
@@ -759,8 +754,12 @@ export default function DragDropQuestion({
                                 ]}>
                                     <View style={styles.imageCardContent}>
                                         {imageUrl && (
-                                            <DragDropMedia path={imageUrl} />
+                                            <DragDropMedia
+                                                path={imageUrl}
+                                                mediaType="option"
+                                            />
                                         )}
+
                                         {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
                                     </View>
                                     {!isExamMode && (
@@ -799,7 +798,10 @@ export default function DragDropQuestion({
                             >
                                 <View style={styles.imageCardContent}>
                                     {imageUrl && (
-                                        <DragDropMedia path={imageUrl} />
+                                        <DragDropMedia
+                                            path={imageUrl}
+                                            mediaType="option"
+                                        />
                                     )}
                                     {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
                                     {isWrongItem && !isExamMode && (
@@ -858,7 +860,10 @@ export default function DragDropQuestion({
                                 ]}>
                                     <View style={styles.imageDropZoneContent}>
                                         {imageUrl && (
-                                            <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                            <DragDropMedia
+                                                path={imageUrl}
+                                                mediaType="option"
+                                            />
                                         )}
                                         {hasText ? (
                                             <Text style={styles.imageCardText}>{item.right_text}</Text>
@@ -1202,6 +1207,7 @@ export default function DragDropQuestion({
                     {question.media_url && (
                         <DragDropMedia
                             path={question.media_url}
+                            mediaType="quiz"
                             style={styles.questionImage}
                         />
                     )}
@@ -1319,7 +1325,13 @@ const styles = StyleSheet.create({
     imageCardHovered: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.06)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
     imageCardSuccess: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
     imageCardContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
-    imageCardImg: { width: 96, height: 96, borderRadius: 14, backgroundColor: 'rgba(15,49,114,0.02)' },
+    imageCardImg: {
+        width: 96,
+        height: 96,
+        borderRadius: 14,
+        backgroundColor: 'rgba(15,49,114,0.02)',
+        overflow: 'hidden',  // ✅ Add this for WebView
+    },
     imageCardText: { fontSize: 13, fontWeight: '600', color: '#0f3172', marginTop: 4, textAlign: 'center' },
     imageDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.15)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 132 },
     imageDropZoneContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },

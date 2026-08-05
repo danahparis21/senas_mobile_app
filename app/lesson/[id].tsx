@@ -84,6 +84,8 @@ interface Question {
   gesture_data?: {
     module_id: string | number;
     gesture_ids: string[] | number[];
+    is_fingerspelling?: boolean;  // 🆕 Add this
+    words?: string[];              // 🆕 Add this
   } | null;
   drag_drop_pairs?: any;
   drag_drop_left_label?: string | null;
@@ -1108,8 +1110,10 @@ export default function LessonViewer() {
             question_id: currentQuestion.question_id,
             question_text: currentQuestion.question_text,
             gesture_data: {
-              module_id: String(gestureData.module_id), // Ensure it's a string
-              gesture_ids: gestureIds.map(id => String(id)), // Ensure all IDs are strings
+              module_id: String(gestureData.module_id),
+              gesture_ids: gestureIds.map(id => String(id)),
+              is_fingerspelling: gestureData.is_fingerspelling || false,  // 🆕 Add this
+              words: gestureData.words || [],                              // 🆕 Add this
             },
             question_number: currentQuestion.question_number,
           }}
@@ -1177,47 +1181,63 @@ export default function LessonViewer() {
       }
 
       return (
-        <DragDropQuestion
-          key={currentQuestion.question_id} // ✅ ADD THIS KEY
-          question={{
-            question_id: currentQuestion.question_id,
-            question_text: currentQuestion.question_text,
-            drag_drop_pairs: dragDropPairs,
-            drag_drop_left_label: currentQuestion.drag_drop_left_label ?? undefined,
-            drag_drop_right_label: currentQuestion.drag_drop_right_label ?? undefined,
-            media_url: currentQuestion.media_url,
-          }}
-          questionIndex={currentQuestionIndex}
-          totalQuestions={lesson.quiz.questions.length}
-          onDragActiveChange={setDragDropActive}
-          onComplete={(success) => {
-            console.log('📝 DragDrop onComplete called:', { success, questionId: currentQuestion.question_id });
+        <View>
+          <View style={s.glassCard}>
+            <Text style={s.questionEmojiSmall}>🧩</Text>
+            <Text style={s.questionText}>{currentQuestion.question_text}</Text>
+            {currentQuestion.media_url && (
+              <LessonMedia
+                path={currentQuestion.media_url}
+                style={s.questionMedia}
+                contentType={currentQuestion.question_type}
+                mediaType="quiz"
+              />
+            )}
+          </View>
+          <DragDropQuestion
 
-            setQuizAnswers(prev => {
-              const newAnswers = {
-                ...prev,
-                [currentQuestion.question_id]: success ? 1 : 0,
-              };
-              quizAnswersRef.current = newAnswers;
-              return newAnswers;
-            });
+            key={currentQuestion.question_id} // ✅ ADD THIS KEY
+            question={{
+              question_id: currentQuestion.question_id,
+              question_text: currentQuestion.question_text,
+              drag_drop_pairs: dragDropPairs,
+              drag_drop_left_label: currentQuestion.drag_drop_left_label ?? undefined,
+              drag_drop_right_label: currentQuestion.drag_drop_right_label ?? undefined,
+              media_url: currentQuestion.media_url,
+            }}
+            questionIndex={currentQuestionIndex}
+            totalQuestions={lesson.quiz.questions.length}
+            onDragActiveChange={setDragDropActive}
+            onComplete={(success) => {
+              console.log('📝 DragDrop onComplete called:', { success, questionId: currentQuestion.question_id });
 
-            if (success) {
-              setCurrentScore(prev => {
-                const newScore = prev + 1;
-                currentScoreRef.current = newScore;
-                return newScore;
+              setQuizAnswers(prev => {
+                const newAnswers = {
+                  ...prev,
+                  [currentQuestion.question_id]: success ? 1 : 0,
+                };
+                quizAnswersRef.current = newAnswers;
+                return newAnswers;
               });
-            }
 
-            setTimeout(() => {
-              console.log('➡️ Moving to next question...');
-              handleNextQuestion();
-            }, 400);
-          }}
-          onBack={() => setCurrentSlide(0)}
-        />
+              if (success) {
+                setCurrentScore(prev => {
+                  const newScore = prev + 1;
+                  currentScoreRef.current = newScore;
+                  return newScore;
+                });
+              }
+
+              setTimeout(() => {
+                console.log('➡️ Moving to next question...');
+                handleNextQuestion();
+              }, 400);
+            }}
+            onBack={() => setCurrentSlide(0)}
+          />
+        </View>
       );
+
     }
 
     // ─── Regular Multiple Choice / True False ──────────────────────────────
@@ -1247,16 +1267,16 @@ export default function LessonViewer() {
 
         <View style={[s.glassCard, s.questionCard]}>
           <Text style={s.questionEmojiSmall}>❓</Text>
+          <Text style={s.questionText}>{currentQuestion.question_text}</Text>
           {currentQuestion.media_url && (
             <LessonMedia
               path={currentQuestion.media_url}
               style={s.questionMedia}
               contentType={currentQuestion.question_type}
-              mediaType="quiz"  // ✅ Add this - square for quiz questions
+              mediaType="quiz"
             />
           )}
         </View>
-
         {currentQuestion.options.map((opt, i) => {
           const isSel = selectedOption === i;
           const isCorr = i === currentQuestion.options.findIndex(o => o.is_correct);

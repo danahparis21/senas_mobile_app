@@ -513,7 +513,10 @@ export default function Lessons() {
     const { PanResponder } = require('react-native');
     panResponder.current = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (_evt: any, gestureState: any) => {
         setIsDragging(true);
         const currentPos = senyaPosition || { x: currentActivePos.x || 0, y: currentActivePos.y || 0 }; dragOffset.current = {
@@ -1481,6 +1484,7 @@ export default function Lessons() {
             <ScrollView
               contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
               showsVerticalScrollIndicator={false}
+              scrollEnabled={!isDragging}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
