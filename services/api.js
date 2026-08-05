@@ -295,14 +295,31 @@ export const api = {
 
             const data = await response.json();
 
+            // ✅ Return structured response instead of throwing
             if (!response.ok) {
-                throw new Error(data.message || data.error || 'Failed to fetch lesson');
+                return {
+                    success: false,
+                    error: data.message || data.error || 'Failed to fetch lesson',
+                    status: response.status,
+                    notFound: response.status === 404 ||
+                        data.message?.includes('not found') ||
+                        data.error?.includes('not found') ||
+                        data.message?.includes('access'),
+                    accessDenied: response.status === 403 ||
+                        data.message?.includes('access') ||
+                        data.error?.includes('access'),
+                };
             }
 
             return data;
         } catch (error) {
             console.error(`❌ Error fetching lesson ${lessonId}:`, error);
-            throw error;
+            return {
+                success: false,
+                error: error.message || 'Network error',
+                notFound: false,
+                accessDenied: false,
+            };
         }
     },
 
@@ -423,11 +440,26 @@ export const api = {
             });
 
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to fetch attempts');
+
+            // ✅ Return structured response
+            if (!response.ok) {
+                return {
+                    success: false,
+                    error: data.error || 'Failed to fetch attempts',
+                    status: response.status,
+                    notFound: response.status === 404 || data.error?.includes('not found'),
+                };
+            }
+
             return data;
         } catch (error) {
             console.error('❌ Error fetching attempts:', error);
-            throw error;
+            return {
+                success: false,
+                error: error.message || 'Network error',
+                attempts: [],
+                notFound: false,
+            };
         }
     },
     getLessonLeaderboard: async (lessonId) => {
@@ -449,16 +481,31 @@ export const api = {
             const data = await response.json();
             console.log('🏆 Leaderboard response:', data);
 
+            // ✅ Return structured response
             if (!response.ok) {
-                throw new Error(data.error || 'Failed to fetch leaderboard');
+                return {
+                    success: false,
+                    error: data.error || 'Failed to fetch leaderboard',
+                    status: response.status,
+                    notFound: response.status === 404 || data.error?.includes('not found'),
+                    rankings: [],
+                    user_rank: null,
+                };
             }
 
             return data;
         } catch (error) {
             console.error('❌ Error fetching leaderboard:', error);
-            throw error;
+            return {
+                success: false,
+                error: error.message || 'Network error',
+                notFound: false,
+                rankings: [],
+                user_rank: null,
+            };
         }
     },
+
 
     /**
  * Save student's gesture performance from practice sessions

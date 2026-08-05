@@ -59,7 +59,9 @@
           "enableCoreMLDelegate": true
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-video",
+      "react-native-video"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -8,7 +8,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Polyline, Line, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import { Audio } from 'expo-av';
+import { Audio, ResizeMode } from 'expo-av';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import GesturePractice from './GesturePractice';
@@ -16,12 +16,35 @@ import DragDropQuestion from './DragDropQuestion';
 import Constants from 'expo-constants';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useFocusEffect } from 'expo-router';
-
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { WebViewMedia } from '../../components/WebViewMedia';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
 // Remove /api from the end to get the base URL for images
 const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
 
+// 1. Helper to build the full media URL
+const getFullMediaUrl = (path: string | null) => {
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+
+  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+  const isVideo = isVideoFile(path);
+
+  // ✅ Route videos through our new web.php proxy route
+  if (isVideo) {
+    return `${IMAGE_BASE_URL}/video-proxy/${cleanPath}`;
+  }
+
+  // ✅ Keep images routing through the regular Laravel storage
+  return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
+};
+// 2. Helper to detect if the file is a video
+const isVideoFile = (path: string | null) => {
+  if (!path) return false;
+  const lowerPath = path.toLowerCase();
+  return lowerPath.endsWith('.mp4') || lowerPath.endsWith('.webm') || lowerPath.endsWith('.mov');
+};
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Colors for slides ──────────────────────────────────────────────────────
@@ -158,6 +181,7 @@ interface PodiumBlockProps {
   width: number;
 }
 
+
 function Podium3DBlock({ rank, height, width }: PodiumBlockProps) {
   const dy = rank === 1 ? 12 : 10;
   const w = width;
@@ -244,10 +268,59 @@ function Podium3DBlock({ rank, height, width }: PodiumBlockProps) {
     </View>
   );
 }
+function LessonMedia({ path, style, contentType, mediaType = 'content', hideControls = false }: {
+  path: string | null;
+  style?: any;
+  contentType?: string;
+  mediaType?: 'content' | 'quiz' | 'option';
+  hideControls?: boolean;  // ✅ Add this
+}) {
+  const mediaUrl = getFullMediaUrl(path);
+  const isVideo = isVideoFile(path);
+
+  if (!mediaUrl) return null;
+
+  const shouldUseVideo = isVideo || contentType === 'gesture_demo';
+
+  return (
+    <WebViewMedia
+      url={mediaUrl}
+      isVideo={shouldUseVideo}
+      caption={''}
+      autoplay={true}
+      mediaType={mediaType}
+      hideControls={hideControls}  // ✅ Pass through
+      style={[s.webViewMedia, style]}
+    />
+  );
+}
+
+
+const ModernVideoPlayer = ({ url, style }: { url: string; style: any }) => {
+  console.log('🎬 ModernVideoPlayer URL:', url);
+
+  // ✅ Create the player with the URL
+  const player = useVideoPlayer(url, (playerInstance) => {
+    playerInstance.loop = true;
+    playerInstance.muted = true;
+    playerInstance.play();
+  });
+
+  return (
+    <VideoView
+      player={player}
+      style={style}
+      contentFit="contain"
+      nativeControls={false}
+      fullscreenOptions={{ enable: false }}
+    />
+  );
+};
 
 // ─── Exit Modal ──────────────────────────────────────────────────────────────
 function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: () => void }) {
   return (
+
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={s.overlay} onPress={onClose}>
         <Pressable style={s.exitModal} onPress={e => e.stopPropagation()}>
@@ -421,15 +494,13 @@ export default function LessonViewer() {
   // Helper function to get full image URL
   const getFullImageUrl = (path: string | null | undefined): string | null => {
     if (!path) return null;
-    // If it's already a full URL, return it
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return path;
     }
-    // Remove leading slash if present
     const cleanPath = path.replace(/^\/+/, '');
+    // ✅ Already has 'storage/' - keep it
     return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
   };
-
   async function playCorrectSound() {
     // ✅ Check if sound is enabled
     if (!settings.soundEnabled) {
@@ -927,6 +998,21 @@ export default function LessonViewer() {
           <View style={[s.slideAccent, { backgroundColor: slideColor }]} />
           <Text style={[s.slideTitle, { color: slideColor }]}>{content.title}</Text>
           <Text style={s.slideBody}>{content.content_text}</Text>
+          {/* ✅ ADD THIS - Media rendering for lesson content */}
+          {content.media_url && (
+            <LessonMedia
+              path={content.media_url}
+              style={{
+                width: '100%',
+                height: 250,
+                borderRadius: 12,
+                marginTop: 12,
+                backgroundColor: '#0f172a',
+              }}
+              contentType={content.content_type}
+              mediaType="content"  // ✅ Add this
+            />
+          )}
           <Text style={s.slideCounter}>{currentSlide + 1} / {lesson.contents.length}</Text>
         </View>
 
@@ -1161,9 +1247,13 @@ export default function LessonViewer() {
 
         <View style={[s.glassCard, s.questionCard]}>
           <Text style={s.questionEmojiSmall}>❓</Text>
-          <Text style={s.questionText}>{currentQuestion.question_text}</Text>
           {currentQuestion.media_url && (
-            <Image source={{ uri: currentQuestion.media_url }} style={s.questionMedia} contentFit="contain" />
+            <LessonMedia
+              path={currentQuestion.media_url}
+              style={s.questionMedia}
+              contentType={currentQuestion.question_type}
+              mediaType="quiz"  // ✅ Add this - square for quiz questions
+            />
           )}
         </View>
 
@@ -1200,10 +1290,11 @@ export default function LessonViewer() {
                     <Text style={[s.optionLetter, { color: isSel ? '#fff' : '#4b7bbb' }]}>{String.fromCharCode(65 + i)}</Text>}
               </View>
               {hasOptionImage ? (
-                <Image
-                  source={{ uri: optionImageUrl }}
+                <LessonMedia
+                  path={optionImageUrl}
                   style={s.optionImage}
-                  contentFit="contain"
+                  mediaType="option"
+                  hideControls={true}  // ✅ Hide controls for options
                 />
               ) : null}
               {!hasOptionImage && (
@@ -2556,5 +2647,23 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#fff',
+  },
+  mediaVideo: {
+    width: '100%',
+    height: 250,
+    borderRadius: 12,
+    backgroundColor: '#0f172a',
+  },
+  mediaImage: {
+    width: '100%',
+    height: 250,
+    borderRadius: 12,
+  },
+  webViewMedia: {
+    width: '100%',
+    height: 250,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
   },
 });

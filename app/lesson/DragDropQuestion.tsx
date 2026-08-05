@@ -16,7 +16,8 @@ import {
     StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { Audio, Video, ResizeMode } from 'expo-av';
+
 import { Image } from 'expo-image';
 import Constants from 'expo-constants';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -25,6 +26,25 @@ import { BlurView } from 'expo-blur';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
 const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
+
+// ✅ ADD THESE
+const getFullMediaUrl = (path: string | null | undefined): string | null => {
+    if (!path) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+        return path;
+    }
+    const cleanPath = path.replace(/^\/+/, '');
+    return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
+};
+
+const isVideoFile = (path: string | null | undefined): boolean => {
+    if (!path) return false;
+    const lowerPath = path.toLowerCase();
+    return lowerPath.endsWith('.mp4') ||
+        lowerPath.endsWith('.webm') ||
+        lowerPath.endsWith('.mov') ||
+        lowerPath.endsWith('.m4v');
+};
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -145,6 +165,36 @@ function MatchBurst({ trigger, anchor }: { trigger: number; anchor: { x: number;
                 />
             ))}
         </View>
+    );
+}
+
+// ─── Media Renderer for Drag & Drop Items ──────────────────────────────
+function DragDropMedia({ path, style }: { path: string | null | undefined; style?: any }) {
+    const mediaUrl = getFullMediaUrl(path);
+    const isVideo = isVideoFile(path);
+
+    if (!mediaUrl) return null;
+
+    if (isVideo) {
+        return (
+            <Video
+                source={{ uri: mediaUrl }}
+                style={[styles.imageCardImg, style]}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={true}
+                isLooping={true}
+                isMuted={true}
+                useNativeControls={false}
+            />
+        );
+    }
+
+    return (
+        <Image
+            source={{ uri: mediaUrl }}
+            style={[styles.imageCardImg, style]}
+            contentFit="contain"
+        />
     );
 }
 
@@ -709,7 +759,7 @@ export default function DragDropQuestion({
                                 ]}>
                                     <View style={styles.imageCardContent}>
                                         {imageUrl && (
-                                            <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                            <DragDropMedia path={imageUrl} />
                                         )}
                                         {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
                                     </View>
@@ -749,7 +799,7 @@ export default function DragDropQuestion({
                             >
                                 <View style={styles.imageCardContent}>
                                     {imageUrl && (
-                                        <Image source={{ uri: imageUrl }} style={styles.imageCardImg} contentFit="contain" />
+                                        <DragDropMedia path={imageUrl} />
                                     )}
                                     {hasText && <Text style={styles.imageCardText}>{item.left_text}</Text>}
                                     {isWrongItem && !isExamMode && (
@@ -1150,10 +1200,9 @@ export default function DragDropQuestion({
                     <Text style={styles.questionEmoji}>{isExamMode ? '📝' : '🧩'}</Text>
                     <Text style={styles.questionText}>{question.question_text}</Text>
                     {question.media_url && (
-                        <Image
-                            source={{ uri: getFullImageUrl(question.media_url) || question.media_url }}
+                        <DragDropMedia
+                            path={question.media_url}
                             style={styles.questionImage}
-                            contentFit="contain"
                         />
                     )}
                 </View>

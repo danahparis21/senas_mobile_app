@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,9 @@ import {
   ActivityIndicator,
   Easing,
   StatusBar,
-  Platform
+  Platform,
+  RefreshControl,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
@@ -389,6 +391,17 @@ export default function Lessons() {
   const dragOffset = useRef({ x: 0, y: 0 });
   const panResponder = useRef<any>(null);
 
+  // ── ERROR STATE ──────────────────────────────────────────────────────────
+  const [loadError, setLoadError] = useState<{
+    visible: boolean;
+    message: string;
+    notFound?: boolean;
+    accessDenied?: boolean;
+  }>({ visible: false, message: '' });
+
+  // ── REFRESH CONTROL ─────────────────────────────────────────────────────
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
   // Sun glow animation
   useEffect(() => {
     Animated.loop(
@@ -586,6 +599,29 @@ export default function Lessons() {
     };
   }, [expandedId]);
 
+  // ── PULL-TO-REFRESH HANDLER ─────────────────────────────────────────────
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setLoadError({ visible: false, message: '' });
+
+    try {
+      // Refresh all data
+      await Promise.all([
+        loadModulesData(),
+        loadAdaptiveLessons(),
+        loadMasteryData(),
+      ]);
+    } catch (error) {
+      console.error('Refresh failed:', error);
+      setLoadError({
+        visible: true,
+        message: 'Failed to refresh. Please try again.',
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   // ── LOAD MASTERY DATA ──────────────────────────────────────────────────
   const loadMasteryData = async () => {
     try {
@@ -621,6 +657,8 @@ export default function Lessons() {
   const loadAdaptiveLessons = async () => {
     try {
       setLoadingLearningPath(true);
+      setLoadError({ visible: false, message: '' });
+
       const response = await api.getAdaptiveLessons();
 
       if (response.success) {
@@ -695,17 +733,20 @@ export default function Lessons() {
 
         setLearningPathLessons(uniqueLessons);
         setGoalMastered(!!response.learning_path?.goal_mastered);
-
-        // Also update weak skills from the response
-        if (response.weak_skills) {
-          setWeakSkills(response.weak_skills);
-        }
-        if (response.mastery_summary) {
-          setMasterySummary(response.mastery_summary);
-        }
+        if (response.weak_skills) setWeakSkills(response.weak_skills);
+        if (response.mastery_summary) setMasterySummary(response.mastery_summary);
+      } else {
+        setLoadError({
+          visible: true,
+          message: response.message || 'Failed to load learning path. Pull down to refresh.',
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching adaptive lessons:', error);
+      setLoadError({
+        visible: true,
+        message: error?.message || 'Failed to load learning path. Pull down to refresh.',
+      });
     } finally {
       setLoadingLearningPath(false);
     }
@@ -714,6 +755,8 @@ export default function Lessons() {
   const loadModulesData = async () => {
     try {
       setLoadingModules(true);
+      setLoadError({ visible: false, message: '' });
+
       const response = await api.getStudentLessons();
 
       if (response.success && response.modules) {
@@ -802,9 +845,19 @@ export default function Lessons() {
           setStreak(response.student.streak_days || 0);
           setXp(response.student.total_xp || 0);
         }
+      } else {
+        // Handle API error
+        setLoadError({
+          visible: true,
+          message: response.message || 'Failed to load lessons. Pull down to refresh.',
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching modules and lessons:', error);
+      setLoadError({
+        visible: true,
+        message: error?.message || 'Failed to load lessons. Pull down to refresh.',
+      });
     } finally {
       setLoadingModules(false);
     }
@@ -1028,6 +1081,8 @@ export default function Lessons() {
     }
   };
 
+
+
   const getProgressPercentage = () => {
     if (totalNodes === 0) return 0;
     const completedCount = currentLessons.filter(l => l.done).length;
@@ -1177,6 +1232,61 @@ export default function Lessons() {
     return messages[Math.floor(Math.random() * messages.length)];
   };
 
+  // ── RENDER ERROR MODAL ──────────────────────────────────────────────────
+  const renderErrorModal = () => {
+    return (
+      <Modal
+        visible={loadError.visible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setLoadError({ visible: false, message: '' });
+        }}
+      >
+        {/* Darkened backdrop */}
+        <Pressable
+          style={styles.errorBackdrop}
+          onPress={() => { }}
+        />
+
+        {/* Modal content */}
+        <View style={styles.errorModalContainer}>
+          <View style={styles.errorCard}>
+            <Image
+              source={require('../../assets/images/img/senya_magnify.png')}
+              style={styles.errorImage}
+              contentFit="contain"
+            />
+
+            <Text style={styles.errorTitle}>
+              {loadError.notFound ? '📚 No Lessons Found' :
+                loadError.accessDenied ? '🔒 Access Denied' :
+                  '😅 Oops!'}
+            </Text>
+
+            <Text style={styles.errorMessage}>{loadError.message}</Text>
+
+            {/* Single button - Pull to Refresh */}
+            <Pressable
+              style={styles.errorRefreshBtn}
+              onPress={() => {
+                setLoadError({ visible: false, message: '' });
+                onRefresh();
+              }}
+            >
+              <RefreshIcon size={18} color="#fff" />
+              <Text style={styles.errorRefreshText}>Pull to Refresh</Text>
+            </Pressable>
+
+            <Text style={styles.errorHint}>
+              👆 Pull down from the top of the screen to refresh
+            </Text>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
 
 
 
@@ -1237,6 +1347,8 @@ export default function Lessons() {
             <AnimatedCloud scale={1.3} opacity={0.3} />
           </Animated.View>
         </View>
+
+        {renderErrorModal()}
 
         {/* Top Bar
         <View style={styles.topBar}>
@@ -1369,6 +1481,16 @@ export default function Lessons() {
             <ScrollView
               contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
               showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={['#1848c8']}
+                  tintColor="#1848c8"
+                  title="Pull to refresh..."
+                  titleColor="#1848c8"
+                />
+              }
             >
               {/* SVG Path Connections */}
               <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
@@ -1745,6 +1867,7 @@ export default function Lessons() {
               </View>
             </View>
           </View>
+
         )}
       </View>
     </SafeAreaView>
@@ -2560,5 +2683,86 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 
-
+  errorBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 49, 114, 0.4)',
+    zIndex: 999,
+  },
+  errorModalContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    zIndex: 1000,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 380,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  errorImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f3172',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  errorRefreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#1848c8',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    minWidth: 200,
+    shadowColor: '#1848c8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  errorRefreshText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  errorHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 12,
+  },
 });
