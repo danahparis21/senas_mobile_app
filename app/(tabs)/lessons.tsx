@@ -328,10 +328,15 @@ interface WeakSkill {
   never_practiced?: boolean;
 }
 
+// Update the Module interface
 interface Module {
   module_id: number;
   title: string;
   description: string;
+  mastery_level?: 'beginner' | 'intermediate' | 'advanced'; // ← ADD THIS
+  is_locked?: boolean; // ← ADD THIS
+  requires_level?: string; // ← ADD THIS
+  student_level?: string; // ← ADD THIS
   lessons: Lesson[];
 }
 
@@ -667,6 +672,63 @@ export default function Lessons() {
     }
   };
 
+  const getLevelLabel = (level: string): string => {
+    const labels: Record<string, string> = {
+      'beginner': '🌟 Beginner',
+      'intermediate': '📈 Intermediate',
+      'advanced': '🏆 Advanced'
+    };
+    return labels[level?.toLowerCase()] || level || 'Unknown';
+  };
+
+  // Render a standalone locked module screen (replaces the lesson map)
+  const renderLockedModuleScreen = (module: Module) => {
+    const levelColors: Record<string, { bg: string; text: string; border: string }> = {
+      beginner: { bg: '#F0FDF4', text: '#16A34A', border: '#86EFAC' },
+      intermediate: { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA' },
+      advanced: { bg: '#FDF4FF', text: '#9333EA', border: '#E9D5FF' },
+    };
+    const reqLevel = (module.requires_level || 'beginner').toLowerCase();
+    const stuLevel = (module.student_level || 'beginner').toLowerCase();
+    const colors = levelColors[reqLevel] || levelColors.beginner;
+
+    return (
+      <View style={styles.lockedModuleScreen}>
+        {/* Big Lock Icon */}
+        <View style={styles.lockedModuleLockCircle}>
+          <LockIcon size={44} color="#94A3B8" />
+        </View>
+
+        {/* Headline */}
+        <Text style={styles.lockedModuleHeadline}>Module Locked</Text>
+        <Text style={styles.lockedModuleSubheadline}>{module.title}</Text>
+
+        {/* Required level badge */}
+        <View style={[styles.lockedLevelBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+          <Text style={[styles.lockedLevelBadgeText, { color: colors.text }]}>
+            Requires {getLevelLabel(reqLevel)} Level
+          </Text>
+        </View>
+
+        {/* Separator */}
+        <View style={styles.lockedModuleDivider} />
+
+        {/* Current level row */}
+        <View style={styles.lockedModuleLevelRow}>
+          <Text style={styles.lockedModuleLevelLabel}>Your current level</Text>
+          <View style={styles.lockedModuleLevelPill}>
+            <Text style={styles.lockedModuleLevelPillText}>{getLevelLabel(stuLevel)}</Text>
+          </View>
+        </View>
+
+        {/* Tip */}
+        <Text style={styles.lockedModuleTip}>
+          Keep completing lessons and reach {getLevelLabel(reqLevel)} to unlock this module.
+        </Text>
+      </View>
+    );
+  };
+
   // ── HANDLE PRACTICE PRESS ─────────────────────────────────────────────
   const handlePracticePress = (skill: WeakSkill) => {
     // Navigate to gesture practice - using the correct route
@@ -780,6 +842,7 @@ export default function Lessons() {
     }
   };
 
+
   const loadModulesData = async () => {
     try {
       setLoadingModules(true);
@@ -787,43 +850,60 @@ export default function Lessons() {
 
       const response = await api.getStudentLessons();
 
+      console.log('📚 MODULES DATA:', JSON.stringify(response.modules, null, 2));
+
+      response.modules?.forEach((module: any) => {
+        console.log(`📚 Module "${module.title}":`, {
+          mastery_level: module.mastery_level,
+          is_locked: module.is_locked,
+          requires_level: module.requires_level,
+          student_level: module.student_level,
+          lessons_count: module.lessons?.length || 0,
+        });
+      });
+
       if (response.success && response.modules) {
         const transformedModules: Module[] = response.modules.map((module: any) => {
           const lessons = module.lessons || [];
+
+          // 🔥 CRITICAL: Check if this module is locked
+          const isModuleLocked = module.is_locked === true;
 
           const transformedLessons: Lesson[] = lessons.map((lesson: any, index: number) => {
             const isExam = !!lesson.is_checkpoint_exam;
             const color = isExam ? '#F59E0B' : ACCENT_COLORS[index % ACCENT_COLORS.length];
 
-            // Check if this is the first lesson in the module
-            const isFirstLesson = index === 0;
+            // 🔥 FIX: If module is locked, ALL lessons are locked
+            let isLocked = isModuleLocked;
 
-            // Check if previous lesson is completed with passing score
+            // Only apply individual lesson locking if module is NOT locked
             let isNextLesson = false;
-            if (index > 0) {
-              const prevLesson = lessons[index - 1];
-              if (prevLesson && prevLesson.status === 'completed' && (prevLesson.score || 0) >= 60) {
-                isNextLesson = true;
+            if (!isModuleLocked) {
+              const isFirstLesson = index === 0;
+              if (index > 0) {
+                const prevLesson = lessons[index - 1];
+                if (prevLesson && prevLesson.status === 'completed' && (prevLesson.score || 0) >= 60) {
+                  isNextLesson = true;
+                }
+              }
+
+              if (isExam) {
+                isLocked = lesson.is_locked === true;
+              } else if (isFirstLesson) {
+                isLocked = false;
+              } else if (lesson.status === 'completed' && (lesson.score || 0) >= 60) {
+                isLocked = false;
+              } else if (isNextLesson) {
+                isLocked = false;
+              } else {
+                isLocked = (lesson.is_locked === true || lesson.status === 'failed');
               }
             }
 
-            // Logic for locking:
-            let isLocked = false;
-
-            if (isExam) {
-              isLocked = lesson.is_locked === true;
-            } else if (isFirstLesson) {
-              isLocked = false; // First lesson always unlocked
-            } else if (lesson.status === 'completed' && (lesson.score || 0) >= 60) {
-              isLocked = false; // Completed lessons are unlocked
-            } else if (isNextLesson) {
-              isLocked = false; // Next lesson after a completed one is unlocked (to retry)
-            } else {
-              isLocked = (lesson.is_locked === true || lesson.status === 'failed');
-            }
-
             const isDone = lesson.status === 'completed' && (lesson.score || 0) >= 60;
-            const isActive = isExam ? (!isLocked && !isDone) : (lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed')));
+            const isActive = isExam
+              ? (!isLocked && !isDone)
+              : (lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed')));
 
             console.log(`📚 Lesson/Exam ${lesson.lesson_id}: "${lesson.title}" - status: ${lesson.status}, is_locked: ${lesson.is_locked}, isExam: ${isExam}, final: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
 
@@ -851,7 +931,6 @@ export default function Lessons() {
               done: isDone,
               active: isActive,
               locked: isLocked,
-              // Performance data used for the star rating on the map
               score: Number(lesson.score ?? lesson.best_score ?? 0),
               best_score: Number(lesson.best_score ?? lesson.score ?? 0),
               attempts: Number(lesson.attempts ?? lesson.total_attempts ?? 0),
@@ -863,6 +942,10 @@ export default function Lessons() {
             module_id: module.module_id,
             title: module.title,
             description: module.description || '',
+            mastery_level: module.mastery_level,    // ← ADD THESE
+            is_locked: module.is_locked,            // ← ADD THESE
+            requires_level: module.requires_level,  // ← ADD THESE
+            student_level: module.student_level,    // ← ADD THESE
             lessons: transformedLessons,
           };
         });
@@ -874,7 +957,6 @@ export default function Lessons() {
           setXp(response.student.total_xp || 0);
         }
       } else {
-        // Handle API error
         setLoadError({
           visible: true,
           message: response.message || 'Failed to load lessons. Pull down to refresh.',
@@ -985,6 +1067,12 @@ export default function Lessons() {
     }
 
     const currentModule = modules[currentModuleIndex];
+
+    // 🔥 If module is locked, return empty array (no lessons to show)
+    if (currentModule.is_locked) {
+      return [];
+    }
+
     return currentModule.lessons || [];
   };
 
@@ -1004,9 +1092,14 @@ export default function Lessons() {
       return "No Module";
     }
 
-    return modules[currentModuleIndex].title;
-  };
+    const module = modules[currentModuleIndex];
+    // ❌ Remove this line that adds the lock emoji
+    // const lockEmoji = module.is_locked ? '🔒 ' : '';
+    // return `${lockEmoji}${module.title}`;
 
+    // ✅ Replace with this:
+    return module.title;
+  };
   const getModuleDescription = (): string => {
     if (activeTab === 0) {
       if (goalMastered) {
@@ -1019,7 +1112,13 @@ export default function Lessons() {
       return "No lessons available";
     }
 
-    return modules[currentModuleIndex].description || "Complete the lessons in this module";
+    const module = modules[currentModuleIndex];
+
+    if (module.is_locked) {
+      return `Requires ${getLevelLabel(module.requires_level || '')} level (Your level: ${getLevelLabel(module.student_level || 'beginner')})`;
+    }
+
+    return module.description || "Complete the lessons in this module";
   };
 
   // Find index of active node
@@ -1487,25 +1586,30 @@ export default function Lessons() {
               </Text>
             </View>
           ) : totalNodes === 0 ? (
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIllustrationBox}>
-                <BookIcon size={64} color="#93C5FD" />
+            // 🔒 Locked module takes priority over generic empty state
+            activeTab === 1 && modules[currentModuleIndex]?.is_locked ? (
+              renderLockedModuleScreen(modules[currentModuleIndex])
+            ) : (
+              <View style={styles.emptyContainer}>
+                <View style={styles.emptyIllustrationBox}>
+                  <BookIcon size={64} color="#93C5FD" />
+                </View>
+                <Text style={styles.emptyTitle}>
+                  {activeTab === 0 ? "No Lessons Yet!" : "No Lessons in this Module"}
+                </Text>
+                <Text style={styles.emptySubText}>
+                  {activeTab === 0
+                    ? "We don't have enough info to build your path yet. Try a few lessons first!"
+                    : "This module doesn't have any lessons assigned yet."}
+                </Text>
+                <Pressable
+                  style={styles.emptyRefreshBtn}
+                  onPress={activeTab === 0 ? loadLearningPathData : loadModulesData}
+                >
+                  <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
+                </Pressable>
               </View>
-              <Text style={styles.emptyTitle}>
-                {activeTab === 0 ? "No Lessons Yet!" : "No Lessons in this Module"}
-              </Text>
-              <Text style={styles.emptySubText}>
-                {activeTab === 0
-                  ? "We don't have enough info to build your path yet. Try a few lessons first!"
-                  : "This module doesn't have any lessons assigned yet."}
-              </Text>
-              <Pressable
-                style={styles.emptyRefreshBtn}
-                onPress={activeTab === 0 ? loadLearningPathData : loadModulesData}
-              >
-                <Text style={styles.emptyRefreshBtnText}>Refresh</Text>
-              </Pressable>
-            </View>
+            )
           ) : (
             <ScrollView
               contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
@@ -1522,45 +1626,48 @@ export default function Lessons() {
                 />
               }
             >
-              {/* SVG Path Connections */}
-              <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                <Svg width={screenWidth} height={totalNodes * NODE_ROW_HEIGHT}>
-                  {/* Background Track */}
-                  {backgroundPathD !== '' && (
-                    <Path
-                      d={backgroundPathD}
-                      fill="none"
-                      stroke="#93C5FD"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                      strokeDasharray="8 12"
-                      opacity={0.4}
-                    />
-                  )}
-                  {/* Completed Path with Glow */}
-                  {progressPathD !== '' && (
-                    <>
+              {/* SVG Path Connections - only show if module is not locked */}
+              {!modules[currentModuleIndex]?.is_locked && (
+                <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+                  <Svg width={screenWidth} height={totalNodes * NODE_ROW_HEIGHT}>
+                    {/* Background Track */}
+                    {backgroundPathD !== '' && (
                       <Path
-                        d={progressPathD}
+                        d={backgroundPathD}
                         fill="none"
-                        stroke="#2563EB"
-                        strokeWidth="12"
-                        strokeLinecap="round"
-                        opacity={0.15}
-                      />
-                      <Path
-                        d={progressPathD}
-                        fill="none"
-                        stroke="#3B82F6"
+                        stroke="#93C5FD"
                         strokeWidth="6"
                         strokeLinecap="round"
+                        strokeDasharray="8 12"
+                        opacity={0.4}
                       />
-                    </>
-                  )}
-                </Svg>
-              </View>
+                    )}
+                    {/* Completed Path with Glow */}
+                    {progressPathD !== '' && (
+                      <>
+                        <Path
+                          d={progressPathD}
+                          fill="none"
+                          stroke="#2563EB"
+                          strokeWidth="12"
+                          strokeLinecap="round"
+                          opacity={0.15}
+                        />
+                        <Path
+                          d={progressPathD}
+                          fill="none"
+                          stroke="#3B82F6"
+                          strokeWidth="6"
+                          strokeLinecap="round"
+                        />
+                      </>
+                    )}
+                  </Svg>
+                </View>
+              )}
 
-              {activePosRef.current && activePosRef.current.x !== 0 && (
+              {/* Mascot - only show if module is not locked */}
+              {!modules[currentModuleIndex]?.is_locked && activePosRef.current && activePosRef.current.x !== 0 && (
                 <Animated.View
                   {...panResponder.current.panHandlers}
                   style={[
@@ -1593,21 +1700,26 @@ export default function Lessons() {
                   </View>
                 </Animated.View>
               )}
-              {currentLessons.map((lesson, index) => {
+
+              {/* Module Lock Overlay - handled above in totalNodes===0 branch */}
+
+              {/* LESSONS - ONLY RENDER IF MODULE IS NOT LOCKED */}
+              {!modules[currentModuleIndex]?.is_locked && currentLessons.map((lesson, index) => {
                 const pos = points[index];
                 const isSelected = expandedId === lesson.id;
 
                 let nodeBg = lesson.color;
                 let iconColor = '#fff';
 
-                if (lesson.locked) {
+                const isLocked = lesson.locked;
+
+                if (isLocked) {
                   nodeBg = '#CBD5E1';
                   iconColor = '#64748B';
                 }
 
-
                 const nodeStars = getStarsFromScore(lesson.best_score ?? lesson.score);
-                const showNodeStars = !lesson.locked && (lesson.done || (lesson.attempts || 0) > 0);
+                const showNodeStars = !isLocked && (lesson.done || (lesson.attempts || 0) > 0);
 
                 return (
                   <View
@@ -1620,7 +1732,7 @@ export default function Lessons() {
                       },
                     ]}
                   >
-                    {lesson.active && !lesson.locked && (
+                    {lesson.active && !isLocked && (
                       <Animated.View
                         style={[
                           styles.pulseRing,
@@ -1634,17 +1746,23 @@ export default function Lessons() {
                     )}
 
                     <Pressable
-                      onPress={() => setExpandedId(isSelected ? null : lesson.id)}
+                      onPress={() => {
+                        if (isLocked) {
+                          alert('🔒 This lesson is locked. Complete the previous lesson to unlock it!');
+                          return;
+                        }
+                        setExpandedId(isSelected ? null : lesson.id);
+                      }}
                       style={({ pressed }) => [
                         styles.nodeCircle,
                         {
                           backgroundColor: nodeBg,
-                          shadowColor: lesson.locked ? '#94A3B8' : lesson.color,
+                          shadowColor: isLocked ? '#94A3B8' : lesson.color,
                           transform: [{ scale: pressed ? 0.95 : 1 }],
                         },
                       ]}
                     >
-                      {lesson.locked ? (
+                      {isLocked ? (
                         <LockIcon size={24} color={iconColor} />
                       ) : lesson.done ? (
                         <CheckIcon size={28} color={iconColor} />
@@ -1656,14 +1774,13 @@ export default function Lessons() {
                         getCategoryIcon(lesson.category, iconColor, 24)
                       )}
 
-                      {/* Step number chip so the map reads as a sequence */}
-                      <View style={[styles.nodeIndexChip, lesson.locked && styles.nodeIndexChipLocked]}>
+                      {/* Step number chip */}
+                      <View style={[styles.nodeIndexChip, isLocked && styles.nodeIndexChipLocked]}>
                         <Text style={styles.nodeIndexChipText}>{index + 1}</Text>
                       </View>
                     </Pressable>
 
-                    {/* Stars sit ON the node itself (badge overlapping the ring),
-                        the way the reference map shows earned progress. */}
+                    {/* Stars - only show if not locked */}
                     {showNodeStars && (
                       <View style={styles.nodeStarsBadge} pointerEvents="none">
                         <StarsRow count={nodeStars} size={11} />
@@ -1671,28 +1788,33 @@ export default function Lessons() {
                     )}
 
                     <View style={styles.nodeLabelBox} pointerEvents="box-none">
-                      {lesson.active && !lesson.locked && (
+                      {lesson.active && !isLocked && (
                         <View style={[styles.nextBadge, lesson.is_checkpoint_exam && { backgroundColor: '#F59E0B' }]}>
                           <Text style={styles.nextBadgeText}>{lesson.is_checkpoint_exam ? "EXAM" : "NEXT UP"}</Text>
                         </View>
                       )}
 
-                      {/* Title card: white pill keeps long titles legible over the
-                          sky background, and wraps to 3 lines instead of clipping. */}
+                      {/* Title card */}
                       <Pressable
-                        onPress={() => setExpandedId(isSelected ? null : lesson.id)}
+                        onPress={() => {
+                          if (isLocked) {
+                            alert('🔒 This lesson is locked. Complete the previous lesson to unlock it!');
+                            return;
+                          }
+                          setExpandedId(isSelected ? null : lesson.id);
+                        }}
                         style={({ pressed }) => [
                           styles.nodeTitleCard,
-                          lesson.active && !lesson.locked && { borderColor: lesson.color },
-                          lesson.locked && styles.nodeTitleCardLocked,
+                          lesson.active && !isLocked && { borderColor: lesson.color },
+                          isLocked && styles.nodeTitleCardLocked,
                           pressed && { opacity: 0.85 },
                         ]}
                       >
                         <Text
                           style={[
                             styles.nodeTitleText,
-                            lesson.active && styles.nodeTitleTextActive,
-                            lesson.locked && styles.nodeTitleTextLocked,
+                            lesson.active && !isLocked && styles.nodeTitleTextActive,
+                            isLocked && styles.nodeTitleTextLocked,
                           ]}
                           numberOfLines={3}
                           ellipsizeMode="tail"
@@ -1700,11 +1822,14 @@ export default function Lessons() {
                           {lesson.title}
                         </Text>
 
-                        {lesson.locked && <Text style={styles.nodeLockedHint}>Locked</Text>}
+                        {isLocked && (
+                          <View style={styles.lockedLabelContainer}>
+                            <LockIcon size={10} color="#94A3B8" />
+                            <Text style={styles.lockedLabelText}>Locked</Text>
+                          </View>
+                        )}
                       </Pressable>
                     </View>
-
-
                   </View>
                 );
               })}
@@ -2778,4 +2903,111 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
+  // ── Locked module full-page screen ────────────────────────────────────
+  lockedModuleScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+    minHeight: 480,
+  },
+  lockedModuleLockCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 3,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: '#94A3B8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  lockedModuleHeadline: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0f3172',
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  lockedModuleSubheadline: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  lockedLevelBadge: {
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    marginBottom: 24,
+  },
+  lockedLevelBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  lockedModuleDivider: {
+    width: '70%',
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 20,
+  },
+  lockedModuleLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 20,
+  },
+  lockedModuleLevelLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  lockedModuleLevelPill: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  lockedModuleLevelPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  lockedModuleTip: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
+  },
+  // ── Locked lesson node label ────────────────────────────────────────────
+  lockedLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  lockedLabelText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.3,
+  },
+
+
 });
