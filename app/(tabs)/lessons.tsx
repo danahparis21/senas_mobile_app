@@ -14,6 +14,7 @@ import {
   Platform,
   RefreshControl,
   Modal,
+  PanResponder,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
@@ -44,6 +45,28 @@ const GRADIENT = {
 };
 // Mascot asset path
 const MascotImage = require('../../assets/images/img/senyas_logo.png');
+
+// Helper to get default initial Senya position near active lesson node
+const getDefaultSenyaPos = (activePos: { x: number; y: number }, pathIdx: number) => {
+  const cycle = [0.5, 0.76, 0.5, 0.24];
+  const xPct = cycle[pathIdx % cycle.length];
+  let pos = xPct > 0.5 ? activePos.x - 220 : activePos.x + 100;
+  const minLeft = 10;
+  const maxLeft = screenWidth - 160;
+  if (pos < minLeft) pos = minLeft;
+  if (pos > maxLeft) pos = maxLeft;
+
+  let topPos = activePos.y - 140;
+  if (Math.abs(xPct - 0.5) < 0.1) {
+    topPos = activePos.y - 180;
+  }
+  const minTop = 40;
+  const maxTop = screenHeight - 200;
+  if (topPos < minTop) topPos = minTop;
+  if (topPos > maxTop) topPos = maxTop;
+
+  return { x: pos, y: topPos };
+};
 
 // Design Geometry Constants
 const NODE_ROW_HEIGHT = 168;
@@ -388,8 +411,49 @@ export default function Lessons() {
 
   const [senyaPosition, setSenyaPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const panResponder = useRef<any>(null);
+  const senyaPosRef = useRef<{ x: number; y: number } | null>(null);
+  senyaPosRef.current = senyaPosition;
+  const startPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const activePathIdxRef = useRef<number>(0);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        setIsDragging(true);
+        const activePos = activePosRef.current || { x: 0, y: 0 };
+        const currentPos =
+          senyaPosRef.current ||
+          getDefaultSenyaPos(activePos, activePathIdxRef.current);
+        startPosRef.current = currentPos;
+      },
+      onPanResponderMove: (_evt: any, gestureState: any) => {
+        let newX = startPosRef.current.x + gestureState.dx;
+        let newY = startPosRef.current.y + gestureState.dy;
+
+        const minX = 10;
+        const maxX = screenWidth - 160;
+        const minY = 20;
+        const maxY = Math.max(screenHeight - 150, 4000);
+
+        newX = Math.min(Math.max(newX, minX), maxX);
+        newY = Math.min(Math.max(newY, minY), maxY);
+
+        senyaPosRef.current = { x: newX, y: newY };
+        setSenyaPosition({ x: newX, y: newY });
+      },
+      onPanResponderRelease: () => {
+        setIsDragging(false);
+      },
+      onPanResponderTerminate: () => {
+        setIsDragging(false);
+      },
+    })
+  );
 
   // ── ERROR STATE ──────────────────────────────────────────────────────────
   const [loadError, setLoadError] = useState<{
@@ -506,46 +570,7 @@ export default function Lessons() {
   }, [bobAnim]);
 
 
-  useEffect(() => {
-    const currentActivePos = activePosRef.current;
-    if (!currentActivePos || (currentActivePos.x === 0 && currentActivePos.y === 0)) return;
 
-    const { PanResponder } = require('react-native');
-    panResponder.current = PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (_evt: any, gestureState: any) => {
-        setIsDragging(true);
-        const currentPos = senyaPosition || { x: currentActivePos.x || 0, y: currentActivePos.y || 0 }; dragOffset.current = {
-          x: gestureState.x0 - currentPos.x,
-          y: gestureState.y0 - currentPos.y,
-        };
-      },
-      onPanResponderMove: (_evt: any, gestureState: any) => {
-        let newX = gestureState.moveX - dragOffset.current.x;
-        let newY = gestureState.moveY - dragOffset.current.y;
-
-        const minX = 10;
-        const maxX = screenWidth - 160;
-        const minY = 40;
-        const maxY = screenHeight - 180;
-
-        newX = Math.min(Math.max(newX, minX), maxX);
-        newY = Math.min(Math.max(newY, minY), maxY);
-
-        setSenyaPosition({ x: newX, y: newY });
-      },
-      onPanResponderRelease: () => {
-        setIsDragging(false);
-      },
-      onPanResponderTerminate: () => {
-        setIsDragging(false);
-      },
-    });
-  }, [senyaPosition]);
 
 
   // Load attempts + ranking whenever a node is opened
@@ -1018,6 +1043,7 @@ export default function Lessons() {
 
   // Update the ref with the actual position
   activePosRef.current = points[activePathIndex] || { x: 0, y: 0 };
+  activePathIdxRef.current = activePathIndex;
 
   const actualActivePos = points[activePathIndex];
 
@@ -1536,34 +1562,17 @@ export default function Lessons() {
 
               {activePosRef.current && activePosRef.current.x !== 0 && (
                 <Animated.View
-                  {...(panResponder.current ? panResponder.current.panHandlers : {})}
+                  {...panResponder.current.panHandlers}
                   style={[
                     styles.mascotContainer,
                     {
                       left: (() => {
                         if (senyaPosition) return senyaPosition.x;
-                        const cycle = [0.5, 0.76, 0.5, 0.24];
-                        const xPct = cycle[activePathIndex % cycle.length];
-                        let pos = xPct > 0.5 ? activePosRef.current.x - 280 : activePosRef.current.x + 220;
-                        const minLeft = 10;
-                        const maxLeft = screenWidth - 170;
-                        if (pos < minLeft) pos = minLeft;
-                        if (pos > maxLeft) pos = maxLeft;
-                        return pos;
+                        return getDefaultSenyaPos(activePosRef.current, activePathIndex).x;
                       })(),
                       top: (() => {
                         if (senyaPosition) return senyaPosition.y;
-                        const cycle = [0.5, 0.76, 0.5, 0.24];
-                        const xPct = cycle[activePathIndex % cycle.length];
-                        let pos = activePosRef.current.y - 160;
-                        if (Math.abs(xPct - 0.5) < 0.1) {
-                          pos = activePosRef.current.y - 200;
-                        }
-                        const minTop = 40;
-                        const maxTop = screenHeight - 200;
-                        if (pos < minTop) pos = minTop;
-                        if (pos > maxTop) pos = maxTop;
-                        return pos;
+                        return getDefaultSenyaPos(activePosRef.current, activePathIndex).y;
                       })(),
                       transform: [{ translateY: isDragging ? 0 : bobY }],
                       opacity: isDragging ? 0.9 : 1,

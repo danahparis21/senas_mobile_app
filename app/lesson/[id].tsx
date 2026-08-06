@@ -275,14 +275,16 @@ function LessonMedia({ path, style, contentType, mediaType = 'content', hideCont
   style?: any;
   contentType?: string;
   mediaType?: 'content' | 'quiz' | 'option';
-  hideControls?: boolean;  // ✅ Add this
+  hideControls?: boolean;
 }) {
   const mediaUrl = getFullMediaUrl(path);
   const isVideo = isVideoFile(path);
 
   if (!mediaUrl) return null;
 
-  const shouldUseVideo = isVideo || contentType === 'gesture_demo';
+  // ✅ FIX: Only use video if the file itself is a video
+  // The content type should NOT override the file type
+  const shouldUseVideo = isVideo;
 
   return (
     <WebViewMedia
@@ -291,7 +293,7 @@ function LessonMedia({ path, style, contentType, mediaType = 'content', hideCont
       caption={''}
       autoplay={true}
       mediaType={mediaType}
-      hideControls={hideControls}  // ✅ Pass through
+      hideControls={hideControls}
       style={[s.webViewMedia, style]}
     />
   );

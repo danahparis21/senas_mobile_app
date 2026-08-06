@@ -24,9 +24,27 @@ import { api } from '../../services/api';
 import GesturePractice from '../lesson/GesturePractice';
 import DragDropQuestion from '../lesson/DragDropQuestion';
 import { useSettings } from '../../contexts/SettingsContext';
+import { WebViewMedia } from '../../components/WebViewMedia';
 
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
 const IMAGE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
+const getFullMediaUrl = (path: string | null | undefined) => {
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+
+  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+  const isVideo = path.toLowerCase().endsWith('.mp4') ||
+    path.toLowerCase().endsWith('.webm') ||
+    path.toLowerCase().endsWith('.mov');
+
+  if (isVideo) {
+    return `${IMAGE_BASE_URL}/video-proxy/${cleanPath}`;
+  }
+
+  return `${IMAGE_BASE_URL}/storage/${cleanPath}`;
+};
+
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const QUIZ_RESULT_SOUND = require('../../assets/music/quiz-result.mp3');
@@ -270,6 +288,34 @@ function TimerDisplay({
         </View>
       )}
     </View>
+  );
+}
+
+function ExamMedia({ path, style, mediaType = 'quiz' }: {
+  path: string | null | undefined;
+  style?: any;
+  mediaType?: 'content' | 'quiz' | 'option';
+}) {
+  // ✅ Check if path exists before passing to getFullMediaUrl
+  if (!path) return null;
+
+  const mediaUrl = getFullMediaUrl(path);
+  const isVideo = path.toLowerCase().endsWith('.mp4') ||
+    path.toLowerCase().endsWith('.webm') ||
+    path.toLowerCase().endsWith('.mov');
+
+  if (!mediaUrl) return null;
+
+  return (
+    <WebViewMedia
+      url={mediaUrl}
+      isVideo={isVideo}
+      caption={''}
+      autoplay={true}
+      mediaType={mediaType}
+      hideControls={mediaType === 'option'}
+      style={[s.webViewMedia, style]}
+    />
   );
 }
 
@@ -797,10 +843,10 @@ export default function CheckpointExamScreen() {
           </View>
           <Text style={s.questionText}>{currentQuestion.question_text}</Text>
           {currentQuestion.media_url && (
-            <Image
-              source={{ uri: currentQuestion.media_url.startsWith('http') ? currentQuestion.media_url : `${IMAGE_BASE_URL}/${currentQuestion.media_url.replace(/^\//, '')}` }}
+            <ExamMedia
+              path={currentQuestion.media_url}
               style={s.questionMedia}
-              contentFit="contain"
+              mediaType="quiz"
             />
           )}
         </View>
@@ -1350,4 +1396,11 @@ const s = StyleSheet.create({
   studentDetailNoteText: { fontSize: 13, fontWeight: '500', color: '#4B5563', textAlign: 'center', lineHeight: 18 },
   studentDetailBtn: { backgroundColor: '#1848c8', borderRadius: 40, paddingVertical: 12, paddingHorizontal: 48, shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 4 },
   studentDetailBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  webViewMedia: {
+    width: '100%',
+    height: 150,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+  },
 });
