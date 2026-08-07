@@ -1,5 +1,5 @@
 // app/gesture/webview-camera.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -18,7 +18,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -28,6 +28,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
+// Import the WebViewMedia component for displaying signs
+import { WebViewMedia } from '../../components/WebViewMedia';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -42,6 +44,24 @@ const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3'
 
 // Alphabet Part 1: A-M
 const ALPHABET_PART1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+// ─── SIGN LANGUAGE MEDIA MAPPING ───────────────────────────────────────────
+// Based on your file structure: sign_language_media/Alphabets/
+// Images for letters that have static images, videos for those with video files
+const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
+    'A': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/1_A.png', isVideo: false },
+    'B': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/2_B.png', isVideo: false },
+    'C': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/3_C.png', isVideo: false },
+    'D': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/4_D.png', isVideo: false },
+    'E': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/5_E.png', isVideo: false },
+    'F': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/6_F.png', isVideo: false },
+    'G': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/7_G.png', isVideo: false },
+    'H': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/8_H.png', isVideo: false },
+    'I': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/9_I.png', isVideo: false },
+    'J': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/10_J.mp4', isVideo: true },
+    'K': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/11_K.png', isVideo: false },
+    'L': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/12_L.png', isVideo: false },
+    'M': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/13_M.png', isVideo: false },
+};
 
 // Senya's encouragement messages (without emojis)
 const SENYA_MESSAGES = {
@@ -87,6 +107,67 @@ export default function WebViewCameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
 
+    // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
+    const [showHintsModal, setShowHintsModal] = useState(false);
+    const [hintsCurrentIndex, setHintsCurrentIndex] = useState(0);
+
+    const [isStruggling, setIsStruggling] = useState(false);
+    const [hintPulseAnim] = useState(new Animated.Value(1));
+    const [hintShakeAnim] = useState(new Animated.Value(0));
+
+    // Add these functions for the hint button animations
+    const animateHintButton = () => {
+        // Pulse animation
+        Animated.sequence([
+            Animated.timing(hintPulseAnim, {
+                toValue: 1.2,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintPulseAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        // Shake animation
+        Animated.sequence([
+            Animated.timing(hintShakeAnim, {
+                toValue: -5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: 5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: -5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: 0,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
+
+    // Show struggle message and animate hint button
+    const showStruggleHint = () => {
+        setIsStruggling(true);
+        animateHintButton();
+
+        // Reset after 5 seconds
+        setTimeout(() => {
+            setIsStruggling(false);
+        }, 5000);
+    };
+
+
     useFocusEffect(
         useCallback(() => {
             console.log('🔄 WebView Camera screen focused, refreshing settings...');
@@ -94,12 +175,10 @@ export default function WebViewCameraScreen() {
         }, [refreshSettings])
     );
 
-
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
     const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
-
 
     // Gamification state
     const [completedLetters, setCompletedLetters] = useState<Set<string>>(new Set());
@@ -128,11 +207,23 @@ export default function WebViewCameraScreen() {
     const [letterStableCount, setLetterStableCount] = useState(0);
 
     // Auto-scroll ref
-    const [letterWidth, setLetterWidth] = useState(50); // Approximate width of each letter slot + margin
+    const [letterWidth, setLetterWidth] = useState(50);
 
     // Senya message cooldown - prevents rapid flashing of messages
     const senyaMsgCooldownRef = useRef<number>(0);
     const SENYA_COOLDOWN_MS = 3000; // 3 seconds between non-critical messages
+
+    const lastHintShownRef = useRef<number>(0);
+    const HINT_COOLDOWN_MS = 5000;
+
+    // ✅ FIX: hard time-based fallback. Tracks the last time the learner
+    // actually made progress (signed the correct target letter). If too much
+    // time passes with no progress — regardless of exact attempt counts,
+    // which letter was shown, or whether it was an old completed letter —
+    // we force the hint to show. This guarantees the hint can never get
+    // "stuck" not appearing.
+    const lastProgressTimeRef = useRef<number>(Date.now());
+    const STUCK_TIMEOUT_MS = 10000;
 
     // Star animations for results modal
     const starAnim1 = useRef(new Animated.Value(0)).current;
@@ -140,13 +231,42 @@ export default function WebViewCameraScreen() {
     const starAnim3 = useRef(new Animated.Value(0)).current;
 
     const detectionCooldownRef = useRef<number>(0);
-    const DETECTION_COOLDOWN_MS = 1200;
+    const DETECTION_COOLDOWN_MS = 1500;
 
     const soundCooldownRef = useRef<number>(0);
     const SOUND_COOLDOWN_MS = 800;
 
+    // ─── HINTS NAVIGATION ──────────────────────────────────────────────────
+    const getCurrentLetterForHints = () => {
+        // Show the current target letter, or if all completed, show A
+        return currentTarget || 'A';
+    };
+
+    // When hints modal opens, set the index to the current target letter
+    const openHintsModal = () => {
+        const currentLetter = getCurrentLetterForHints();
+        const index = ALPHABET_PART1.indexOf(currentLetter);
+        setHintsCurrentIndex(index >= 0 ? index : 0);
+        setShowHintsModal(true);
+    };
+
+    const goToPreviousHint = () => {
+        setHintsCurrentIndex(prev =>
+            prev > 0 ? prev - 1 : ALPHABET_PART1.length - 1
+        );
+    };
+
+    const goToNextHint = () => {
+        setHintsCurrentIndex(prev =>
+            prev < ALPHABET_PART1.length - 1 ? prev + 1 : 0
+        );
+    };
+
+    const currentHintLetter = ALPHABET_PART1[hintsCurrentIndex];
+    const currentHintMedia = SIGN_MEDIA[currentHintLetter];
+
     async function playGestureSound() {
-        // ✅ Check if sound is enabled
+        // Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping gesture sound');
             return;
@@ -174,9 +294,7 @@ export default function WebViewCameraScreen() {
         }
     }
 
-    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
     async function playCompleteSound() {
-        // ✅ Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping complete sound');
             return;
@@ -223,7 +341,6 @@ export default function WebViewCameraScreen() {
         setStartTime(Date.now());
         setEndTime(null);
 
-        // ── Cleanup sounds on unmount ──
         return () => {
             if (gestureSound) {
                 gestureSound.unloadAsync();
@@ -239,10 +356,9 @@ export default function WebViewCameraScreen() {
         const target = getCurrentTarget();
         if (target) {
             setCurrentTarget(target);
-            // Auto-scroll to the current target letter
             const targetIndex = ALPHABET_PART1.indexOf(target);
             if (targetIndex >= 0 && scrollViewRef.current) {
-                const slotWidth = 54; // width of each slot + margin
+                const slotWidth = 54;
                 const scrollX = targetIndex * slotWidth - (width - 100) / 2;
                 setTimeout(() => {
                     scrollViewRef.current?.scrollTo({
@@ -259,7 +375,6 @@ export default function WebViewCameraScreen() {
             const elapsed = Math.round((endNow - startTime) / 1000);
             setStarRating(elapsed < 30 ? 3 : elapsed < 60 ? 2 : 1);
 
-            // ── Play completion sound when all letters are done ──
             playCompleteSound();
 
             setTimeout(() => {
@@ -285,7 +400,7 @@ export default function WebViewCameraScreen() {
         return messages[Math.floor(Math.random() * messages.length)];
     };
 
-    // Show cute popup - smaller rounded rectangle
+    // Show cute popup
     const showCutePopup = (message: string, subMessage: string = '') => {
         setPopupMessage(message);
         setPopupSubMessage(subMessage);
@@ -313,9 +428,23 @@ export default function WebViewCameraScreen() {
 
     const lastAttemptLetterRef = useRef<string>('');
     const lastAttemptTimeRef = useRef<number>(0);
-    const MIN_ATTEMPT_INTERVAL = 1000; // 1 second minimum between attempts
+    const MIN_ATTEMPT_INTERVAL = 1000;
 
-    // Update the handleDetection function - only save when a letter is completed
+    // ✅ FIX: refs for stability tracking, read/written synchronously so the
+    // check below always sees the up-to-date count in the SAME call. The old
+    // code used React state (letterStableCount) for this — state updates are
+    // async, so the "if (letterStableCount < 2) return" check was always
+    // reading the count from *before* the current frame's update, requiring
+    // an extra frame every time. It also demanded the exact same letter twice
+    // in a row, so if a wrong sign flickered between letters (very common
+    // when someone deliberately does an "incorrect" shape, since it doesn't
+    // match any class cleanly) the streak reset to 0 constantly and the
+    // hint condition was never reached.
+    const lastProcessedLetterRef = useRef<string>('');
+    const letterStableCountRef = useRef<number>(0);
+    const wrongStreakRef = useRef<number>(0);
+
+    // Update the handleDetection function
     const handleDetection = async (data: any) => {
         const { letter, confidence: conf } = data;
 
@@ -325,33 +454,43 @@ export default function WebViewCameraScreen() {
             setIsConnected(true);
             setShowBrowserButton(false);
 
-            // Check if this is a stable detection (same letter repeated)
-            if (letter === lastProcessedLetter) {
-                setLetterStableCount(prev => prev + 1);
+            // Stability count for the SAME letter (used for confirming a
+            // correct sign, to avoid counting a one-frame flicker as success)
+            if (letter === lastProcessedLetterRef.current) {
+                letterStableCountRef.current += 1;
             } else {
-                setLastProcessedLetter(letter);
-                setLetterStableCount(0);
+                lastProcessedLetterRef.current = letter;
+                letterStableCountRef.current = 1;
+            }
+            setLastProcessedLetter(lastProcessedLetterRef.current);
+            setLetterStableCount(letterStableCountRef.current);
+
+            // Separate streak for WRONG attempts: counts consecutive frames
+            // where the letter isn't the target, regardless of whether it's
+            // the same wrong letter each time. This is what lets the hint
+            // trigger even when someone does different wrong signs on purpose.
+            const targetForStreak = getCurrentTarget();
+            // ✅ FIX: a previously-completed letter shown by mistake (e.g.
+            // holding B while the target is C) now ALSO counts as "wrong" for
+            // streak purposes. It used to be excluded here, which meant that
+            // path could never escalate to a hint no matter how long it went on.
+            const isWrongLetterFrame =
+                ALPHABET_PART1.includes(letter) &&
+                letter !== targetForStreak;
+            wrongStreakRef.current = isWrongLetterFrame ? wrongStreakRef.current + 1 : 0;
+
+            if (letterStableCountRef.current < 2 && wrongStreakRef.current < 2) {
                 return;
             }
 
-            // Only process after 3 stable detections (more accurate)
-            if (letterStableCount < 2) {
-                return;
-            }
-
-            // ─── COUNT THIS AS AN ATTEMPT ONLY IF: ───
-            // 1. It's a different letter OR
-            // 2. It's been more than 1 second since the last attempt
             const now = Date.now();
             const isNewLetter = letter !== lastAttemptLetterRef.current;
             const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
 
             if (isNewLetter || isTimeForNewAttempt) {
-                // This is a meaningful attempt
                 lastAttemptLetterRef.current = letter;
                 lastAttemptTimeRef.current = now;
 
-                // Update letter attempts (only for meaningful attempts)
                 if (ALPHABET_PART1.includes(letter)) {
                     setLetterAttempts(prev => {
                         const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
@@ -367,20 +506,21 @@ export default function WebViewCameraScreen() {
                 }
             }
 
-            // Gamification logic
             if (ALPHABET_PART1.includes(letter)) {
                 const target = getCurrentTarget();
 
                 if (letter === target) {
-                    // CORRECT!
                     const now = Date.now();
                     const isCooldownOver = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
 
+                    // Signing the correct target letter is progress, so the
+                    // "stuck too long" timer resets here, even before the
+                    // detection-cooldown gate below.
+                    lastProgressTimeRef.current = now;
+
                     if (!completedLetters.has(letter) && isCooldownOver) {
-                        // Update cooldown timestamp
                         detectionCooldownRef.current = now;
 
-                        // ── Play the gesture sound with cooldown ──
                         const isSoundReady = now - soundCooldownRef.current >= SOUND_COOLDOWN_MS;
                         if (isSoundReady) {
                             soundCooldownRef.current = now;
@@ -393,7 +533,6 @@ export default function WebViewCameraScreen() {
                         setConsecutiveWrong(0);
                         setTotalCorrectAttempts(prev => prev + 1);
 
-                        // Update success tracking
                         setLetterAttempts(prev => {
                             const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
                             return {
@@ -406,13 +545,11 @@ export default function WebViewCameraScreen() {
                             };
                         });
 
-                        // ─── SAVE TO BACKEND FOR THIS LETTER ──────────────
                         if (!savedLettersRef.current.has(letter)) {
                             savedLettersRef.current.add(letter);
                             await saveSingleLetterPerformance(letter);
                         }
 
-                        // Senya celebration
                         const msg = getRandomMessage(SENYA_MESSAGES.correct);
                         setSenyaMessage(msg);
                         senyaMsgCooldownRef.current = Date.now();
@@ -422,25 +559,22 @@ export default function WebViewCameraScreen() {
                             `${completedLetters.size + 1}/${ALPHABET_PART1.length}`
                         );
                     }
-                } else if (completedLetters.has(letter)) {
-                    // Already completed - throttled message
-                    const now = Date.now();
-                    if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                        senyaMsgCooldownRef.current = now;
-                        if (target) {
-                            setSenyaMessage(`You got ${letter}! Try ${target}`);
-                        } else {
-                            setSenyaMessage(SENYA_MESSAGES.complete);
-                        }
-                    }
-                    setConsecutiveWrong(0);
                 } else {
-                    // Wrong letter - only count if stable AND it's a new attempt
+                    // ✅ UNIFIED WRONG-LETTER PATH — this covers BOTH cases that used
+                    // to be split apart: showing a brand-new wrong letter, and showing
+                    // a previously-completed letter (e.g. signing B while target is C).
+                    // The old "already completed" branch reset progress to 0 every
+                    // time and never escalated to a hint, which is why it got stuck.
+                    // Now both funnel into the same escalating logic, PLUS a hard
+                    // time-based fallback (STUCK_TIMEOUT_MS) so the hint always shows
+                    // if too much time passes with no progress, no matter the exact
+                    // attempt count.
                     const now = Date.now();
                     const isNewAttempt = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
+                    const isOldLetter = completedLetters.has(letter);
+                    const stuckTooLong = now - lastProgressTimeRef.current >= STUCK_TIMEOUT_MS;
 
-                    if (letterStableCount >= 2 && isNewAttempt) {
-                        // Update cooldown for wrong attempts too, but shorter
+                    if ((wrongStreakRef.current >= 2 || stuckTooLong) && isNewAttempt) {
                         detectionCooldownRef.current = now;
 
                         const newWrong = consecutiveWrong + 1;
@@ -460,47 +594,79 @@ export default function WebViewCameraScreen() {
                             });
                         }
 
-                        // Throttled struggle messages
-                        if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                            senyaMsgCooldownRef.current = now;
-                            if (newWrong >= 4) {
-                                const msg = getRandomMessage(SENYA_MESSAGES.struggle);
-                                setSenyaMessage(msg);
-                                setConsecutiveWrong(0);
-                                showCutePopup(
-                                    `💡 ${target}`,
-                                    'Keep your hand steady'
-                                );
-                            } else if (newWrong >= 2) {
-                                setSenyaMessage(`Try making ${target} shape!`);
-                            }
+                        const hintCooldownOk = now - lastHintShownRef.current >= HINT_COOLDOWN_MS;
+
+                        // Baseline reminder — different wording for "old letter shown
+                        // by mistake" vs. a genuinely new wrong shape.
+                        if (newWrong >= 1) {
+                            setSenyaMessage(
+                                isOldLetter
+                                    ? `You got ${letter} already! We're doing ${target} now!`
+                                    : `We're doing letter ${target}!`
+                            );
+                        }
+
+                        // Escalate to the hint suggestion once there's a real streak
+                        // OR once the stuck-timer fires — whichever comes first.
+                        if ((newWrong >= 2 || stuckTooLong) && hintCooldownOk) {
+                            lastHintShownRef.current = now;
+                            setSenyaMessage(`Need help with ${target}? Click the 💡 hints icon!`);
+                            showStruggleHint();
+                        }
+
+                        // Stronger nudge after more wrong attempts, or if still stuck.
+                        if ((newWrong >= 4 || stuckTooLong) && hintCooldownOk) {
+                            lastHintShownRef.current = now;
+                            showCutePopup(
+                                `💡 ${target}`,
+                                'Keep your hand steady'
+                            );
+                            setSenyaMessage(`Click the 💡 hints icon if you need help signing ${target}!`);
+                            showStruggleHint();
                         }
                     }
                 }
-
             } else {
-                // Letter not in A-M - throttled message
+                // Letter not in A-M (unrecognized shape / no confident match)
                 const target = getCurrentTarget();
                 const now = Date.now();
-                if (target && !isModuleComplete && now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                    senyaMsgCooldownRef.current = now;
-                    setSenyaMessage(`We're learning ${target}`);
+                const stuckTooLong = now - lastProgressTimeRef.current >= STUCK_TIMEOUT_MS;
+                const hintCooldownOk = now - lastHintShownRef.current >= HINT_COOLDOWN_MS;
+
+                if (target && !isModuleComplete) {
+                    if (stuckTooLong && hintCooldownOk) {
+                        lastHintShownRef.current = now;
+                        setSenyaMessage(`Click 💡 hints if you need help signing ${target}!`);
+                        showStruggleHint();
+                    } else if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
+                        senyaMsgCooldownRef.current = now;
+                        setSenyaMessage(`We're learning ${target}`);
+                    }
                 }
             }
         } else {
-            // No hand detected - reset attempt tracking
+            // ✅ NO HAND DETECTED - Faster hint suggestion
             setDetectedLetter('✋');
             setConfidence(0);
             setLastProcessedLetter('');
             setLetterStableCount(0);
-            // Don't reset lastAttemptLetterRef here - keep it for context
 
             const now = Date.now();
-            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length && now - senyaMsgCooldownRef.current >= 5000) {
+            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length && now - senyaMsgCooldownRef.current >= 2000) { // Reduced to 2 seconds
                 senyaMsgCooldownRef.current = now;
                 const target = getCurrentTarget();
                 if (target) {
+                    const hintCooldownOk = now - lastHintShownRef.current >= HINT_COOLDOWN_MS;
+
+                    // Always show the letter they should be doing
                     setSenyaMessage(`Show me ${target}!`);
+
+                    // If struggling, suggest hints (with cooldown)
+                    if (consecutiveWrong >= 1 && hintCooldownOk) {
+                        lastHintShownRef.current = now;
+                        setSenyaMessage(`Show me ${target}! Click 💡 for a hint!`);
+                        showStruggleHint();
+                    }
                 }
             }
         }
@@ -515,7 +681,6 @@ export default function WebViewCameraScreen() {
                 return null;
             }
 
-            // Get the data for just this letter
             const data = letterAttempts[letter] || {
                 letter,
                 attempts: 0,
@@ -523,7 +688,6 @@ export default function WebViewCameraScreen() {
                 successCount: 0
             };
 
-            // Only save if there were attempts
             if (data.attempts === 0) {
                 return null;
             }
@@ -604,7 +768,6 @@ export default function WebViewCameraScreen() {
     // Update the useEffect for module completion
     useEffect(() => {
         if (isModuleComplete) {
-            // Save all performance data at the end
             saveAllPerformance().then(result => {
                 if (result) {
                     console.log('📊 All performance data saved');
@@ -613,9 +776,9 @@ export default function WebViewCameraScreen() {
         }
     }, [isModuleComplete]);
 
-    // Replace handleContinue with this:
+    const [xpResult, setXpResult] = useState<any>(null);
+
     const handleContinue = async () => {
-        // Save any remaining letters that might not have been saved
         const unsavedLetters = ALPHABET_PART1.filter(
             letter => completedLetters.has(letter) && !savedLettersRef.current.has(letter)
         );
@@ -624,7 +787,6 @@ export default function WebViewCameraScreen() {
             await saveSingleLetterPerformance(letter);
         }
 
-        // Final save just in case
         await saveAllPerformance();
 
         setShowResults(false);
@@ -637,7 +799,6 @@ export default function WebViewCameraScreen() {
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
 
-            // Fetch the actual streak from the API
             let streakDays = 0;
             try {
                 const streakData = await api.getStreak();
@@ -669,11 +830,6 @@ export default function WebViewCameraScreen() {
     const handleMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            // Only log when we get a successful detection (not every frame)
-            if (data.letter && data.letter !== '✋' && data.confidence && data.confidence > 0.5) {
-                // console.log('📨 Received from WebView:', data); // Keep this commented or remove
-            }
-
             if (data.letter !== undefined) {
                 handleDetection(data);
             }
@@ -690,15 +846,12 @@ export default function WebViewCameraScreen() {
         const seconds = totalSecs % 60;
         const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
-        // Find struggling letters - correctly attributed to target letter
-        // Sorted by most wrong attempts so the worst offenders appear first
         const strugglingLetters = Object.values(letterAttempts)
             .filter(l => l.wrongAttempts >= 2)
             .sort((a, b) => b.wrongAttempts - a.wrongAttempts)
             .map(l => l.letter)
             .slice(0, 3);
 
-        // Find easy letters (completed with zero wrong attempts)
         const easyLetters = Object.values(letterAttempts)
             .filter(l => l.successCount > 0 && l.wrongAttempts === 0)
             .map(l => l.letter);
@@ -714,8 +867,6 @@ export default function WebViewCameraScreen() {
         };
     };
 
-
-    // app/gesture/webview-camera.tsx
     const getLevelName = (level: number): string => {
         const levelNames: Record<number, string> = {
             1: 'Novice Signer',
@@ -741,7 +892,6 @@ export default function WebViewCameraScreen() {
         return thresholds[nextLevel] || 4000 + ((level - 9) * 1000);
     };
 
-    // Update the awardModuleXp function to return the result
     const awardModuleXp = async (starRating: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
@@ -765,32 +915,23 @@ export default function WebViewCameraScreen() {
         }
     };
 
-    // Update the useEffect for module completion
     useEffect(() => {
         if (isModuleComplete) {
-            // Save all performance data at the end
             saveAllPerformance().then(result => {
                 if (result) {
                     console.log('📊 All performance data saved');
                 }
             });
 
-            // Award XP based on star rating (after a short delay)
             setTimeout(async () => {
                 const result = await awardModuleXp(starRating);
                 if (result) {
                     console.log(`⭐ XP awarded: ${result.xp_earned} XP, Total: ${result.total_xp} XP`);
-                    // Store XP data for navigation
                     setXpResult(result);
                 }
             }, 2000);
         }
     }, [isModuleComplete]);
-
-    const [xpResult, setXpResult] = useState<any>(null);
-
-
-
 
     const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
 
@@ -867,10 +1008,44 @@ export default function WebViewCameraScreen() {
                     <Ionicons name="arrow-back" size={24} color="#0f3172" />
                 </Pressable>
                 <Text style={styles.headerTitle}>Alphabet Part 1</Text>
-                <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
-                    <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
-                        {isConnected ? '🟢 Live' : '⏳ Loading'}
-                    </Text>
+                <View style={styles.headerRight}>
+                    {/* ─── HINTS BUTTON WITH ANIMATIONS ────────────────────────────────── */}
+                    <Animated.View
+                        style={{
+                            transform: [
+                                { scale: hintPulseAnim },
+                                { translateX: hintShakeAnim },
+                            ],
+                        }}
+                    >
+                        <Pressable
+                            onPress={() => {
+                                openHintsModal();
+                                setIsStruggling(false); // Reset struggling state when hints opened
+                            }}
+                            style={[
+                                styles.hintsBtn,
+                                isStruggling && styles.hintsBtnGlow, // ✅ Add glow effect
+                            ]}
+                        >
+                            <Ionicons
+                                name="bulb-outline"
+                                size={22}
+                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                            />
+                            {isStruggling && (
+                                <View style={styles.hintsBadge}>
+                                    <Text style={styles.hintsBadgeText}>!</Text>
+                                </View>
+                            )}
+                        </Pressable>
+                    </Animated.View>
+
+                    <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
+                        <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
+                            {isConnected ? '🟢 Live' : '⏳ Loading'}
+                        </Text>
+                    </View>
                 </View>
             </View>
 
@@ -967,13 +1142,19 @@ export default function WebViewCameraScreen() {
                     const isCompleted = completedLetters.has(letter);
                     const isActive = letter === currentTarget && !isCompleted;
                     return (
-                        <View
+                        <TouchableOpacity
                             key={letter}
                             style={[
                                 styles.letterSlot,
                                 isCompleted && styles.letterCompleted,
                                 isActive && styles.letterActive,
                             ]}
+                            onPress={() => {
+                                // When clicking a letter, open hints modal to that letter
+                                const index = ALPHABET_PART1.indexOf(letter);
+                                setHintsCurrentIndex(index);
+                                setShowHintsModal(true);
+                            }}
                         >
                             <Text style={[
                                 styles.letterChar,
@@ -991,7 +1172,7 @@ export default function WebViewCameraScreen() {
                             {!isCompleted && !isActive && (
                                 <View style={styles.letterStatusDot} />
                             )}
-                        </View>
+                        </TouchableOpacity>
                     );
                 })}
             </ScrollView>
@@ -1049,6 +1230,109 @@ export default function WebViewCameraScreen() {
                 </Animated.View>
             )}
 
+            {/* ─── HINTS MODAL ─────────────────────────────────────────── */}
+            <Modal
+                visible={showHintsModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowHintsModal(false)}
+            >
+                <View style={styles.hintsModalOverlay}>
+                    <View style={styles.hintsModalCard}>
+                        {/* Header */}
+                        <View style={styles.hintsModalHeader}>
+                            <Text style={styles.hintsModalTitle}>
+                                Sign Language A–M
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.hintsModalClose}
+                                onPress={() => setShowHintsModal(false)}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="close" size={24} color="#0f3172" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Letter indicator */}
+                        <View style={styles.hintsLetterIndicator}>
+                            <Text style={styles.hintsLetterText}>
+                                Letter {currentHintLetter}
+                            </Text>
+                            <Text style={styles.hintsCountText}>
+                                {hintsCurrentIndex + 1} / {ALPHABET_PART1.length}
+                            </Text>
+                        </View>
+
+                        {/* Media display area - with cover fit for larger images */}
+                        <View style={styles.hintsMediaContainer}>
+                            {currentHintMedia ? (
+                                <WebViewMedia
+                                    url={currentHintMedia.url}
+                                    isVideo={currentHintMedia.isVideo}
+                                    mediaType="quiz"
+                                    hideControls={true}
+                                    autoplay={true}
+                                    objectFit="cover" // ✅ This will zoom in and fill the container
+                                />
+                            ) : (
+                                <View style={styles.hintsNoMedia}>
+                                    <Text style={styles.hintsNoMediaText}>
+                                        No media available for {currentHintLetter}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
+
+                        {/* Navigation arrows */}
+                        <View style={styles.hintsNavContainer}>
+                            <TouchableOpacity
+                                style={styles.hintsNavButton}
+                                onPress={goToPreviousHint}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="chevron-back" size={28} color="#0f3172" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.hintsNavButton}
+                                onPress={goToNextHint}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="chevron-forward" size={28} color="#0f3172" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Letter progress dots */}
+                        <View style={styles.hintsDotsContainer}>
+                            {ALPHABET_PART1.map((letter, index) => (
+                                <TouchableOpacity
+                                    key={letter}
+                                    style={[
+                                        styles.hintsDot,
+                                        index === hintsCurrentIndex && styles.hintsDotActive,
+                                        completedLetters.has(letter) && styles.hintsDotCompleted,
+                                    ]}
+                                    onPress={() => setHintsCurrentIndex(index)}
+                                />
+                            ))}
+                        </View>
+
+                        {/* Senya tip */}
+                        <View style={styles.hintsTipContainer}>
+                            <Image
+                                source={require('../../assets/images/img/senya_teaching.png')}
+                                style={styles.hintsTipImage}
+                                resizeMode="contain"
+                            />
+                            <Text style={styles.hintsTipText}>
+                                Practice making the {currentHintLetter} shape with your hand!
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
             {/* Results Modal - Only when all letters are completed */}
             <Modal
                 visible={showResults}
@@ -1058,7 +1342,6 @@ export default function WebViewCameraScreen() {
             >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
-                        {/* Close button */}
                         <TouchableOpacity
                             style={styles.modalClose}
                             onPress={() => setShowResults(false)}
@@ -1067,7 +1350,6 @@ export default function WebViewCameraScreen() {
                             <Ionicons name="close" size={20} color="#0f3172" />
                         </TouchableOpacity>
 
-                        {/* Trophy badge */}
                         <View style={styles.trophyBadge}>
                             <Ionicons name="trophy" size={32} color="#FFD700" />
                         </View>
@@ -1077,7 +1359,6 @@ export default function WebViewCameraScreen() {
                             All {ALPHABET_PART1.length} letters mastered
                         </Text>
 
-                        {/* Animated star rating */}
                         <View style={styles.starsRow}>
                             {([starAnim1, starAnim2, starAnim3] as Animated.Value[]).map((anim, i) => {
                                 const isEarned = starRating > i;
@@ -1111,7 +1392,6 @@ export default function WebViewCameraScreen() {
                             </Text>
                         </View>
 
-                        {/* Stats */}
                         {(() => {
                             const results = getResults();
                             return (
@@ -1136,7 +1416,6 @@ export default function WebViewCameraScreen() {
                                         </View>
                                     </View>
 
-                                    {/* Notes */}
                                     <View style={styles.senyaFeedback}>
                                         <View style={styles.feedbackHeader}>
                                             <Ionicons name="document-text-outline" size={16} color="#0f3172" />
@@ -1184,7 +1463,7 @@ export default function WebViewCameraScreen() {
                         <TouchableOpacity
                             style={styles.continueButton}
                             activeOpacity={0.85}
-                            onPress={handleContinue}  // Changed from inline to handleContinue
+                            onPress={handleContinue}
                         >
                             <Text style={styles.continueButtonText}>Continue</Text>
                             <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
@@ -1249,6 +1528,11 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(15, 49, 114, 0.08)',
     },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
     backBtn: {
         width: 40,
         height: 40,
@@ -1280,6 +1564,16 @@ const styles = StyleSheet.create({
     },
     statusActiveText: {
         color: '#10B981',
+    },
+    hintsBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 215, 0, 0.3)',
     },
     senyaSection: {
         flexDirection: 'row',
@@ -1555,7 +1849,157 @@ const styles = StyleSheet.create({
         marginTop: 1,
         textAlign: 'center',
     },
-    // Results Modal
+
+    // ─── HINTS MODAL STYLES ──────────────────────────────────────────
+    hintsModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(10, 22, 40, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+    hintsModalCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        paddingTop: 20,
+        paddingBottom: 24,
+        paddingHorizontal: 20,
+        width: '100%',
+        maxWidth: 360,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 16,
+    },
+    hintsModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+    },
+    hintsModalTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    hintsModalClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    hintsLetterIndicator: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    hintsLetterText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#0f3172',
+    },
+    hintsCountText: {
+        fontSize: 13,
+        color: '#4b7bbb',
+        fontWeight: '600',
+    },
+    hintsMediaContainer: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#f1f5f9',
+        borderWidth: 2,
+        borderColor: '#e2e8f0',
+        marginBottom: 14,
+    },
+    hintsNoMedia: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f8fafc',
+    },
+    hintsNoMediaText: {
+        color: '#94a3b8',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    hintsNavContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        paddingHorizontal: 4,
+        marginBottom: 14,
+    },
+    hintsNavButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    hintsDotsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 6,
+        marginBottom: 14,
+        paddingHorizontal: 4,
+    },
+    hintsDot: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#e2e8f0',
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    hintsDotActive: {
+        backgroundColor: '#FFD700',
+        borderColor: '#0f3172',
+        transform: [{ scale: 1.15 }],
+    },
+    hintsDotCompleted: {
+        backgroundColor: '#10B981',
+        borderColor: '#10B981',
+    },
+    hintsTipContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f7faff',
+        borderRadius: 14,
+        padding: 12,
+        width: '100%',
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.08)',
+        gap: 10,
+    },
+    hintsTipImage: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+    },
+    hintsTipText: {
+        flex: 1,
+        fontSize: 13,
+        color: '#0f3172',
+        fontWeight: '500',
+        lineHeight: 18,
+    },
+
+    // ─── RESULTS MODAL STYLES ────────────────────────────────────────
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(10, 22, 40, 0.7)',
@@ -1687,11 +2131,6 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
         marginTop: 2,
     },
-    modalSenya: {
-        width: 80,
-        height: 80,
-        marginBottom: 12,
-    },
     senyaFeedback: {
         backgroundColor: '#fbfcff',
         borderRadius: 14,
@@ -1742,5 +2181,32 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 15,
         fontWeight: '700',
+    },
+    hintsBtnGlow: {
+        backgroundColor: 'rgba(255, 215, 0, 0.4)',
+        borderColor: '#FFD700',
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 15,
+        elevation: 8,
+    },
+    hintsBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: '#FFD700',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    hintsBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#0f3172',
     },
 });

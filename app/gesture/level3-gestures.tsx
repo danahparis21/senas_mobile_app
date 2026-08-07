@@ -1,6 +1,5 @@
 // app/gesture/level3-gestures.tsx
-// app/gesture/level3-gestures.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -19,7 +18,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -28,7 +27,9 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
-import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+import { useSettings } from '../../contexts/SettingsContext';
+// Import the WebViewMedia component for displaying signs
+import { WebViewMedia } from '../../components/WebViewMedia';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -40,6 +41,22 @@ const { width, height } = Dimensions.get('window');
 // ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
 const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
+
+// ─── SIGN LANGUAGE MEDIA MAPPING FOR NUMBERS ──────────────────────────────
+// Numbers 1-10: files 27_One.mp4 through 36_Ten.mp4
+// All numbers use video since they show motion in ASL
+const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
+    '1': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/27_One.mp4', isVideo: true },
+    '2': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/28_Two.mp4', isVideo: true },
+    '3': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/29_Three.mp4', isVideo: true },
+    '4': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/30_Four.mp4', isVideo: true },
+    '5': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/31_Five.mp4', isVideo: true },
+    '6': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/32_Six.mp4', isVideo: true },
+    '7': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/33_Seven.mp4', isVideo: true },
+    '8': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/34_Eight.mp4', isVideo: true },
+    '9': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/35_Nine.mp4', isVideo: true },
+    '10': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/36_Ten.mp4', isVideo: true },
+};
 
 const GESTURE_TO_DB_MAP: Record<string, string> = {
     'ONE': '1',
@@ -73,7 +90,7 @@ const DIGIT_DISPLAY: Record<string, string> = {
 
 // Senya's encouragement messages
 const SENYA_MESSAGES = {
-    welcome: "Level 1! Let's learn numbers 1-10! 🔢",
+    welcome: "Let's learn numbers 1-10! 🔢",
     correct: [
         "Amazing! You're a number expert!",
         "Perfect! Keep counting!",
@@ -87,7 +104,7 @@ const SENYA_MESSAGES = {
         "You got this! Try again!",
         "Almost there! One more try!",
     ],
-    complete: "LEVEL 3 COMPLETE! All 10 numbers mastered! 🎉",
+    complete: "YOU DID IT! ALL 10 NUMBERS! 🎉",
 };
 
 // Gesture struggle tracking
@@ -104,7 +121,6 @@ export default function Level3GesturesScreen() {
     const router = useRouter();
     usePracticeTimeTracker();
 
-    // ✅ Get settings and refresh function
     const { settings, refreshSettings } = useSettings();
 
     const webViewRef = useRef<WebView>(null);
@@ -117,17 +133,75 @@ export default function Level3GesturesScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
 
-    // 🔥 Refresh settings when screen comes into focus
+    // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
+    const [showHintsModal, setShowHintsModal] = useState(false);
+    const [hintsCurrentIndex, setHintsCurrentIndex] = useState(0);
+
+    const [isStruggling, setIsStruggling] = useState(false);
+    const [hintPulseAnim] = useState(new Animated.Value(1));
+    const [hintShakeAnim] = useState(new Animated.Value(0));
+
+    // Hint button animations
+    const animateHintButton = () => {
+        Animated.sequence([
+            Animated.timing(hintPulseAnim, {
+                toValue: 1.2,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintPulseAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        Animated.sequence([
+            Animated.timing(hintShakeAnim, {
+                toValue: -5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: 5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: -5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: 0,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
+
+    // Show struggle message and animate hint button
+    const showStruggleHint = () => {
+        setIsStruggling(true);
+        animateHintButton();
+
+        setTimeout(() => {
+            setIsStruggling(false);
+        }, 5000);
+    };
+
     useFocusEffect(
         useCallback(() => {
             console.log('🔄 Level 3 (Numbers) screen focused, refreshing settings...');
             refreshSettings();
         }, [refreshSettings])
     );
+
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
     const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
+
     // Gamification state
     const [completedGestures, setCompletedGestures] = useState<Set<string>>(new Set());
     const [currentTarget, setCurrentTarget] = useState(LEVEL3_GESTURES[0] || '1');
@@ -150,16 +224,23 @@ export default function Level3GesturesScreen() {
     const [popupMessage, setPopupMessage] = useState('');
     const [popupSubMessage, setPopupSubMessage] = useState('');
 
-    // Track the last detected gesture to avoid counting transitions as mistakes
+    // Track the last detected gesture
     const [lastProcessedGesture, setLastProcessedGesture] = useState<string>('');
     const [gestureStableCount, setGestureStableCount] = useState(0);
 
     const [showStartupAnimation, setShowStartupAnimation] = useState(true);
-
     const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
+
     // Senya message cooldown
     const senyaMsgCooldownRef = useRef<number>(0);
     const SENYA_COOLDOWN_MS = 3000;
+
+    const lastHintShownRef = useRef<number>(0);
+    const HINT_COOLDOWN_MS = 5000;
+
+    // Time-based fallback
+    const lastProgressTimeRef = useRef<number>(Date.now());
+    const STUCK_TIMEOUT_MS = 10000;
 
     // Star animations for results modal
     const starAnim1 = useRef(new Animated.Value(0)).current;
@@ -169,10 +250,13 @@ export default function Level3GesturesScreen() {
     const [modelLoading, setModelLoading] = useState(true);
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
 
+    // Refs for synchronous tracking
+    const lastProcessedGestureRef = useRef<string>('');
+    const gestureStableCountRef = useRef<number>(0);
+    const wrongStreakRef = useRef<number>(0);
 
-    // ─── PLAY GESTURE SOUND (only if enabled) ──────────────────────────────────
+    // ─── PLAY GESTURE SOUND ──────────────────────────────────────────────────
     async function playGestureSound() {
-        // ✅ Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping gesture sound');
             return;
@@ -211,9 +295,8 @@ export default function Level3GesturesScreen() {
         }
     }
 
-    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
+    // ─── PLAY COMPLETE SOUND ──────────────────────────────────────────────────
     async function playCompleteSound() {
-        // ✅ Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping complete sound');
             return;
@@ -247,7 +330,36 @@ export default function Level3GesturesScreen() {
         }
     }
 
-    // Get current target (first incomplete)
+    // ─── HINTS NAVIGATION ──────────────────────────────────────────────────
+    const getCurrentGestureForHints = () => {
+        return currentTarget || '1';
+    };
+
+    const openHintsModal = () => {
+        const currentGesture = getCurrentGestureForHints();
+        const index = LEVEL3_GESTURES.indexOf(currentGesture);
+        setHintsCurrentIndex(index >= 0 ? index : 0);
+        setShowHintsModal(true);
+        setIsStruggling(false);
+    };
+
+    const goToPreviousHint = () => {
+        setHintsCurrentIndex(prev =>
+            prev > 0 ? prev - 1 : LEVEL3_GESTURES.length - 1
+        );
+    };
+
+    const goToNextHint = () => {
+        setHintsCurrentIndex(prev =>
+            prev < LEVEL3_GESTURES.length - 1 ? prev + 1 : 0
+        );
+    };
+
+    const currentHintGesture = LEVEL3_GESTURES[hintsCurrentIndex];
+    const currentHintMedia = SIGN_MEDIA[currentHintGesture];
+    const currentDisplayDigit = DIGIT_DISPLAY[currentHintGesture] || currentHintGesture;
+
+    // Get current target
     const getCurrentTarget = () => {
         for (const gesture of LEVEL3_GESTURES) {
             if (!completedGestures.has(gesture)) return gesture;
@@ -255,11 +367,11 @@ export default function Level3GesturesScreen() {
         return null;
     };
 
-    // Force the loading overlay to show for exactly 10 seconds
+    // Force the loading overlay to show 
     useEffect(() => {
         const timer = setTimeout(() => {
             setShowLoadingOverlay(false);
-        }, 9000); // 9 seconds
+        }, 5000);
 
         return () => clearTimeout(timer);
     }, []);
@@ -321,25 +433,6 @@ export default function Level3GesturesScreen() {
         }
     }, [completedGestures]);
 
-    useEffect(() => {
-        // Show startup animation for at least 3 seconds, max 10 seconds
-        const startupTimer = setTimeout(() => {
-            setShowStartupAnimation(false);
-        }, 3000);
-
-        // Safety timeout - force hide after 10 seconds even if not ready
-        const safetyTimer = setTimeout(() => {
-            setShowStartupAnimation(false);
-            setModelLoading(false);
-            setLoading(false);
-        }, 10000);
-
-        return () => {
-            clearTimeout(startupTimer);
-            clearTimeout(safetyTimer);
-        };
-    }, []);
-
     // Animate stars when results are shown
     useEffect(() => {
         if (showResults) {
@@ -385,10 +478,15 @@ export default function Level3GesturesScreen() {
     const lastAttemptTimeRef = useRef<number>(0);
     const MIN_ATTEMPT_INTERVAL = 1000;
 
+    const detectionCooldownRef = useRef<number>(0);
+    const DETECTION_COOLDOWN_MS = 1500;
+
+    const soundCooldownRef = useRef<number>(0);
+    const SOUND_COOLDOWN_MS = 800;
+
     // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
     const MODULE_NAME = 'level1_numbers';
 
-    // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
     const saveAllPerformance = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
@@ -397,7 +495,6 @@ export default function Level3GesturesScreen() {
                 return null;
             }
 
-            // Build performance data for each gesture - use "letter" field name
             const gesturePerformances = LEVEL3_GESTURES.map(gesture => {
                 const data = gestureAttempts[gesture] || {
                     gesture,
@@ -406,7 +503,7 @@ export default function Level3GesturesScreen() {
                     successCount: 0
                 };
                 return {
-                    letter: gesture,  // ✅ API expects "letter"
+                    letter: gesture,
                     attempts: data.attempts || 0,
                     wrong_attempts: data.wrongAttempts || 0,
                     success_count: data.successCount || 0,
@@ -415,10 +512,7 @@ export default function Level3GesturesScreen() {
             });
 
             const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
-            if (totalAttempts === 0) {
-                console.log('ℹ️ No attempts recorded, skipping save');
-                return null;
-            }
+            if (totalAttempts === 0) return null;
 
             console.log(`📤 Saving performance for ${MODULE_NAME}...`);
 
@@ -431,24 +525,18 @@ export default function Level3GesturesScreen() {
             if (result && result.success) {
                 console.log('✅ Performance saved!');
                 return result;
-            } else {
-                console.error('❌ Failed to save performance:', result);
-                return null;
             }
+            return null;
         } catch (error) {
             console.error('❌ Error saving performance:', error);
             return null;
         }
     };
 
-    // ─── SAVE SINGLE GESTURE PERFORMANCE ──────────────────────────────────────
     const saveSingleGesturePerformance = async (gesture: string) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping save');
-                return null;
-            }
+            if (!token) return null;
 
             const data = gestureAttempts[gesture] || {
                 gesture,
@@ -457,19 +545,15 @@ export default function Level3GesturesScreen() {
                 successCount: 0
             };
 
-            if (data.attempts === 0) {
-                return null;
-            }
+            if (data.attempts === 0) return null;
 
             const gesturePerformance = [{
-                letter: gesture,  // ✅ API expects "letter"
+                letter: gesture,
                 attempts: data.attempts || 0,
                 wrong_attempts: data.wrongAttempts || 0,
                 success_count: data.successCount || 0,
                 consecutive_wrong: 0,
             }];
-
-            console.log(`📤 Saving performance for ${gesture}...`);
 
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
@@ -480,10 +564,8 @@ export default function Level3GesturesScreen() {
             if (result && result.success) {
                 console.log(`✅ ${gesture} saved!`);
                 return result;
-            } else {
-                console.error(`❌ Failed to save ${gesture}:`, result);
-                return null;
             }
+            return null;
         } catch (error) {
             console.error(`❌ Error saving ${gesture}:`, error);
             return null;
@@ -497,9 +579,7 @@ export default function Level3GesturesScreen() {
         // Map WebView greeting to database name
         const dbGestureName = GESTURE_TO_DB_MAP[greeting] || greeting;
 
-        // Use dbGestureName for checking against LEVEL3_GESTURES
         if (dbGestureName && dbGestureName !== '✋' && dbGestureName !== '...' && LEVEL3_GESTURES.includes(dbGestureName)) {
-            // Show the digit if available
             if (digit && DIGIT_DISPLAY[dbGestureName]) {
                 setDetectedDigit(digit);
             } else if (DIGIT_DISPLAY[dbGestureName]) {
@@ -511,17 +591,24 @@ export default function Level3GesturesScreen() {
             setIsConnected(true);
             setShowBrowserButton(false);
 
-            // Check if this is a stable detection
-            if (dbGestureName === lastProcessedGesture) {
-                setGestureStableCount(prev => prev + 1);
+            // Stability tracking
+            if (dbGestureName === lastProcessedGestureRef.current) {
+                gestureStableCountRef.current += 1;
             } else {
-                setLastProcessedGesture(dbGestureName);
-                setGestureStableCount(0);
-                return;
+                lastProcessedGestureRef.current = dbGestureName;
+                gestureStableCountRef.current = 1;
             }
+            setLastProcessedGesture(lastProcessedGestureRef.current);
+            setGestureStableCount(gestureStableCountRef.current);
 
-            // Only process after 3 stable detections
-            if (gestureStableCount < 2) {
+            // Wrong streak tracking
+            const targetForStreak = getCurrentTarget();
+            const isWrongGestureFrame =
+                LEVEL3_GESTURES.includes(dbGestureName) &&
+                dbGestureName !== targetForStreak;
+            wrongStreakRef.current = isWrongGestureFrame ? wrongStreakRef.current + 1 : 0;
+
+            if (gestureStableCountRef.current < 2 && wrongStreakRef.current < 2) {
                 return;
             }
 
@@ -546,13 +633,23 @@ export default function Level3GesturesScreen() {
                 });
             }
 
-            // Gamification logic
             const target = getCurrentTarget();
 
             if (dbGestureName === target) {
                 // CORRECT!
-                if (!completedGestures.has(dbGestureName)) {
-                    await playGestureSound();
+                const now = Date.now();
+                const isCooldownOver = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
+
+                lastProgressTimeRef.current = now;
+
+                if (!completedGestures.has(dbGestureName) && isCooldownOver) {
+                    detectionCooldownRef.current = now;
+
+                    const isSoundReady = now - soundCooldownRef.current >= SOUND_COOLDOWN_MS;
+                    if (isSoundReady) {
+                        soundCooldownRef.current = now;
+                        await playGestureSound();
+                    }
 
                     const newCompleted = new Set(completedGestures);
                     newCompleted.add(dbGestureName);
@@ -583,26 +680,20 @@ export default function Level3GesturesScreen() {
 
                     const displayDigit = DIGIT_DISPLAY[dbGestureName] || dbGestureName;
                     showCutePopup(
-                        `✓ ${displayDigit}`,
+                        `${displayDigit} ✓`,
                         `${completedGestures.size + 1}/${LEVEL3_GESTURES.length}`
                     );
                 }
-            } else if (completedGestures.has(dbGestureName)) {
-                // Already completed
-                const now = Date.now();
-                if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                    senyaMsgCooldownRef.current = now;
-                    if (target) {
-                        const targetDigit = DIGIT_DISPLAY[target] || target;
-                        setSenyaMessage(`You got ${dbGestureName}! Try ${targetDigit}`);
-                    } else {
-                        setSenyaMessage(SENYA_MESSAGES.complete);
-                    }
-                }
-                setConsecutiveWrong(0);
             } else {
-                // Wrong gesture
-                if (gestureStableCount >= 2 && (isNewGesture || isTimeForNewAttempt)) {
+                // WRONG GESTURE
+                const now = Date.now();
+                const isNewAttempt = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
+                const isOldGesture = completedGestures.has(dbGestureName);
+                const stuckTooLong = now - lastProgressTimeRef.current >= STUCK_TIMEOUT_MS;
+
+                if ((wrongStreakRef.current >= 2 || stuckTooLong) && isNewAttempt) {
+                    detectionCooldownRef.current = now;
+
                     const newWrong = consecutiveWrong + 1;
                     setConsecutiveWrong(newWrong);
                     setTotalWrongAttempts(prev => prev + 1);
@@ -620,30 +711,36 @@ export default function Level3GesturesScreen() {
                         });
                     }
 
-                    const now = Date.now();
-                    if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                        senyaMsgCooldownRef.current = now;
-                        if (newWrong >= 4) {
-                            const msg = getRandomMessage(SENYA_MESSAGES.struggle);
-                            setSenyaMessage(msg);
-                            setConsecutiveWrong(0);
-                            if (target) {
-                                const targetDigit = DIGIT_DISPLAY[target] || target;
-                                showCutePopup(
-                                    `💡 ${targetDigit}`,
-                                    'Keep your hands steady'
-                                );
-                            } else {
-                                showCutePopup('💡 Keep trying!', 'You got this!');
-                            }
-                        } else if (newWrong >= 2) {
-                            if (target) {
-                                const targetDigit = DIGIT_DISPLAY[target] || target;
-                                setSenyaMessage(`Try making ${targetDigit} shape!`);
-                            } else {
-                                setSenyaMessage(`Try making the shape clearer!`);
-                            }
-                        }
+                    const hintCooldownOk = now - lastHintShownRef.current >= HINT_COOLDOWN_MS;
+
+                    // ✅ FIX: Only access DIGIT_DISPLAY[target] if target is not null
+                    const targetDigit = target ? (DIGIT_DISPLAY[target] || target) : '';
+
+                    // Baseline reminder - only if target exists
+                    if (target && newWrong >= 1) {
+                        setSenyaMessage(
+                            isOldGesture
+                                ? `You got ${dbGestureName} already! We're doing ${targetDigit} now!`
+                                : `We're doing number ${targetDigit}!`
+                        );
+                    }
+
+                    // Escalate to hint suggestion
+                    if (target && (newWrong >= 2 || stuckTooLong) && hintCooldownOk) {
+                        lastHintShownRef.current = now;
+                        setSenyaMessage(`Need help with ${targetDigit}? Click the 💡 hints icon!`);
+                        showStruggleHint();
+                    }
+
+                    // Stronger nudge
+                    if (target && (newWrong >= 4 || stuckTooLong) && hintCooldownOk) {
+                        lastHintShownRef.current = now;
+                        showCutePopup(
+                            `💡 ${targetDigit}`,
+                            'Keep your hands steady'
+                        );
+                        setSenyaMessage(`Click the 💡 hints icon if you need help signing ${targetDigit}!`);
+                        showStruggleHint();
                     }
                 }
             }
@@ -654,51 +751,219 @@ export default function Level3GesturesScreen() {
             setConfidence(0);
             setLastProcessedGesture('');
             setGestureStableCount(0);
+            lastProcessedGestureRef.current = '';
+            gestureStableCountRef.current = 0;
 
             const now = Date.now();
-            if (!isModuleComplete && completedGestures.size < LEVEL3_GESTURES.length && now - senyaMsgCooldownRef.current >= 5000) {
+            if (!isModuleComplete && completedGestures.size < LEVEL3_GESTURES.length && now - senyaMsgCooldownRef.current >= 3000) {
                 senyaMsgCooldownRef.current = now;
                 const target = getCurrentTarget();
                 if (target) {
+                    const hintCooldownOk = now - lastHintShownRef.current >= HINT_COOLDOWN_MS;
                     const targetDigit = DIGIT_DISPLAY[target] || target;
+
                     setSenyaMessage(`Show me ${targetDigit}!`);
+
+                    if (consecutiveWrong >= 3 && hintCooldownOk) {
+                        lastHintShownRef.current = now;
+                        setSenyaMessage(`Show me ${targetDigit}! Click 💡 for a hint!`);
+                        showStruggleHint();
+                    }
                 }
             }
         }
     };
 
-    // ─── UPDATE THE MODULE COMPLETION EFFECT ──────────────────────────────────
-    useEffect(() => {
-        if (isModuleComplete) {
-            // Save all performance data at the end
-            saveAllPerformance().then(result => {
-                if (result) {
-                    console.log('📊 All Level 3 performance data saved');
+    // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
+    const LEVEL3_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level3.html';
+
+    const injectedJavaScript = `
+    (function() {
+        const hideUI = function() {
+            const elementsToHide = [
+                '#status-bar',
+                '#progress-tracker', 
+                '#overlay',
+                '.progress-bar',
+                '#level-badge',
+                '#match-indicator'
+            ];
+            
+            elementsToHide.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.style.display = 'none';
+                    el.style.pointerEvents = 'none';
                 }
             });
-
-            // Award XP based on star rating
-            setTimeout(async () => {
-                const result = await awardModuleXp(starRating);
-                if (result) {
-                    setXpResult(result);
+            
+            const greetingDisplay = document.querySelector('#greeting-display');
+            if (greetingDisplay) {
+                greetingDisplay.style.display = 'none';
+            }
+            
+            console.log('🎨 WebView UI hidden');
+        };
+        
+        hideUI();
+        
+        const checkModelStatus = setInterval(function() {
+            const statusText = document.getElementById('status-text');
+            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
+            
+            if (modelReady) {
+                clearInterval(checkModelStatus);
+                if (window.ReactNativeWebView) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'model_ready',
+                        status: 'loaded'
+                    }));
                 }
-            }, 2000);
+            }
+        }, 1000);
+        
+        setTimeout(function() {
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'library_check',
+                    tf: typeof tf !== 'undefined',
+                    mediapipe: typeof Hands !== 'undefined'
+                }));
+            }
+        }, 2000);
+    })();
+`;
+
+    const openInBrowser = async () => {
+        try {
+            const urlWithHeader = LEVEL3_URL + '?ngrok-skip-browser-warning=true';
+            await WebBrowser.openBrowserAsync(urlWithHeader);
+        } catch (error) {
+            Linking.openURL(LEVEL3_URL);
         }
-    }, [isModuleComplete]);
+    };
 
+    const handleMessage = (event: any) => {
+        try {
+            const data = JSON.parse(event.nativeEvent.data);
 
+            if (data.type === 'model_status') {
+                if (data.status === 'loaded') {
+                    setModelLoading(false);
+                    setLoading(false);
+                    setIsConnected(true);
+                    setShowStartupAnimation(false);
+                }
+                return;
+            }
 
-    // ─── XP AWARD ──────────────────────────────────────────────────────────────
+            if (data.type === 'model_ready' || data.status === 'all_loaded') {
+                setIsConnected(true);
+                setModelLoading(false);
+                setShowStartupAnimation(false);
+                return;
+            }
+
+            if (data.type === 'mediapipe_ready') {
+                setShowStartupAnimation(false);
+                return;
+            }
+
+            if (data.test) {
+                setIsConnected(true);
+                setLoading(false);
+                setModelLoading(false);
+                setShowStartupAnimation(false);
+                return;
+            }
+
+            const detectedValue = data.greeting || data.letter || '';
+            const confidenceValue = data.confidence || 0;
+
+            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                console.log(`🎯 Learned: ${detectedValue}`);
+            }
+
+            if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
+                setGestureStableCount(0);
+                return;
+            }
+
+            const dbGestureName = GESTURE_TO_DB_MAP[detectedValue] || detectedValue;
+
+            if (LEVEL3_GESTURES.includes(dbGestureName)) {
+                setDetectedGesture(dbGestureName);
+                setConfidence(confidenceValue);
+                setIsConnected(true);
+                setShowBrowserButton(false);
+                setShowStartupAnimation(false);
+                handleDetection({ ...data, greeting: dbGestureName });
+            } else {
+                setDetectedGesture(detectedValue);
+                setConfidence(confidenceValue);
+            }
+
+        } catch (error) {
+            console.error('❌ Message error:', error);
+        }
+    };
+
+    // ─── RESULTS ──────────────────────────────────────────────────────────
+    const getResults = () => {
+        const timeToUse = endTime || Date.now();
+        const totalSecs = Math.round((timeToUse - startTime) / 1000);
+        const minutes = Math.floor(totalSecs / 60);
+        const seconds = totalSecs % 60;
+        const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+        const strugglingGestures = Object.values(gestureAttempts)
+            .filter(g => g.wrongAttempts >= 2)
+            .sort((a, b) => b.wrongAttempts - a.wrongAttempts)
+            .map(g => g.gesture)
+            .slice(0, 3);
+
+        const easyGestures = Object.values(gestureAttempts)
+            .filter(g => g.successCount > 0 && g.wrongAttempts === 0)
+            .map(g => g.gesture);
+
+        return {
+            totalTime: timeDisplay,
+            strugglingGestures,
+            easyGestures,
+            totalCorrect: completedGestures.size,
+            totalWrong: totalWrongAttempts,
+        };
+    };
+
+    const getLevelName = (level: number): string => {
+        const levelNames: Record<number, string> = {
+            1: 'Novice Signer',
+            2: 'Beginner Signer',
+            3: 'Emerging Signer',
+            4: 'Intermediate Signer',
+            5: 'Advanced Beginner',
+            6: 'Competent Signer',
+            7: 'Proficient Signer',
+            8: 'Advanced Signer',
+            9: 'Expert Signer',
+            10: 'Master Signer',
+        };
+        return levelNames[level] || 'Novice Signer';
+    };
+
+    const getNextLevelXp = (level: number): number => {
+        const thresholds: Record<number, number> = {
+            1: 0, 2: 100, 3: 250, 4: 500, 5: 800,
+            6: 1200, 7: 1700, 8: 2300, 9: 3000, 10: 4000,
+        };
+        const nextLevel = level + 1;
+        return thresholds[nextLevel] || 4000 + ((level - 9) * 1000);
+    };
+
     const awardModuleXp = async (starRating: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping XP award');
-                return null;
-            }
-
-            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
+            if (!token) return null;
 
             const result = await api.awardModuleXp(MODULE_NAME, starRating);
 
@@ -732,209 +997,7 @@ export default function Level3GesturesScreen() {
         }
     }, [isModuleComplete]);
 
-    // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const LEVEL3_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level3.html';
-
-    // Injected JavaScript to hide WebView UI overlays
-    const injectedJavaScript = `
-    (function() {
-        // HIDE ALL WEBVIEW UI OVERLAYS - Only show camera feed
-        const hideUI = function() {
-            const elementsToHide = [
-                '#status-bar',
-                '#progress-tracker', 
-                '#overlay',
-                '.progress-bar',
-                '#level-badge',
-                '#match-indicator'
-            ];
-            
-            elementsToHide.forEach(selector => {
-                const el = document.querySelector(selector);
-                if (el) {
-                    el.style.display = 'none';
-                    el.style.pointerEvents = 'none';
-                }
-            });
-            
-            // Hide the greeting display overlay completely
-            const greetingDisplay = document.querySelector('#greeting-display');
-            if (greetingDisplay) {
-                greetingDisplay.style.display = 'none';
-            }
-            
-            console.log('🎨 WebView UI hidden - only camera feed visible');
-        };
-        
-        // Run immediately and after DOM changes
-        hideUI();
-        
-        // Monitor for model loading status (only essential logs)
-        const checkModelStatus = setInterval(function() {
-            const statusText = document.getElementById('status-text');
-            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
-            
-            if (modelReady) {
-                clearInterval(checkModelStatus);
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'model_ready',
-                        status: 'loaded'
-                    }));
-                }
-            }
-        }, 1000);
-        
-        // Check for TensorFlow
-        setTimeout(function() {
-            if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'library_check',
-                    tf: typeof tf !== 'undefined',
-                    mediapipe: typeof Hands !== 'undefined'
-                }));
-            }
-        }, 2000);
-    })();
-`;
-
-    const openInBrowser = async () => {
-        try {
-            const urlWithHeader = LEVEL3_URL + '?ngrok-skip-browser-warning=true';
-            await WebBrowser.openBrowserAsync(urlWithHeader);
-        } catch (error) {
-            Linking.openURL(LEVEL3_URL);
-        }
-    };
-
-    const handleMessage = (event: any) => {
-        try {
-            const data = JSON.parse(event.nativeEvent.data);
-
-            // Handle model status updates
-            if (data.type === 'model_status') {
-                if (data.status === 'loaded') {
-                    setModelLoading(false);
-                    setLoading(false);
-                    setIsConnected(true);
-                    setShowStartupAnimation(false);
-                }
-                return;
-            }
-
-            // Handle model ready signal from HTML
-            if (data.type === 'model_ready' || data.status === 'all_loaded') {
-                setIsConnected(true);
-                setModelLoading(false);
-                setShowStartupAnimation(false);
-                return;
-            }
-
-            // Handle MediaPipe ready
-            if (data.type === 'mediapipe_ready') {
-                setShowStartupAnimation(false);
-                return;
-            }
-
-            // Handle test messages
-            if (data.test) {
-                setIsConnected(true);
-                setLoading(false);
-                setModelLoading(false);
-                setShowStartupAnimation(false);
-                return;
-            }
-
-            // Handle detection data (existing code)
-            const detectedValue = data.greeting || data.letter || '';
-            const confidenceValue = data.confidence || 0;
-
-            if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                console.log(`🎯 Learned: ${detectedValue}`);
-            }
-
-            if (!detectedValue || detectedValue === '' || detectedValue === '✋' || detectedValue === '...') {
-                setGestureStableCount(0);
-                return;
-            }
-
-            const dbGestureName = GESTURE_TO_DB_MAP[detectedValue] || detectedValue;
-
-            if (LEVEL3_GESTURES.includes(dbGestureName)) {
-                setDetectedGesture(dbGestureName);
-                setConfidence(confidenceValue);
-                setIsConnected(true);
-                setShowBrowserButton(false);
-                setShowStartupAnimation(false);
-                handleDetection({ ...data, greeting: dbGestureName });
-            } else {
-                setDetectedGesture(detectedValue);
-                setConfidence(confidenceValue);
-            }
-
-        } catch (error) {
-            console.error('❌ Message error:', error);
-        }
-    };
-
-
-    // ─── RESULTS ──────────────────────────────────────────────────────────
-    const getResults = () => {
-        const timeToUse = endTime || Date.now();
-        const totalSecs = Math.round((timeToUse - startTime) / 1000);
-        const minutes = Math.floor(totalSecs / 60);
-        const seconds = totalSecs % 60;
-        const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
-        const strugglingGestures = Object.values(gestureAttempts)
-            .filter(g => g.wrongAttempts >= 2)
-            .sort((a, b) => b.wrongAttempts - a.wrongAttempts)
-            .map(g => g.gesture)
-            .slice(0, 3);
-
-        const easyGestures = Object.values(gestureAttempts)
-            .filter(g => g.successCount > 0 && g.wrongAttempts === 0)
-            .map(g => g.gesture);
-
-        const completedCount = completedGestures.size;
-
-        return {
-            totalTime: timeDisplay,
-            strugglingGestures,
-            easyGestures,
-            totalCorrect: completedCount,
-            totalWrong: totalWrongAttempts,
-        };
-    };
-
-    const getLevelName = (level: number): string => {
-        const levelNames: Record<number, string> = {
-            1: 'Novice Signer',
-            2: 'Beginner Signer',
-            3: 'Emerging Signer',
-            4: 'Intermediate Signer',
-            5: 'Advanced Beginner',
-            6: 'Competent Signer',
-            7: 'Proficient Signer',
-            8: 'Advanced Signer',
-            9: 'Expert Signer',
-            10: 'Master Signer',
-        };
-        return levelNames[level] || 'Novice Signer';
-    };
-
-    const getNextLevelXp = (level: number): number => {
-        const thresholds: Record<number, number> = {
-            1: 0, 2: 100, 3: 250, 4: 500, 5: 800,
-            6: 1200, 7: 1700, 8: 2300, 9: 3000, 10: 4000,
-        };
-        const nextLevel = level + 1;
-        return thresholds[nextLevel] || 4000 + ((level - 9) * 1000);
-    };
-
-    // ─── UPDATE THE HANDLE CONTINUE ───────────────────────────────────────────
     const handleContinue = async () => {
-        // Save any remaining gestures that might not have been saved
         const unsavedGestures = LEVEL3_GESTURES.filter(
             gesture => completedGestures.has(gesture) && !savedGesturesRef.current.has(gesture)
         );
@@ -943,7 +1006,6 @@ export default function Level3GesturesScreen() {
             await saveSingleGesturePerformance(gesture);
         }
 
-        // Final save just in case
         await saveAllPerformance();
 
         setShowResults(false);
@@ -956,12 +1018,10 @@ export default function Level3GesturesScreen() {
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
 
-            // Fetch the actual streak from the API instead of hardcoding it
             let streakDays = 0;
             try {
                 const streakData = await api.getStreak();
                 streakDays = streakData.streak_days || 0;
-                console.log('📊 Fetched streak from API:', streakDays);
             } catch (error) {
                 console.error('Error fetching streak:', error);
                 streakDays = 0;
@@ -984,6 +1044,7 @@ export default function Level3GesturesScreen() {
             router.back();
         }
     };
+
     // ─── PERMISSION CHECK ──────────────────────────────────────────────────
     if (!permission) {
         return (
@@ -1018,55 +1079,39 @@ export default function Level3GesturesScreen() {
         <SafeAreaView style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <Pressable onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color="#0f3172" />
-                    </Pressable>
-                </View>
-
+                <Pressable onPress={() => router.back()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={24} color="#0f3172" />
+                </Pressable>
                 <Text style={styles.headerTitle}>Numbers 1-10</Text>
-
                 <View style={styles.headerRight}>
-                    {/* UI Toggle Button - COMMENTED OUT (not needed in app) */}
-                    {/* <Pressable
-                        onPress={() => {
-                            webViewRef.current?.injectJavaScript(`
-                                (function() {
-                                    const elements = ['#status-bar', '#progress-tracker', '#overlay', '.progress-bar'];
-                                    const show = document.querySelector('#status-bar').style.display !== 'none';
-                                    elements.forEach(sel => {
-                                        const el = document.querySelector(sel);
-                                        if (el) el.style.display = show ? 'none' : '';
-                                    });
-                                })();
-                            `);
+                    {/* ─── HINTS BUTTON WITH ANIMATIONS ────────────────────────────────── */}
+                    <Animated.View
+                        style={{
+                            transform: [
+                                { scale: hintPulseAnim },
+                                { translateX: hintShakeAnim },
+                            ],
                         }}
-                        style={styles.testButton}
                     >
-                        <Ionicons name="eye-outline" size={20} color="#0f3172" />
-                    </Pressable> */}
-
-                    {/* Bug Button - COMMENTED OUT (not needed in production) */}
-                    {/* <Pressable
-                        onPress={() => {
-                            webViewRef.current?.injectJavaScript(`
-                                (function() {
-                                    if (window.ReactNativeWebView) {
-                                        window.ReactNativeWebView.postMessage(JSON.stringify({
-                                            greeting: 'ONE',
-                                            confidence: 0.95,
-                                            handCount: 1,
-                                            digit: '1',
-                                            test: true
-                                        }));
-                                    }
-                                })();
-                            `);
-                        }}
-                        style={styles.testButton}
-                    >
-                        <Ionicons name="bug-outline" size={20} color="#0f3172" />
-                    </Pressable> */}
+                        <Pressable
+                            onPress={openHintsModal}
+                            style={[
+                                styles.hintsBtn,
+                                isStruggling && styles.hintsBtnGlow,
+                            ]}
+                        >
+                            <Ionicons
+                                name="bulb-outline"
+                                size={22}
+                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                            />
+                            {isStruggling && (
+                                <View style={styles.hintsBadge}>
+                                    <Text style={styles.hintsBadgeText}>!</Text>
+                                </View>
+                            )}
+                        </Pressable>
+                    </Animated.View>
 
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
@@ -1127,7 +1172,6 @@ export default function Level3GesturesScreen() {
                     }}
                     onLoadEnd={() => {
                         setIsConnected(true);
-                        // Don't set loading false here - let the timer handle it
                     }}
                     onError={(error) => {
                         console.error('❌ WebView error:', error);
@@ -1135,7 +1179,6 @@ export default function Level3GesturesScreen() {
                         setShowStartupAnimation(false);
                     }}
                     onMessage={handleMessage}
-
                     injectedJavaScript={injectedJavaScript}
                     mediaPlaybackRequiresUserAction={false}
                     allowsInlineMediaPlayback={true}
@@ -1190,13 +1233,18 @@ export default function Level3GesturesScreen() {
                     const digit = DIGIT_DISPLAY[gesture] || gesture;
 
                     return (
-                        <View
+                        <TouchableOpacity
                             key={gesture}
                             style={[
                                 styles.gestureSlot,
                                 isCompleted && styles.gestureCompleted,
                                 isActive && styles.gestureActive,
                             ]}
+                            onPress={() => {
+                                const index = LEVEL3_GESTURES.indexOf(gesture);
+                                setHintsCurrentIndex(index);
+                                setShowHintsModal(true);
+                            }}
                         >
                             <Text style={[
                                 styles.gestureChar,
@@ -1214,7 +1262,7 @@ export default function Level3GesturesScreen() {
                             {!isCompleted && !isActive && (
                                 <View style={styles.gestureStatusDot} />
                             )}
-                        </View>
+                        </TouchableOpacity>
                     );
                 })}
             </ScrollView>
@@ -1232,7 +1280,6 @@ export default function Level3GesturesScreen() {
                             <View
                                 style={[
                                     styles.confidenceFill,
-                                    // Smart percentage check (handles both 0.95 and 95)
                                     { width: `${confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%` }
                                 ]}
                             />
@@ -1275,6 +1322,110 @@ export default function Level3GesturesScreen() {
                     </View>
                 </Animated.View>
             )}
+
+            {/* ─── HINTS MODAL ─────────────────────────────────────────── */}
+            <Modal
+                visible={showHintsModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowHintsModal(false)}
+            >
+                <View style={styles.hintsModalOverlay}>
+                    <View style={styles.hintsModalCard}>
+                        {/* Header */}
+                        <View style={styles.hintsModalHeader}>
+                            <Text style={styles.hintsModalTitle}>
+                                Numbers 1–10
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.hintsModalClose}
+                                onPress={() => setShowHintsModal(false)}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="close" size={24} color="#0f3172" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Number indicator */}
+                        <View style={styles.hintsLetterIndicator}>
+                            <Text style={styles.hintsLetterText}>
+                                Number {currentDisplayDigit}
+                            </Text>
+                            <Text style={styles.hintsCountText}>
+                                {hintsCurrentIndex + 1} / {LEVEL3_GESTURES.length}
+                            </Text>
+                        </View>
+
+                        {/* Media display area - with cover fit for larger images */}
+                        <View style={styles.hintsMediaContainer}>
+                            {currentHintMedia ? (
+                                <WebViewMedia
+                                    url={currentHintMedia.url}
+                                    isVideo={currentHintMedia.isVideo}
+                                    mediaType="quiz"
+                                    hideControls={true}
+                                    autoplay={true}
+                                    objectFit="cover"
+                                    objectPosition="75% center" // ✅ Move more to the right - adjust this value
+                                />
+                            ) : (
+                                <View style={styles.hintsNoMedia}>
+                                    <Text style={styles.hintsNoMediaText}>
+                                        No media available for {currentDisplayDigit}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
+
+                        {/* Navigation arrows */}
+                        <View style={styles.hintsNavContainer}>
+                            <TouchableOpacity
+                                style={styles.hintsNavButton}
+                                onPress={goToPreviousHint}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="chevron-back" size={28} color="#0f3172" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.hintsNavButton}
+                                onPress={goToNextHint}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="chevron-forward" size={28} color="#0f3172" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Number progress dots */}
+                        <View style={styles.hintsDotsContainer}>
+                            {LEVEL3_GESTURES.map((gesture, index) => (
+                                <TouchableOpacity
+                                    key={gesture}
+                                    style={[
+                                        styles.hintsDot,
+                                        index === hintsCurrentIndex && styles.hintsDotActive,
+                                        completedGestures.has(gesture) && styles.hintsDotCompleted,
+                                    ]}
+                                    onPress={() => setHintsCurrentIndex(index)}
+                                />
+                            ))}
+                        </View>
+
+                        {/* Senya tip */}
+                        <View style={styles.hintsTipContainer}>
+                            <Image
+                                source={require('../../assets/images/img/senya_teaching.png')}
+                                style={styles.hintsTipImage}
+                                resizeMode="contain"
+                            />
+                            <Text style={styles.hintsTipText}>
+                                Practice making the number {currentDisplayDigit} shape with your hand!
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Results Modal */}
             <Modal
@@ -1379,18 +1530,20 @@ export default function Level3GesturesScreen() {
                                             }
 
                                             if (results.strugglingGestures.length > 0) {
+                                                const displayStruggling = results.strugglingGestures.map(g => DIGIT_DISPLAY[g] || g);
                                                 items.push({
                                                     icon: 'alert-circle-outline',
                                                     color: '#E11D48',
-                                                    text: `Need more help with: ${results.strugglingGestures.join(', ')}`,
+                                                    text: `Need more help with: ${displayStruggling.join(', ')}`,
                                                 });
                                             }
 
                                             if (results.easyGestures.length > 0) {
+                                                const displayEasy = results.easyGestures.map(g => DIGIT_DISPLAY[g] || g);
                                                 items.push({
                                                     icon: 'checkmark-circle',
                                                     color: '#10B981',
-                                                    text: `You nailed: ${results.easyGestures.join(', ')}`,
+                                                    text: `You nailed: ${displayEasy.join(', ')}`,
                                                 });
                                             }
 
@@ -1474,6 +1627,11 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(15, 49, 114, 0.08)',
     },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
     backBtn: {
         width: 40,
         height: 40,
@@ -1505,6 +1663,192 @@ const styles = StyleSheet.create({
     },
     statusActiveText: {
         color: '#10B981',
+    },
+    // ─── HINTS BUTTON STYLES ──────────────────────────────────────────────
+    hintsBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 215, 0, 0.3)',
+    },
+    hintsBtnGlow: {
+        backgroundColor: 'rgba(255, 215, 0, 0.4)',
+        borderColor: '#FFD700',
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 15,
+        elevation: 8,
+    },
+    hintsBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: '#FFD700',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    hintsBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    // ─── HINTS MODAL STYLES ────────────────────────────────────────────────
+    hintsModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(10, 22, 40, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+    hintsModalCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        paddingTop: 20,
+        paddingBottom: 24,
+        paddingHorizontal: 20,
+        width: '100%',
+        maxWidth: 360,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 16,
+    },
+    hintsModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+    },
+    hintsModalTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    hintsModalClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    hintsLetterIndicator: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    hintsLetterText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#0f3172',
+    },
+    hintsCountText: {
+        fontSize: 13,
+        color: '#4b7bbb',
+        fontWeight: '600',
+    },
+    hintsMediaContainer: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#f1f5f9',
+        borderWidth: 2,
+        borderColor: '#e2e8f0',
+        marginBottom: 14,
+    },
+    hintsNoMedia: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f8fafc',
+    },
+    hintsNoMediaText: {
+        color: '#94a3b8',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    hintsNavContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        paddingHorizontal: 4,
+        marginBottom: 14,
+    },
+    hintsNavButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    hintsDotsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 6,
+        marginBottom: 14,
+        paddingHorizontal: 4,
+    },
+    hintsDot: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#e2e8f0',
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    hintsDotActive: {
+        backgroundColor: '#FFD700',
+        borderColor: '#0f3172',
+        transform: [{ scale: 1.15 }],
+    },
+    hintsDotCompleted: {
+        backgroundColor: '#10B981',
+        borderColor: '#10B981',
+    },
+    hintsTipContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f7faff',
+        borderRadius: 14,
+        padding: 12,
+        width: '100%',
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.08)',
+        gap: 10,
+    },
+    hintsTipImage: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+    },
+    hintsTipText: {
+        flex: 1,
+        fontSize: 13,
+        color: '#0f3172',
+        fontWeight: '500',
+        lineHeight: 18,
     },
     senyaSection: {
         flexDirection: 'row',
@@ -1961,25 +2305,5 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 15,
         fontWeight: '700',
-    },
-    testButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(15, 49, 114, 0.1)',
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    headerRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
     },
 });

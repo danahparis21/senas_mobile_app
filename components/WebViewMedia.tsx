@@ -1,3 +1,4 @@
+// components/WebViewMedia.tsx
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -9,7 +10,9 @@ interface WebViewMediaProps {
     autoplay?: boolean;
     style?: any;
     mediaType?: 'content' | 'quiz' | 'option';
-    hideControls?: boolean;  // ✅ Add this
+    hideControls?: boolean;
+    objectFit?: 'cover' | 'contain' | 'fill';
+    objectPosition?: 'center' | 'left' | 'right' | 'top' | 'bottom' | string; // ✅ Allow string for percentages
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -21,11 +24,12 @@ export function WebViewMedia({
     autoplay = true,
     style,
     mediaType = 'content',
-    hideControls = false,  // ✅ Default to false
+    hideControls = false,
+    objectFit = 'cover',
+    objectPosition = 'center',
 }: WebViewMediaProps) {
     const baseUrl = 'http://192.168.1.45:8000/media-player';
 
-    // ✅ Determine aspect ratio based on media type
     let aspectRatio = '16:9';
 
     switch (mediaType) {
@@ -42,19 +46,10 @@ export function WebViewMedia({
             aspectRatio = '16:9';
     }
 
-    // ✅ Build URL with all parameters
-    const fullUrl = `${baseUrl}?url=${encodeURIComponent(url)}&isVideo=${isVideo}&caption=${encodeURIComponent(caption)}&autoplay=${autoplay}&aspect=${aspectRatio}&hideControls=${hideControls}`;
-
-    // ✅ Different heights based on media type
-    let containerHeight = 250;
-    if (mediaType === 'quiz') {
-        containerHeight = 200;
-    } else if (mediaType === 'option') {
-        containerHeight = 120;
-    }
+    const fullUrl = `${baseUrl}?url=${encodeURIComponent(url)}&isVideo=${isVideo}&caption=${encodeURIComponent(caption)}&autoplay=${autoplay}&aspect=${aspectRatio}&hideControls=${hideControls}&fit=${objectFit}&position=${encodeURIComponent(objectPosition)}`;
 
     return (
-        <View style={[styles.container, { height: containerHeight }, style]}>
+        <View style={[styles.container, style]}>
             <WebView
                 source={{ uri: fullUrl }}
                 style={styles.webview}
@@ -74,9 +69,9 @@ export function WebViewMedia({
 const styles = StyleSheet.create({
     container: {
         width: '100%',
-        borderRadius: 12,
+        flex: 1,
         overflow: 'hidden',
-        backgroundColor: '#eaf5fd',
+        backgroundColor: 'transparent',
     },
     webview: {
         flex: 1,

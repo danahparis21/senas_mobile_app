@@ -1,5 +1,5 @@
 // app/gesture/webview-greetings.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react'; // ← ADD useCallback
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -18,7 +18,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -27,7 +27,9 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
-import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+import { useSettings } from '../../contexts/SettingsContext';
+// Import the WebViewMedia component for displaying signs
+import { WebViewMedia } from '../../components/WebViewMedia';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -39,6 +41,16 @@ const { width, height } = Dimensions.get('window');
 // ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
 const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
+
+// ─── SIGN LANGUAGE MEDIA MAPPING FOR GREETINGS ──────────────────────────────
+// All greetings use video files
+const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
+    'HELLO': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/47_Hello.mp4', isVideo: true },
+    'THANK YOU': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/48_ThankYou.mp4', isVideo: true },
+    'SEE YOU TOMORROW': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/49_SeeYouTomorrow.mp4', isVideo: true },
+    'HOW ARE YOU': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/50_HowAreYou.mp4', isVideo: true },
+    'NICE TO MEET YOU': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/51_NicetoMeetYou.mp4', isVideo: true },
+};
 
 // Level 2 Greetings - FSL Greetings
 const GREETINGS_LIST = [
@@ -60,7 +72,7 @@ const DISPLAY_NAMES: Record<string, string> = {
 
 // Senya's encouragement messages
 const SENYA_MESSAGES = {
-    welcome: "Level 2! Let's learn greetings! 👋",
+    welcome: "Let's learn greetings! 👋",
     correct: [
         "Amazing! You're a natural!",
         "Perfect! Keep going!",
@@ -74,7 +86,7 @@ const SENYA_MESSAGES = {
         "You got this! Try again!",
         "Almost there! One more try!",
     ],
-    complete: "LEVEL 2 COMPLETE! All 5 greetings mastered! 🎉",
+    complete: "YOU DID IT! ALL 5 GREETINGS! 🎉",
 };
 
 // Gesture struggle tracking
@@ -102,6 +114,62 @@ export default function WebViewGreetingsScreen() {
     const [showBrowserButton, setShowBrowserButton] = useState(true);
     const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
+    // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
+    const [showHintsModal, setShowHintsModal] = useState(false);
+    const [hintsCurrentIndex, setHintsCurrentIndex] = useState(0);
+
+    const [isStruggling, setIsStruggling] = useState(false);
+    const [hintPulseAnim] = useState(new Animated.Value(1));
+    const [hintShakeAnim] = useState(new Animated.Value(0));
+
+    // Hint button animations
+    const animateHintButton = () => {
+        Animated.sequence([
+            Animated.timing(hintPulseAnim, {
+                toValue: 1.2,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintPulseAnim, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        Animated.sequence([
+            Animated.timing(hintShakeAnim, {
+                toValue: -5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: 5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: -5,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+            Animated.timing(hintShakeAnim, {
+                toValue: 0,
+                duration: 100,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
+
+    // Show struggle message and animate hint button
+    const showStruggleHint = () => {
+        setIsStruggling(true);
+        animateHintButton();
+
+        setTimeout(() => {
+            setIsStruggling(false);
+        }, 5000);
+    };
 
     useFocusEffect(
         useCallback(() => {
@@ -114,7 +182,6 @@ export default function WebViewGreetingsScreen() {
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
     const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
-
 
     // Gamification state
     const [completedGestures, setCompletedGestures] = useState<Set<string>>(new Set());
@@ -146,6 +213,13 @@ export default function WebViewGreetingsScreen() {
     const senyaMsgCooldownRef = useRef<number>(0);
     const SENYA_COOLDOWN_MS = 3000;
 
+    const lastHintShownRef = useRef<number>(0);
+    const HINT_COOLDOWN_MS = 5000;
+
+    // Time-based fallback
+    const lastProgressTimeRef = useRef<number>(Date.now());
+    const STUCK_TIMEOUT_MS = 10000;
+
     // Star animations for results modal
     const starAnim1 = useRef(new Animated.Value(0)).current;
     const starAnim2 = useRef(new Animated.Value(0)).current;
@@ -153,12 +227,58 @@ export default function WebViewGreetingsScreen() {
 
     const [modelLoading, setModelLoading] = useState(true);
 
-    // ── Module Name ──────────────────────────────────────────────────────────
+    // Refs for synchronous tracking
+    const lastProcessedGestureRef = useRef<string>('');
+    const gestureStableCountRef = useRef<number>(0);
+    const wrongStreakRef = useRef<number>(0);
+
+    const savedGesturesRef = useRef<Set<string>>(new Set());
+    const lastAttemptGestureRef = useRef<string>('');
+    const lastAttemptTimeRef = useRef<number>(0);
+    const MIN_ATTEMPT_INTERVAL = 1000;
+
+    const detectionCooldownRef = useRef<number>(0);
+    const DETECTION_COOLDOWN_MS = 1500;
+
+    const soundCooldownRef = useRef<number>(0);
+    const SOUND_COOLDOWN_MS = 800;
+
+    const attemptedGesturesRef = useRef<Set<string>>(new Set());
+    const successfulGesturesRef = useRef<Set<string>>(new Set());
+    // ─── MODULE NAME ──────────────────────────────────────────────────────────
     const MODULE_NAME = 'level2_greetings';
 
-    // ─── PLAY GESTURE SOUND (only if enabled) ──────────────────────────────────
+    // ─── HINTS NAVIGATION ──────────────────────────────────────────────────
+    const getCurrentGestureForHints = () => {
+        return currentTarget || 'HELLO';
+    };
+
+    const openHintsModal = () => {
+        const currentGesture = getCurrentGestureForHints();
+        const index = GREETINGS_LIST.indexOf(currentGesture);
+        setHintsCurrentIndex(index >= 0 ? index : 0);
+        setShowHintsModal(true);
+        setIsStruggling(false);
+    };
+
+    const goToPreviousHint = () => {
+        setHintsCurrentIndex(prev =>
+            prev > 0 ? prev - 1 : GREETINGS_LIST.length - 1
+        );
+    };
+
+    const goToNextHint = () => {
+        setHintsCurrentIndex(prev =>
+            prev < GREETINGS_LIST.length - 1 ? prev + 1 : 0
+        );
+    };
+
+    const currentHintGesture = GREETINGS_LIST[hintsCurrentIndex];
+    const currentHintMedia = SIGN_MEDIA[currentHintGesture];
+    const currentDisplayName = DISPLAY_NAMES[currentHintGesture] || currentHintGesture;
+
+    // ─── PLAY GESTURE SOUND ──────────────────────────────────────────────────
     async function playGestureSound() {
-        // ✅ Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping gesture sound');
             return;
@@ -197,9 +317,8 @@ export default function WebViewGreetingsScreen() {
         }
     }
 
-    // ─── PLAY COMPLETE SOUND (only if enabled) ──────────────────────────────────
+    // ─── PLAY COMPLETE SOUND ──────────────────────────────────────────────────
     async function playCompleteSound() {
-        // ✅ Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping complete sound');
             return;
@@ -314,6 +433,7 @@ export default function WebViewGreetingsScreen() {
         return messages[Math.floor(Math.random() * messages.length)];
     };
 
+
     // Show popup
     const showCutePopup = (message: string, subMessage: string = '') => {
         setPopupMessage(message);
@@ -338,19 +458,11 @@ export default function WebViewGreetingsScreen() {
         }, 1200);
     };
 
-    const savedGesturesRef = useRef<Set<string>>(new Set());
-    const lastAttemptGestureRef = useRef<string>('');
-    const lastAttemptTimeRef = useRef<number>(0);
-    const MIN_ATTEMPT_INTERVAL = 1000;
-
     // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
     const saveSingleGesturePerformance = async (gesture: string) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping save');
-                return null;
-            }
+            if (!token) return null;
 
             const data = gestureAttempts[gesture] || {
                 gesture,
@@ -359,19 +471,22 @@ export default function WebViewGreetingsScreen() {
                 successCount: 0
             };
 
-            if (data.attempts === 0) {
-                return null;
-            }
+            if (data.attempts === 0) return null;
 
+            // ✅ FIX: Use the actual data from gestureAttempts
             const gesturePerformance = [{
                 letter: gesture,
                 attempts: data.attempts || 0,
                 wrong_attempts: data.wrongAttempts || 0,
-                success_count: data.successCount || 0,
+                success_count: data.successCount || 0, // ✅ Use successCount
                 consecutive_wrong: 0,
             }];
 
-            console.log(`📤 Saving performance for ${gesture}...`);
+            console.log(`📊 Saving ${gesture}:`, {
+                attempts: data.attempts,
+                wrong: data.wrongAttempts,
+                success: data.successCount
+            });
 
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
@@ -382,10 +497,8 @@ export default function WebViewGreetingsScreen() {
             if (result && result.success) {
                 console.log(`✅ ${gesture} saved!`);
                 return result;
-            } else {
-                console.error(`❌ Failed to save ${gesture}:`, result);
-                return null;
             }
+            return null;
         } catch (error) {
             console.error(`❌ Error saving ${gesture}:`, error);
             return null;
@@ -395,10 +508,7 @@ export default function WebViewGreetingsScreen() {
     const saveAllPerformance = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping save');
-                return null;
-            }
+            if (!token) return null;
 
             const gesturePerformances = GREETINGS_LIST.map(gesture => {
                 const data = gestureAttempts[gesture] || {
@@ -417,12 +527,7 @@ export default function WebViewGreetingsScreen() {
             });
 
             const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
-            if (totalAttempts === 0) {
-                console.log('ℹ️ No attempts recorded, skipping save');
-                return null;
-            }
-
-            console.log(`📤 Saving performance for ${MODULE_NAME}...`);
+            if (totalAttempts === 0) return null;
 
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
@@ -433,21 +538,23 @@ export default function WebViewGreetingsScreen() {
             if (result && result.success) {
                 console.log('✅ Performance saved!');
                 return result;
-            } else {
-                console.error('❌ Failed to save performance:', result);
-                return null;
             }
+            return null;
         } catch (error) {
             console.error('❌ Error saving performance:', error);
             return null;
         }
     };
 
-    // ─── HANDLE DETECTION ────────────────────────────────────────────────
+    useEffect(() => {
+        attemptedGesturesRef.current = new Set();
+        successfulGesturesRef.current = new Set();
+    }, []);
+
+
+
     const handleDetection = async (data: any) => {
         const { greeting, confidence: conf } = data;
-
-        // For greetings, the WebView sends the greeting directly
         const gesture = greeting;
 
         if (gesture && gesture !== '✋' && gesture !== '...' && GREETINGS_LIST.includes(gesture)) {
@@ -456,28 +563,36 @@ export default function WebViewGreetingsScreen() {
             setIsConnected(true);
             setShowBrowserButton(false);
 
-            // Check if this is a stable detection
-            if (gesture === lastProcessedGesture) {
-                setGestureStableCount(prev => prev + 1);
+            // Stability tracking
+            if (gesture === lastProcessedGestureRef.current) {
+                gestureStableCountRef.current += 1;
             } else {
-                setLastProcessedGesture(gesture);
-                setGestureStableCount(0);
-                return;
+                lastProcessedGestureRef.current = gesture;
+                gestureStableCountRef.current = 1;
             }
+            setLastProcessedGesture(lastProcessedGestureRef.current);
+            setGestureStableCount(gestureStableCountRef.current);
 
-            // Only process after 3 stable detections
-            if (gestureStableCount < 2) {
+            // Need at least 3 stable frames
+            if (gestureStableCountRef.current < 3) {
                 return;
             }
 
             const now = Date.now();
-            const isNewGesture = gesture !== lastAttemptGestureRef.current;
-            const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
+            const target = getCurrentTarget();
 
-            if (isNewGesture || isTimeForNewAttempt) {
-                lastAttemptGestureRef.current = gesture;
-                lastAttemptTimeRef.current = now;
+            // ✅ FIX: Don't count attempts for already completed gestures
+            if (completedGestures.has(gesture)) {
+                return;
+            }
 
+            // ✅ FIX: Track if this gesture was already attempted this session
+            const isNewAttempt = !attemptedGesturesRef.current.has(gesture);
+
+            if (isNewAttempt) {
+                attemptedGesturesRef.current.add(gesture);
+
+                // Count as an attempt
                 setGestureAttempts(prev => {
                     const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
                     return {
@@ -491,63 +606,66 @@ export default function WebViewGreetingsScreen() {
                 });
             }
 
-            // Gamification logic
-            const target = getCurrentTarget();
-
+            // Check if it's the correct gesture
             if (gesture === target) {
-                // CORRECT!
-                if (!completedGestures.has(gesture)) {
-                    await playGestureSound();
+                const now = Date.now();
+                const isCooldownOver = now - detectionCooldownRef.current >= DETECTION_COOLDOWN_MS;
 
-                    const newCompleted = new Set(completedGestures);
-                    newCompleted.add(gesture);
-                    setCompletedGestures(newCompleted);
-                    setConsecutiveWrong(0);
-                    setTotalCorrectAttempts(prev => prev + 1);
+                if (!completedGestures.has(gesture) && isCooldownOver) {
+                    detectionCooldownRef.current = now;
 
+                    // ✅ FIX: Track successful attempts PER SESSION
+                    // Count each successful detection, not just once per gesture
                     setGestureAttempts(prev => {
                         const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
                         return {
                             ...prev,
                             [gesture]: {
                                 ...current,
-                                successCount: current.successCount + 1,
+                                successCount: current.successCount + 1, // ✅ Increment each time!
                                 firstSuccess: current.firstSuccess || Date.now(),
+                                // Keep attempts the same (already counted above)
                             }
                         };
                     });
 
+                    // ✅ FIX: Track successful gestures separately for completion
+                    successfulGesturesRef.current.add(gesture);
+
+                    // Award the gesture as completed
+                    const newCompleted = new Set(completedGestures);
+                    newCompleted.add(gesture);
+                    setCompletedGestures(newCompleted);
+                    setConsecutiveWrong(0);
+                    setTotalCorrectAttempts(prev => prev + 1);
+
+                    // Play sound
+                    const isSoundReady = now - soundCooldownRef.current >= SOUND_COOLDOWN_MS;
+                    if (isSoundReady) {
+                        soundCooldownRef.current = now;
+                        await playGestureSound();
+                    }
+
+                    // Save performance
                     if (!savedGesturesRef.current.has(gesture)) {
                         savedGesturesRef.current.add(gesture);
                         await saveSingleGesturePerformance(gesture);
                     }
 
+                    // Show message
                     const msg = getRandomMessage(SENYA_MESSAGES.correct);
                     setSenyaMessage(msg);
                     senyaMsgCooldownRef.current = Date.now();
 
                     const displayName = DISPLAY_NAMES[gesture] || gesture;
                     showCutePopup(
-                        `✓ ${displayName}`,
+                        `${displayName} ✓`,
                         `${completedGestures.size + 1}/${GREETINGS_LIST.length}`
                     );
                 }
-            } else if (completedGestures.has(gesture)) {
-                // Already completed
-                const now = Date.now();
-                if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                    senyaMsgCooldownRef.current = now;
-                    if (target) {
-                        const targetDisplay = DISPLAY_NAMES[target] || target;
-                        setSenyaMessage(`You got ${DISPLAY_NAMES[gesture] || gesture}! Try ${targetDisplay}`);
-                    } else {
-                        setSenyaMessage(SENYA_MESSAGES.complete);
-                    }
-                }
-                setConsecutiveWrong(0);
             } else {
-                // Wrong gesture
-                if (gestureStableCount >= 2 && (isNewGesture || isTimeForNewAttempt)) {
+                // Wrong gesture - only count if it's a new attempt
+                if (isNewAttempt) {
                     const newWrong = consecutiveWrong + 1;
                     setConsecutiveWrong(newWrong);
                     setTotalWrongAttempts(prev => prev + 1);
@@ -564,48 +682,6 @@ export default function WebViewGreetingsScreen() {
                             };
                         });
                     }
-
-                    const now = Date.now();
-                    if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                        senyaMsgCooldownRef.current = now;
-                        if (newWrong >= 4) {
-                            const msg = getRandomMessage(SENYA_MESSAGES.struggle);
-                            setSenyaMessage(msg);
-                            setConsecutiveWrong(0);
-                            if (target) {
-                                const targetDisplay = DISPLAY_NAMES[target] || target;
-                                showCutePopup(
-                                    `💡 ${targetDisplay}`,
-                                    'Keep your hands steady'
-                                );
-                            } else {
-                                showCutePopup('💡 Keep trying!', 'You got this!');
-                            }
-                        } else if (newWrong >= 2) {
-                            if (target) {
-                                const targetDisplay = DISPLAY_NAMES[target] || target;
-                                setSenyaMessage(`Try making ${targetDisplay} shape!`);
-                            } else {
-                                setSenyaMessage(`Try making the shape clearer!`);
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            // No gesture detected
-            setDetectedGesture('✋');
-            setConfidence(0);
-            setLastProcessedGesture('');
-            setGestureStableCount(0);
-
-            const now = Date.now();
-            if (!isModuleComplete && completedGestures.size < GREETINGS_LIST.length && now - senyaMsgCooldownRef.current >= 5000) {
-                senyaMsgCooldownRef.current = now;
-                const target = getCurrentTarget();
-                if (target) {
-                    const targetDisplay = DISPLAY_NAMES[target] || target;
-                    setSenyaMessage(`Show me ${targetDisplay}!`);
                 }
             }
         }
@@ -615,12 +691,7 @@ export default function WebViewGreetingsScreen() {
     const awardModuleXp = async (starRating: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping XP award');
-                return null;
-            }
-
-            console.log(`⭐ Awarding XP for ${starRating} star${starRating > 1 ? 's' : ''}...`);
+            if (!token) return null;
 
             const result = await api.awardModuleXp(MODULE_NAME, starRating);
 
@@ -672,13 +743,11 @@ export default function WebViewGreetingsScreen() {
             .filter(g => g.successCount > 0 && g.wrongAttempts === 0)
             .map(g => g.gesture);
 
-        const completedCount = completedGestures.size;
-
         return {
             totalTime: timeDisplay,
             strugglingGestures,
             easyGestures,
-            totalCorrect: completedCount,
+            totalCorrect: completedGestures.size,
             totalWrong: totalWrongAttempts,
         };
     };
@@ -729,12 +798,10 @@ export default function WebViewGreetingsScreen() {
             const nextLevelXp = getNextLevelXp(level);
             const levelName = getLevelName(level);
 
-            // Fetch the actual streak from the API instead of hardcoding it
             let streakDays = 0;
             try {
                 const streakData = await api.getStreak();
                 streakDays = streakData.streak_days || 0;
-                console.log('📊 Fetched streak from API:', streakDays);
             } catch (error) {
                 console.error('Error fetching streak:', error);
                 streakDays = 0;
@@ -757,6 +824,7 @@ export default function WebViewGreetingsScreen() {
             router.back();
         }
     };
+
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
     const GREETINGS_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
 
@@ -785,7 +853,7 @@ export default function WebViewGreetingsScreen() {
                 greetingDisplay.style.display = 'none';
             }
             
-            console.log('🎨 WebView UI hidden - only camera feed visible');
+            console.log('🎨 WebView UI hidden');
         };
         
         hideUI();
@@ -848,7 +916,6 @@ export default function WebViewGreetingsScreen() {
                 console.error('❌ Model error:', data.error);
                 setModelLoading(false);
                 setLoading(false);
-                setSenyaMessage(`Error: ${data.error}`);
                 return;
             }
 
@@ -932,18 +999,42 @@ export default function WebViewGreetingsScreen() {
         <SafeAreaView style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <Pressable onPress={() => router.back()} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={24} color="#0f3172" />
-                    </Pressable>
-                </View>
-
+                <Pressable onPress={() => router.back()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={24} color="#0f3172" />
+                </Pressable>
                 <Text style={styles.headerTitle}>Greetings</Text>
-
                 <View style={styles.headerRight}>
-                    <Pressable onPress={switchCamera} style={styles.backBtn} hitSlop={8}>
-                        <Ionicons name="camera-reverse-outline" size={24} color="#0f3172" />
-                    </Pressable>
+                    {/* ─── HINTS BUTTON WITH ANIMATIONS ────────────────────────────────── */}
+                    <Animated.View
+                        style={{
+                            transform: [
+                                { scale: hintPulseAnim },
+                                { translateX: hintShakeAnim },
+                            ],
+                        }}
+                    >
+                        <Pressable
+                            onPress={openHintsModal}
+                            style={[
+                                styles.hintsBtn,
+                                isStruggling && styles.hintsBtnGlow,
+                            ]}
+                        >
+                            <Ionicons
+                                name="bulb-outline"
+                                size={22}
+                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                            />
+                            {isStruggling && (
+                                <View style={styles.hintsBadge}>
+                                    <Text style={styles.hintsBadgeText}>!</Text>
+                                </View>
+                            )}
+                        </Pressable>
+                    </Animated.View>
+
+
+
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
                             {isConnected ? '🟢 Live' : '⏳ Loading'}
@@ -1055,13 +1146,18 @@ export default function WebViewGreetingsScreen() {
                     const displayName = DISPLAY_NAMES[gesture] || gesture;
 
                     return (
-                        <View
+                        <TouchableOpacity
                             key={gesture}
                             style={[
                                 styles.gestureSlot,
                                 isCompleted && styles.gestureCompleted,
                                 isActive && styles.gestureActive,
                             ]}
+                            onPress={() => {
+                                const index = GREETINGS_LIST.indexOf(gesture);
+                                setHintsCurrentIndex(index);
+                                setShowHintsModal(true);
+                            }}
                         >
                             <Text style={[
                                 styles.gestureChar,
@@ -1079,7 +1175,7 @@ export default function WebViewGreetingsScreen() {
                             {!isCompleted && !isActive && (
                                 <View style={styles.gestureStatusDot} />
                             )}
-                        </View>
+                        </TouchableOpacity>
                     );
                 })}
             </ScrollView>
@@ -1139,6 +1235,109 @@ export default function WebViewGreetingsScreen() {
                     </View>
                 </Animated.View>
             )}
+
+            {/* ─── HINTS MODAL ─────────────────────────────────────────── */}
+            <Modal
+                visible={showHintsModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowHintsModal(false)}
+            >
+                <View style={styles.hintsModalOverlay}>
+                    <View style={styles.hintsModalCard}>
+                        {/* Header */}
+                        <View style={styles.hintsModalHeader}>
+                            <Text style={styles.hintsModalTitle}>
+                                Greetings
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.hintsModalClose}
+                                onPress={() => setShowHintsModal(false)}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="close" size={24} color="#0f3172" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Greeting indicator */}
+                        <View style={styles.hintsLetterIndicator}>
+                            <Text style={styles.hintsLetterText}>
+                                {currentDisplayName}
+                            </Text>
+                            <Text style={styles.hintsCountText}>
+                                {hintsCurrentIndex + 1} / {GREETINGS_LIST.length}
+                            </Text>
+                        </View>
+
+                        {/* Media display area - centered like alphabets */}
+                        <View style={styles.hintsMediaContainer}>
+                            {currentHintMedia ? (
+                                <WebViewMedia
+                                    url={currentHintMedia.url}
+                                    isVideo={currentHintMedia.isVideo}
+                                    mediaType="quiz"
+                                    hideControls={true}
+                                    autoplay={true}
+                                    objectFit="cover"
+                                // No objectPosition - defaults to 'center' like alphabets
+                                />
+                            ) : (
+                                <View style={styles.hintsNoMedia}>
+                                    <Text style={styles.hintsNoMediaText}>
+                                        No media available for {currentDisplayName}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Navigation arrows */}
+                        <View style={styles.hintsNavContainer}>
+                            <TouchableOpacity
+                                style={styles.hintsNavButton}
+                                onPress={goToPreviousHint}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="chevron-back" size={28} color="#0f3172" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.hintsNavButton}
+                                onPress={goToNextHint}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="chevron-forward" size={28} color="#0f3172" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Greeting progress dots */}
+                        <View style={styles.hintsDotsContainer}>
+                            {GREETINGS_LIST.map((gesture, index) => (
+                                <TouchableOpacity
+                                    key={gesture}
+                                    style={[
+                                        styles.hintsDot,
+                                        index === hintsCurrentIndex && styles.hintsDotActive,
+                                        completedGestures.has(gesture) && styles.hintsDotCompleted,
+                                    ]}
+                                    onPress={() => setHintsCurrentIndex(index)}
+                                />
+                            ))}
+                        </View>
+
+                        {/* Senya tip */}
+                        <View style={styles.hintsTipContainer}>
+                            <Image
+                                source={require('../../assets/images/img/senya_teaching.png')}
+                                style={styles.hintsTipImage}
+                                resizeMode="contain"
+                            />
+                            <Text style={styles.hintsTipText}>
+                                Practice signing {currentDisplayName}!
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Results Modal */}
             <Modal
@@ -1338,7 +1537,22 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(15, 49, 114, 0.08)',
     },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     backBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(15, 49, 114, 0.1)',
+    },
+    cameraBtn: {
         width: 40,
         height: 40,
         borderRadius: 20,
@@ -1369,6 +1583,192 @@ const styles = StyleSheet.create({
     },
     statusActiveText: {
         color: '#10B981',
+    },
+    // ─── HINTS BUTTON STYLES ──────────────────────────────────────────────
+    hintsBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 215, 0, 0.3)',
+    },
+    hintsBtnGlow: {
+        backgroundColor: 'rgba(255, 215, 0, 0.4)',
+        borderColor: '#FFD700',
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 15,
+        elevation: 8,
+    },
+    hintsBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: '#FFD700',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    hintsBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    // ─── HINTS MODAL STYLES ────────────────────────────────────────────────
+    hintsModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(10, 22, 40, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
+    hintsModalCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        paddingTop: 20,
+        paddingBottom: 24,
+        paddingHorizontal: 20,
+        width: '100%',
+        maxWidth: 360,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.25,
+        shadowRadius: 24,
+        elevation: 16,
+    },
+    hintsModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+    },
+    hintsModalTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    hintsModalClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    hintsLetterIndicator: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    hintsLetterText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#0f3172',
+    },
+    hintsCountText: {
+        fontSize: 13,
+        color: '#4b7bbb',
+        fontWeight: '600',
+    },
+    hintsMediaContainer: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#f1f5f9',
+        borderWidth: 2,
+        borderColor: '#e2e8f0',
+        marginBottom: 14,
+    },
+    hintsNoMedia: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f8fafc',
+    },
+    hintsNoMediaText: {
+        color: '#94a3b8',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    hintsNavContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        paddingHorizontal: 4,
+        marginBottom: 14,
+    },
+    hintsNavButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#f1f5f9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+    },
+    hintsDotsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 6,
+        marginBottom: 14,
+        paddingHorizontal: 4,
+    },
+    hintsDot: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#e2e8f0',
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    hintsDotActive: {
+        backgroundColor: '#FFD700',
+        borderColor: '#0f3172',
+        transform: [{ scale: 1.15 }],
+    },
+    hintsDotCompleted: {
+        backgroundColor: '#10B981',
+        borderColor: '#10B981',
+    },
+    hintsTipContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f7faff',
+        borderRadius: 14,
+        padding: 12,
+        width: '100%',
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.08)',
+        gap: 10,
+    },
+    hintsTipImage: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+    },
+    hintsTipText: {
+        flex: 1,
+        fontSize: 13,
+        color: '#0f3172',
+        fontWeight: '500',
+        lineHeight: 18,
     },
     senyaSection: {
         flexDirection: 'row',
@@ -1648,6 +2048,7 @@ const styles = StyleSheet.create({
         marginTop: 1,
         textAlign: 'center',
     },
+    // Results Modal
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(10, 22, 40, 0.7)',
@@ -1829,15 +2230,5 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 15,
         fontWeight: '700',
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    headerRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
     },
 });
