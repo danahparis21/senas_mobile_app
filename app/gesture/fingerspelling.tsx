@@ -1494,12 +1494,12 @@ export default function FingerspellingScreen() {
                                         <View style={styles.resultItemDivider} />
                                         <View style={styles.resultItem}>
                                             <View style={styles.resultIconWrap}>
-                                                <Ionicons name="analytics-outline" size={20} color="#0f3172" />
+                                                <Ionicons name="star" size={20} color="#F59E0B" />
                                             </View>
-                                            <Text style={[styles.resultValue, { color: results.accuracy >= 80 ? '#10B981' : results.accuracy >= 50 ? '#0f3172' : '#E11D48' }]}>
-                                                {results.accuracy}%
+                                            <Text style={[styles.resultValue, { color: '#F59E0B' }]}>
+                                                +{xpResult?.xp_earned || 0} XP
                                             </Text>
-                                            <Text style={styles.resultGridLabel}>Accuracy</Text>
+                                            <Text style={styles.resultGridLabel}>Earned</Text>
                                         </View>
                                     </View>
 

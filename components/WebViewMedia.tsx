@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { API_BASE_URL } from '../app/config/api';
 
 interface WebViewMediaProps {
     url: string;
@@ -12,7 +13,7 @@ interface WebViewMediaProps {
     mediaType?: 'content' | 'quiz' | 'option';
     hideControls?: boolean;
     objectFit?: 'cover' | 'contain' | 'fill';
-    objectPosition?: 'center' | 'left' | 'right' | 'top' | 'bottom' | string; // ✅ Allow string for percentages
+    objectPosition?: 'center' | 'left' | 'right' | 'top' | 'bottom' | string;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -28,7 +29,9 @@ export function WebViewMedia({
     objectFit = 'cover',
     objectPosition = 'center',
 }: WebViewMediaProps) {
-    const baseUrl = 'http://192.168.1.45:8000/media-player';
+    // Use the API_BASE_URL from config
+    // Replace /api with /media-player
+    const baseUrl = API_BASE_URL.replace('/api', '/media-player');
 
     let aspectRatio = '16:9';
 

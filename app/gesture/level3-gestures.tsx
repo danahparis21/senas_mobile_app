@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -46,16 +47,16 @@ const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3'
 // Numbers 1-10: files 27_One.mp4 through 36_Ten.mp4
 // All numbers use video since they show motion in ASL
 const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
-    '1': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/27_One.mp4', isVideo: true },
-    '2': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/28_Two.mp4', isVideo: true },
-    '3': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/29_Three.mp4', isVideo: true },
-    '4': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/30_Four.mp4', isVideo: true },
-    '5': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/31_Five.mp4', isVideo: true },
-    '6': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/32_Six.mp4', isVideo: true },
-    '7': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/33_Seven.mp4', isVideo: true },
-    '8': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/34_Eight.mp4', isVideo: true },
-    '9': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/35_Nine.mp4', isVideo: true },
-    '10': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Numbers/36_Ten.mp4', isVideo: true },
+    '1': { url: buildMediaUrl('sign_language_media/Numbers/27_One.mp4'), isVideo: true },
+    '2': { url: buildMediaUrl('sign_language_media/Numbers/28_Two.mp4'), isVideo: true },
+    '3': { url: buildMediaUrl('sign_language_media/Numbers/29_Three.mp4'), isVideo: true },
+    '4': { url: buildMediaUrl('sign_language_media/Numbers/30_Four.mp4'), isVideo: true },
+    '5': { url: buildMediaUrl('sign_language_media/Numbers/31_Five.mp4'), isVideo: true },
+    '6': { url: buildMediaUrl('sign_language_media/Numbers/32_Six.mp4'), isVideo: true },
+    '7': { url: buildMediaUrl('sign_language_media/Numbers/33_Seven.mp4'), isVideo: true },
+    '8': { url: buildMediaUrl('sign_language_media/Numbers/34_Eight.mp4'), isVideo: true },
+    '9': { url: buildMediaUrl('sign_language_media/Numbers/35_Nine.mp4'), isVideo: true },
+    '10': { url: buildMediaUrl('sign_language_media/Numbers/36_Ten.mp4'), isVideo: true },
 };
 
 const GESTURE_TO_DB_MAP: Record<string, string> = {

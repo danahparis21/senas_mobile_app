@@ -68,7 +68,8 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "http://192.168.1.45:8000/api",
+      "apiUrl": "http://192.168.1.46:8000/api",
+      "storageUrl": "http://192.168.1.46:8000/storage",
       "router": {},
       "eas": {
         "projectId": "fa620a96-0e77-4a36-9400-454d4683b5af"

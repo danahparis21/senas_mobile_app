@@ -17,6 +17,10 @@ import Constants from 'expo-constants';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
+// How many documents to render at once. Prevents a long document history
+// from rendering (and re-rendering) hundreds of rows in one go.
+const DOCS_PAGE_SIZE = 5;
+
 const getBaseUrl = () => {
   const apiUrl = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
   return apiUrl.replace('/api', '');
@@ -425,6 +429,7 @@ export default function Profile() {
   const [totalBadges, setTotalBadges] = useState(0);
   const [recentBadges, setRecentBadges] = useState<{ src: any, label: string }[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
+  const [visibleDocsCount, setVisibleDocsCount] = useState(DOCS_PAGE_SIZE);
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [showPromotionModal, setShowPromotionModal] = useState(false);
 
@@ -677,6 +682,7 @@ export default function Profile() {
         const promoResponse = await api.getPromotionHistory();
         const promotions = promoResponse?.history || [];
         setDocuments(promotions);
+        setVisibleDocsCount(DOCS_PAGE_SIZE);
       } catch (error) {
         console.log('No promotion history found');
       }
@@ -1027,10 +1033,13 @@ export default function Profile() {
                 </Text>
               </View>
             ) : (
-              documents.map((doc, i) => (
+              documents.slice(0, visibleDocsCount).map((doc, i, visibleDocs) => (
                 <Pressable
                   key={doc.id ?? i}
-                  style={[styles.docRow, i < documents.length - 1 && styles.settingBorder]}
+                  style={[
+                    styles.docRow,
+                    (i < visibleDocs.length - 1 || visibleDocsCount < documents.length) && styles.settingBorder,
+                  ]}
                   onPress={() => handleOpenDocument(doc)}
                 >
                   <View style={styles.settingIconBox}>
@@ -1047,6 +1056,22 @@ export default function Profile() {
                   <ChevronIcon />
                 </Pressable>
               ))
+            )}
+            {documents.length > DOCS_PAGE_SIZE && (
+              <Pressable
+                style={styles.docsPagingRow}
+                onPress={() =>
+                  setVisibleDocsCount(prev =>
+                    prev < documents.length ? prev + DOCS_PAGE_SIZE : DOCS_PAGE_SIZE
+                  )
+                }
+              >
+                <Text style={styles.docsPagingText}>
+                  {visibleDocsCount < documents.length
+                    ? `Show more (${documents.length - visibleDocsCount} left)`
+                    : 'Show less'}
+                </Text>
+              </Pressable>
             )}
           </GlassCard>
         </View>
@@ -1341,6 +1366,16 @@ const styles = StyleSheet.create({
 
   // Documents
   documentsCard: { overflow: 'hidden', padding: 0 },
+  docsPagingRow: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docsPagingText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
   docRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 18 },
   docsEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 32, paddingHorizontal: 24, gap: 10 },
   docsEmptyText: { fontSize: 13, color: '#6B7280', fontWeight: '500', textAlign: 'center', lineHeight: 19 },

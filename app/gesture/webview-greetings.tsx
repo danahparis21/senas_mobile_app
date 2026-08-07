@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -43,13 +44,13 @@ const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
 const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3');
 
 // ─── SIGN LANGUAGE MEDIA MAPPING FOR GREETINGS ──────────────────────────────
-// All greetings use video files
+
 const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
-    'HELLO': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/47_Hello.mp4', isVideo: true },
-    'THANK YOU': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/48_ThankYou.mp4', isVideo: true },
-    'SEE YOU TOMORROW': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/49_SeeYouTomorrow.mp4', isVideo: true },
-    'HOW ARE YOU': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/50_HowAreYou.mp4', isVideo: true },
-    'NICE TO MEET YOU': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Greetings/51_NicetoMeetYou.mp4', isVideo: true },
+    'HELLO': { url: buildMediaUrl('sign_language_media/Greetings/47_Hello.mp4'), isVideo: true },
+    'THANK YOU': { url: buildMediaUrl('sign_language_media/Greetings/48_ThankYou.mp4'), isVideo: true },
+    'SEE YOU TOMORROW': { url: buildMediaUrl('sign_language_media/Greetings/49_SeeYouTomorrow.mp4'), isVideo: true },
+    'HOW ARE YOU': { url: buildMediaUrl('sign_language_media/Greetings/50_HowAreYou.mp4'), isVideo: true },
+    'NICE TO MEET YOU': { url: buildMediaUrl('sign_language_media/Greetings/51_NicetoMeetYou.mp4'), isVideo: true },
 };
 
 // Level 2 Greetings - FSL Greetings

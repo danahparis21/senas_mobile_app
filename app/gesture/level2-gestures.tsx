@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -44,16 +45,16 @@ const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3'
 // ─── SIGN LANGUAGE MEDIA MAPPING FOR SURVIVAL PHRASES ──────────────────────
 // All survival phrases use video files (52_Understand.mp4 through 61_Fast.mp4)
 const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
-    'UNDERSTAND': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/52_Understand.mp4', isVideo: true },
-    "DON'T UNDERSTAND": { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/53_Don%27tUnderstand.mp4', isVideo: true },  // ✅ URL-encoded apostrophe
-    'KNOW': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/54_Know.mp4', isVideo: true },
-    "DON'T KNOW": { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/55_Don%27tKnow.mp4', isVideo: true },  // ✅ URL-encoded apostrophe
-    'NO': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/56_No.mp4', isVideo: true },
-    'YES': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/57_Yes.mp4', isVideo: true },
-    'WRONG': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/58_Wrong.mp4', isVideo: true },
-    'CORRECT': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/59_Correct.mp4', isVideo: true },
-    'SLOW': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/60_Slow.mp4', isVideo: true },
-    'FAST': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Survival/61_Fast.mp4', isVideo: true },
+    'UNDERSTAND': { url: buildMediaUrl('sign_language_media/Survival/52_Understand.mp4'), isVideo: true },
+    "DON'T UNDERSTAND": { url: buildMediaUrl('sign_language_media/Survival/53_Don%27tUnderstand.mp4'), isVideo: true },
+    'KNOW': { url: buildMediaUrl('sign_language_media/Survival/54_Know.mp4'), isVideo: true },
+    "DON'T KNOW": { url: buildMediaUrl('sign_language_media/Survival/55_Don%27tKnow.mp4'), isVideo: true },
+    'NO': { url: buildMediaUrl('sign_language_media/Survival/56_No.mp4'), isVideo: true },
+    'YES': { url: buildMediaUrl('sign_language_media/Survival/57_Yes.mp4'), isVideo: true },
+    'WRONG': { url: buildMediaUrl('sign_language_media/Survival/58_Wrong.mp4'), isVideo: true },
+    'CORRECT': { url: buildMediaUrl('sign_language_media/Survival/59_Correct.mp4'), isVideo: true },
+    'SLOW': { url: buildMediaUrl('sign_language_media/Survival/60_Slow.mp4'), isVideo: true },
+    'FAST': { url: buildMediaUrl('sign_language_media/Survival/61_Fast.mp4'), isVideo: true },
 };
 // Level 3 Survival - FSL Survival Phrases
 const SURVIVAL_GESTURES = [

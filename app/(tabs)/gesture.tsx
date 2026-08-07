@@ -37,7 +37,7 @@ const DEFAULT_MODULES = [
     id: 'alphabet_part1',
     title: 'Alphabet Part 1',
     subtitle: 'A-M',
-    category: 'alphabet',
+    category: 'beginners',
     color: ['#FF6B6B', '#FF8E8E'] as const,
     icon: 'book',
     description: 'Learn letters A through M',
@@ -55,7 +55,7 @@ const DEFAULT_MODULES = [
     id: 'alphabet_part2',
     title: 'Alphabet Part 2',
     subtitle: 'N-Z',
-    category: 'alphabet',
+    category: 'beginners',
     color: ['#4ECDC4', '#45B7AA'] as const,
     icon: 'ribbon',
     description: 'Learn letters N through Z',
@@ -73,7 +73,7 @@ const DEFAULT_MODULES = [
     id: 'level1_numbers',
     title: 'Numbers 1-10',
     subtitle: 'Learn to count',
-    category: 'numbers',
+    category: 'beginners',
     color: ['#34D399', '#10B981'] as const,
     icon: 'grid',
     description: 'Learn numbers 1 to 10 in FSL',
@@ -91,7 +91,7 @@ const DEFAULT_MODULES = [
     id: 'level2_greetings',
     title: 'Greetings',
     subtitle: 'Everyday Signs & Phrases',
-    category: 'greetings',
+    category: 'intermediate',
     color: ['#FFB6C1', '#FF8E9E'] as const,
     icon: 'chatbubble-ellipses',
     description: 'Learn common greetings and phrases',
@@ -109,7 +109,7 @@ const DEFAULT_MODULES = [
     id: 'level3_survival',
     title: 'Survival Phrases',
     subtitle: 'Essential Signs',
-    category: 'survival',
+    category: 'advanced',
     color: ['#F87171', '#EF4444'] as const,
     icon: 'shield-checkmark',
     description: 'Essential survival phrases for everyday situations',
@@ -126,10 +126,90 @@ const DEFAULT_MODULES = [
 
 const CATEGORIES = [
   { id: 'all', title: 'All', icon: 'grid-outline' },
-  { id: 'alphabet', title: 'Alphabet', icon: 'text-outline' },
-  { id: 'greetings', title: 'Greetings', icon: 'chatbubbles-outline' },
-  { id: 'survival', title: 'Survival', icon: 'shield-outline' },
+  { id: 'beginners', title: 'Beginners', icon: 'school-outline' },
+  { id: 'intermediate', title: 'Intermediate', icon: 'trending-up-outline' },
+  { id: 'advanced', title: 'Advanced', icon: 'ribbon-outline' },
 ];
+
+const generateSenyaMessage = (modules: any[]): string => {
+  // Get completed modules
+  const completedModules = modules.filter(m => m.isCompleted);
+  const inProgressModules = modules.filter(m => m.progress > 0 && m.progress < 100);
+  const lockedModules = modules.filter(m => m.locked);
+  const totalModules = modules.length;
+  const completedCount = completedModules.length;
+  const progressCount = inProgressModules.length;
+
+  // If all modules are completed
+  if (completedCount === totalModules && totalModules > 0) {
+    const messages = [
+      "🌟 You've mastered ALL gestures! You're a true Sign Language pro! 🎉",
+      "🏆 Incredible! You've completed every single module! Time to celebrate! 🎊",
+      "👏 You're officially a Sign Language master! Amazing dedication! 💪",
+      "🎯 Perfect score! You've conquered all the gestures! Senya is so proud! 🌟",
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+  }
+
+  // If nothing is started yet
+  if (completedCount === 0 && progressCount === 0) {
+    const messages = [
+      "👋 Ready to start your Sign Language journey? Let's learn together! 🌟",
+      "📚 The adventure begins! Pick a module and let's start signing! 💪",
+      "🌟 Every expert was once a beginner. Let's start your journey today! 👋",
+      "🤗 I'm so excited to teach you! Let's learn your first signs together! 🌈",
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+  }
+
+  // If user has completed some modules
+  if (completedCount > 0) {
+    const completedNames = completedModules.map(m => m.title).join(', ');
+
+    if (completedCount === 1) {
+      const messages = [
+        `🎉 You completed ${completedModules[0].title}! You're on fire! Keep going! 🔥`,
+        `🌟 Great job on ${completedModules[0].title}! You're a natural signer! 👏`,
+        `💪 ${completedModules[0].title} done! One step closer to becoming fluent! 🌟`,
+        `🤗 Wonderful work on ${completedModules[0].title}! Ready for the next challenge? 🎯`,
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    if (completedCount >= 3) {
+      const messages = [
+        `🎉 You've completed ${completedCount} modules! You're becoming a fluent signer! 🌟`,
+        `🔥 ${completedCount} modules done! Your dedication is truly inspiring! 💪`,
+        `🏆 Amazing progress! ${completedCount} modules mastered! Keep crushing it! 🎯`,
+        `🌟 You've completed ${completedCount} modules! Senya is so proud of you! 👏`,
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    const messages = [
+      `🌟 Great job on ${completedNames}! You're doing amazing! Keep going! 💪`,
+      `🎯 ${completedCount} modules down! You're building great signing skills! 👏`,
+      `🔥 You've completed ${completedNames}! What's next on your journey? 🌟`,
+      `💪 Fantastic work on ${completedNames}! You're making Senya so proud! 🤗`,
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+  }
+
+  // If user has some progress but no completions
+  if (progressCount > 0) {
+    const progressModule = inProgressModules[0];
+    const messages = [
+      `📚 You're making progress on ${progressModule.title}! ${progressModule.progress}% done! Keep going! 💪`,
+      `🌟 ${progressModule.title} is coming along great! ${progressModule.progress}% complete! You got this! 🎯`,
+      `👏 ${progressModule.progress}% through ${progressModule.title}! Practice makes perfect! 🌟`,
+      `💪 You're working hard on ${progressModule.title}! Almost there, keep signing! 🤗`,
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+  }
+
+  // Fallback message
+  return "🌟 Let's practice some gestures together! Pick a module to start! 👋";
+};
 
 // Individual module card component
 function ModuleCard({
@@ -159,6 +239,24 @@ function ModuleCard({
       }),
     ]).start();
   }, [isActive]);
+
+  const getLockIcon = () => {
+    if (module.lockReason?.type === 'level') {
+      return <Ionicons name="school" size={24} color="#0F3172" />;
+    }
+    return <Ionicons name="lock-closed" size={24} color="#0F3172" />;
+  };
+
+  // Helper to get lock message
+  const getLockMessage = () => {
+    if (module.lockReason?.type === 'level') {
+      return module.lockReason.message || 'Requires higher level to unlock!';
+    }
+    if (module.lockReason?.type === 'progress') {
+      return module.lockReason.message || 'Complete previous modules to unlock!';
+    }
+    return 'Complete previous modules to unlock!';
+  };
 
   return (
     <Animated.View
@@ -221,8 +319,14 @@ function ModuleCard({
             <View style={styles.cardFooterRow}>
               {module.locked ? (
                 <View style={styles.lockedRow}>
-                  <Ionicons name="lock-closed" size={16} color="#EF4444" style={{ marginRight: 4 }} />
-                  <Text style={styles.lockedText}>Locked</Text>
+                  {module.lockReason?.type === 'level' ? (
+                    <Ionicons name="school" size={16} color="#EF4444" style={{ marginRight: 4 }} />
+                  ) : (
+                    <Ionicons name="lock-closed" size={16} color="#EF4444" style={{ marginRight: 4 }} />
+                  )}
+                  <Text style={styles.lockedText}>
+                    {module.lockReason?.type === 'level' ? 'Level Locked' : 'Progress Locked'}
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.progressBarWrapper}>
@@ -254,9 +358,19 @@ function ModuleCard({
           {module.locked && (
             <View style={styles.lockedCardOverlay}>
               <View style={styles.lockedIconCircle}>
-                <Ionicons name="lock-closed" size={26} color="#0F3172" />
+                {getLockIcon()}
               </View>
-              <Text style={styles.lockedOverlayText}>Complete previous modules to unlock!</Text>
+              <Text style={styles.lockedOverlayText}>{getLockMessage()}</Text>
+              {module.lockReason?.type === 'level' && (
+                <Text style={styles.lockedSubText}>
+                  Your level: {module.student_level || 'Beginner'} • Required: {module.requires_level || 'Intermediate'}
+                </Text>
+              )}
+              {module.lockReason?.type === 'progress' && (
+                <Text style={styles.lockedSubText}>
+                  Need 40% completion of previous module
+                </Text>
+              )}
             </View>
           )}
         </LinearGradient>
@@ -281,8 +395,6 @@ function CarouselDots({ currentIndex, total }: { currentIndex: number; total: nu
     </View>
   );
 }
-
-// Challenge Modal Component
 function ChallengeModal({
   visible,
   onClose,
@@ -294,6 +406,31 @@ function ChallengeModal({
   onSelectMode: (mode: 'master' | 'infinite') => void;
   isLoading?: boolean;
 }) {
+  // Animation for entrance
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.95);
+      opacityAnim.setValue(0);
+    }
+  }, [visible]);
+
   return (
     <Modal
       visible={visible}
@@ -302,96 +439,98 @@ function ChallengeModal({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          {/* Modal Header */}
+        <Animated.View
+          style={[
+            styles.modalContainer,
+            {
+              opacity: opacityAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          {/* Header */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>🏆 Gesture Challenge</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
-              <Ionicons name="close" size={24} color="#0F3172" />
+            <View>
+              <Text style={styles.modalTitle}>Choose Challenge</Text>
+              <Text style={styles.modalSubtitle}>
+                Pick your practice style and start learning
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.modalCloseButton}
+              hitSlop={8}
+            >
+              <Ionicons name="close-outline" size={22} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.modalSubtitle}>
-            Choose your challenge mode and test your skills!
-          </Text>
-
-          {/* Master Mode Option */}
+          {/* ─── MASTER MODE ─────────────────────────────────────────────── */}
           <TouchableOpacity
             style={[styles.modeOption, styles.masterMode]}
             onPress={() => onSelectMode('master')}
             disabled={isLoading}
+            activeOpacity={0.8}
           >
-            <View style={styles.modeIconContainer}>
-              <LinearGradient
-                colors={['#FF6B6B', '#FF8E8E']}
-                style={styles.modeIconGradient}
-              >
-                <Ionicons name="trophy" size={28} color="#FFF" />
-              </LinearGradient>
+            <View style={styles.modeImageWrapper}>
+              <Image
+                source={require('../../assets/images/img/trophy.png')}
+                style={styles.modeImage}
+                contentFit="contain"
+              />
             </View>
+
             <View style={styles.modeContent}>
               <View style={styles.modeHeader}>
                 <Text style={styles.modeTitle}>Master Mode</Text>
-                <View style={styles.modeBadge}>
+                <View style={[styles.modeBadge, styles.recommendedBadge]}>
                   <Text style={styles.modeBadgeText}>Recommended</Text>
                 </View>
               </View>
-              <Text style={styles.modeDescription}>
+              <Text style={styles.modeDescription} numberOfLines={2}>
                 Focus on signs you need to improve. Master each sign one by one.
               </Text>
-              <View style={styles.modeFeatures}>
-                <View style={styles.modeFeature}>
-                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                  <Text style={styles.modeFeatureText}>Personalized learning</Text>
-                </View>
-                <View style={styles.modeFeature}>
-                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                  <Text style={styles.modeFeatureText}>Track your progress</Text>
-                </View>
-                <View style={styles.modeFeature}>
-                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                  <Text style={styles.modeFeatureText}>Complete all signs</Text>
-                </View>
-              </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" style={styles.modeArrow} />
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color="#D1D5DB"
+              style={styles.modeArrow}
+            />
           </TouchableOpacity>
 
-          {/* Infinite Mode Option */}
+          {/* ─── INFINITE MODE ───────────────────────────────────────────── */}
           <TouchableOpacity
             style={[styles.modeOption, styles.infiniteMode]}
             onPress={() => onSelectMode('infinite')}
             disabled={isLoading}
+            activeOpacity={0.8}
           >
-            <View style={styles.modeIconContainer}>
-              <LinearGradient
-                colors={['#4ECDC4', '#45B7AA']}
-                style={styles.modeIconGradient}
-              >
-                <Ionicons name="infinite" size={28} color="#FFF" />
-              </LinearGradient>
+            <View style={styles.modeImageWrapper}>
+              <Image
+                source={require('../../assets/images/img/practice.png')}
+                style={styles.modeImage}
+                contentFit="contain"
+              />
             </View>
+
             <View style={styles.modeContent}>
-              <Text style={styles.modeTitle}>Infinite Mode</Text>
-              <Text style={styles.modeDescription}>
-                Practice random signs continuously. No pressure, just practice!
-              </Text>
-              <View style={styles.modeFeatures}>
-                <View style={styles.modeFeature}>
-                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                  <Text style={styles.modeFeatureText}>Endless practice</Text>
-                </View>
-                <View style={styles.modeFeature}>
-                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                  <Text style={styles.modeFeatureText}>Build muscle memory</Text>
-                </View>
-                <View style={styles.modeFeature}>
-                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                  <Text style={styles.modeFeatureText}>Stop anytime</Text>
+              <View style={styles.modeHeader}>
+                <Text style={styles.modeTitle}>Infinite Mode</Text>
+                <View style={[styles.modeBadge, styles.practiceBadge]}>
+                  <Text style={styles.modeBadgeText}>Practice</Text>
                 </View>
               </View>
+              <Text style={styles.modeDescription} numberOfLines={2}>
+                Practice random signs continuously. No pressure, just practice!
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6B7280" style={styles.modeArrow} />
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color="#D1D5DB"
+              style={styles.modeArrow}
+            />
           </TouchableOpacity>
 
           {isLoading && (
@@ -404,7 +543,7 @@ function ChallengeModal({
           <TouchableOpacity onPress={onClose} style={styles.modalCancelButton}>
             <Text style={styles.modalCancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -422,7 +561,7 @@ export default function GestureMain() {
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  // Fetch gesture progress from API
+  // Update the fetchGestureProgress function
   const fetchGestureProgress = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -446,6 +585,10 @@ export default function GestureMain() {
               xp: apiModule.xp_available || defaultModule.xp,
               description: apiModule.description || defaultModule.description,
               display_name: apiModule.display_name || defaultModule.display_name,
+              // 🔥 NEW: Store lock reason
+              lockReason: apiModule.lock_reason || null,
+              requires_level: apiModule.requires_level || null,
+              student_level: apiModule.student_level || null,
             };
           }
           return defaultModule;
@@ -515,9 +658,8 @@ export default function GestureMain() {
         return;
       }
 
-      // Determine which module to use
-      const priorityOrder = ['alphabet', 'greetings', 'survival'];
-      let selectedModule = unlockedModules.find(m => m.category === 'alphabet');
+      const priorityOrder = ['beginners', 'intermediate', 'advanced'];
+      let selectedModule = unlockedModules.find(m => m.category === 'beginners');
 
       if (!selectedModule) {
         for (const category of priorityOrder) {
@@ -744,7 +886,6 @@ export default function GestureMain() {
               </TouchableOpacity>
             </View>
           </View>
-
           {/* Senya's Tip */}
           <View style={styles.tipCard}>
             <Image
@@ -753,11 +894,9 @@ export default function GestureMain() {
               contentFit="contain"
             />
             <View style={styles.tipContent}>
-              <Text style={styles.tipTitle}>💡 Senya Says</Text>
+              <Text style={styles.tipTitle}>💬 Senya Says</Text>
               <Text style={styles.tipText}>
-                {modules.some(m => m.isCompleted)
-                  ? "Great job! Keep practicing to master all gestures! 🌟"
-                  : "Complete Alphabet Part 1 to unlock more modules! Practice makes perfect! 🌟"}
+                {generateSenyaMessage(modules)}
               </Text>
             </View>
           </View>
@@ -1218,62 +1357,170 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
   },
+  // ─── MODAL STYLES ──────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(15, 49, 114, 0.35)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   modalContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    padding: 24,
+    borderRadius: 24,
     width: '100%',
-    maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
+    maxWidth: 360,
+    shadowColor: '#0F3172',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0F3172',
-  },
-  modalCloseButton: {
-    padding: 4,
+    lineHeight: 26,
   },
   modalSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#6B7280',
-    marginBottom: 20,
-    lineHeight: 20,
+    fontWeight: '500',
+    marginTop: 2,
+    lineHeight: 16,
   },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -2,
+  },
+
+  // ─── MODE OPTIONS ──────────────────────────────────────────────────────
   modeOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
     borderRadius: 16,
-    borderWidth: 2,
-    marginBottom: 12,
+    borderWidth: 1.5,
     backgroundColor: '#FFFFFF',
     position: 'relative',
+    minHeight: 72,
   },
   masterMode: {
-    borderColor: '#FF6B6B',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#FFE0E0',
+    backgroundColor: '#FFFBFB',
   },
   infiniteMode: {
+    borderColor: '#D4F5F0',
+    backgroundColor: '#F8FFFE',
+  },
+
+  // Image that overflows the container
+  modeImageWrapper: {
+    width: 56,
+    height: 70,
+    marginRight: 12,
+    marginLeft: -8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+    flexShrink: 0,
+    position: 'relative',
+  },
+  modeImage: {
+    width: '130%',
+    height: '130%',
+    position: 'absolute',
+    left: -8,
+    top: -4,
+  },
+
+  modeContent: {
+    flex: 1,
+    paddingRight: 4,
+  },
+  modeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+    flexWrap: 'wrap',
+  },
+  modeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F3172',
+  },
+  modeBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  recommendedBadge: {
+    backgroundColor: '#FFF8E7',
+    borderColor: '#FFD700',
+  },
+  practiceBadge: {
+    backgroundColor: '#E8FBF8',
     borderColor: '#4ECDC4',
-    backgroundColor: '#F0FDFA',
+  },
+  modeBadgeText: {
+    fontSize: 7.5,
+    fontWeight: '700',
+    color: '#0F3172',
+    letterSpacing: 0.2,
+  },
+  modeDescription: {
+    fontSize: 11.5,
+    color: '#6B7280',
+    lineHeight: 15,
+    paddingRight: 2,
+  },
+  modeArrow: {
+    marginLeft: 2,
+    opacity: 0.3,
+  },
+
+  modalLoadingContainer: {
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  modalLoadingText: {
+    fontSize: 12,
+    color: '#4B7BBB',
+    fontWeight: '600',
+  },
+  modalCancelButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    marginTop: 4,
+  },
+  modalCancelText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontWeight: '600',
   },
   modeIconContainer: {
     marginRight: 14,
@@ -1285,79 +1532,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modeContent: {
-    flex: 1,
-  },
-  modeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  modeTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#0F3172',
-  },
-  modeBadge: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  modeBadgeText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#0F3172',
-    letterSpacing: 0.5,
-  },
-  modeDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 6,
-    lineHeight: 18,
-  },
-  modeFeatures: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  modeFeature: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  modeFeatureText: {
-    fontSize: 11,
-    color: '#4B7BBB',
-    fontWeight: '500',
-  },
-  modeArrow: {
-    marginLeft: 4,
-  },
-  modalLoadingContainer: {
-    marginTop: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  modalLoadingText: {
-    fontSize: 14,
-    color: '#4B7BBB',
-    fontWeight: '600',
-  },
-  modalCancelButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  modalCancelText: {
-    fontSize: 15,
-    color: '#9CA3AF',
-    fontWeight: '600',
-  },
+  // Add these to your styles object
+
+
   // Quick Access - Challenge Button
   challengeButton: {
     borderWidth: 2,
@@ -1385,4 +1562,14 @@ const styles = StyleSheet.create({
     color: '#FFF',
     letterSpacing: 0.5,
   },
+  lockedSubText: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 14,
+  },
+
+
 });

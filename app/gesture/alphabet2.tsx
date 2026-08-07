@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -46,26 +47,21 @@ const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3'
 const ALPHABET_PART2 = ['N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
 // ─── SIGN LANGUAGE MEDIA MAPPING ───────────────────────────────────────────
-// Continues the numbering from Part 1 (1_A ... 13_M), so N is 14, O is 15, etc.
-// ⚠️ PLEASE VERIFY against your actual sign_language_media/Alphabets/ folder —
-// I've guessed .png for everything except Z (marked isVideo, since Z is a
-// motion sign in ASL just like J was in Part 1). If any other letters in your
-// set are actually recorded as .mp4 motion signs, flip isVideo to true and
-// fix the extension for those entries.
+
 const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
-    'N': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/14_N.png', isVideo: false },
-    'O': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/15_O.png', isVideo: false },
-    'P': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/16_P.png', isVideo: false },
-    'Q': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/17_Q.png', isVideo: false },
-    'R': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/18_R.png', isVideo: false },
-    'S': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/19_S.png', isVideo: false },
-    'T': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/20_T.png', isVideo: false },
-    'U': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/21_U.png', isVideo: false },
-    'V': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/22_V.png', isVideo: false },
-    'W': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/23_W.png', isVideo: false },
-    'X': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/24_X.png', isVideo: false },
-    'Y': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/25_Y.png', isVideo: false },
-    'Z': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/26_Z.mp4', isVideo: true },
+    'N': { url: buildMediaUrl('sign_language_media/Alphabets/14_N.png'), isVideo: false },
+    'O': { url: buildMediaUrl('sign_language_media/Alphabets/15_O.png'), isVideo: false },
+    'P': { url: buildMediaUrl('sign_language_media/Alphabets/16_P.png'), isVideo: false },
+    'Q': { url: buildMediaUrl('sign_language_media/Alphabets/17_Q.png'), isVideo: false },
+    'R': { url: buildMediaUrl('sign_language_media/Alphabets/18_R.png'), isVideo: false },
+    'S': { url: buildMediaUrl('sign_language_media/Alphabets/19_S.png'), isVideo: false },
+    'T': { url: buildMediaUrl('sign_language_media/Alphabets/20_T.png'), isVideo: false },
+    'U': { url: buildMediaUrl('sign_language_media/Alphabets/21_U.png'), isVideo: false },
+    'V': { url: buildMediaUrl('sign_language_media/Alphabets/22_V.png'), isVideo: false },
+    'W': { url: buildMediaUrl('sign_language_media/Alphabets/23_W.png'), isVideo: false },
+    'X': { url: buildMediaUrl('sign_language_media/Alphabets/24_X.png'), isVideo: false },
+    'Y': { url: buildMediaUrl('sign_language_media/Alphabets/25_Y.png'), isVideo: false },
+    'Z': { url: buildMediaUrl('sign_language_media/Alphabets/26_Z.mp4'), isVideo: true },
 };
 
 // Senya's encouragement messages

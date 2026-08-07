@@ -298,6 +298,8 @@ export default function ChallengeScreen() {
     const [totalAttemptedSigns, setTotalAttemptedSigns] = useState(0);
     const [showFinishButton, setShowFinishButton] = useState(false);
 
+    const [unlockedModuleTypes, setUnlockedModuleTypes] = useState<string[]>(['alphabet']);
+
     const [infiniteModuleIndex, setInfiniteModuleIndex] = useState(0);
     // Tracks whether the initial infinite-mode countdown has already been shown
     // so subsequent rounds skip the 3-2-1 and go straight into the timer.
@@ -497,23 +499,29 @@ export default function ChallengeScreen() {
         setModuleType(nextStage);
     };
 
+    // Fetch unlocked modules when the screen mounts or when mode is 'infinite'
     useEffect(() => {
         // Only fetch weak signs if NOT in infinite mode
         if (mode !== 'infinite') {
             console.log('🔍 ChallengeScreen mounted, fetching weak signs for module:', moduleType);
-            // Only show loading if we're not already in a silent skip
-            // The fetchWeakSigns function will handle showing/hiding loading
             fetchWeakSigns();
+        } else {
+            // 🔥 For infinite mode, fetch unlocked modules first
+            console.log('♾️ Infinite mode - fetching unlocked modules...');
+            fetchUnlockedModules();
         }
     }, [moduleType]);
 
 
     // ─── START INFINITE MODE ON MOUNT ──────────────────────────────────────────
     useEffect(() => {
-        // If in infinite mode, start it once when component mounts
         if (mode === 'infinite') {
             console.log('♾️ Starting Infinite Mode on mount');
-            startInfiniteMode();
+            // Wait a moment for unlocked modules to be fetched
+            const timer = setTimeout(() => {
+                startInfiniteMode();
+            }, 500);
+            return () => clearTimeout(timer);
         }
     }, []);
 
@@ -885,19 +893,58 @@ export default function ChallengeScreen() {
         return shuffled.slice(0, INFINITE_BATCH_SIZE);
     };
 
-    // ─── START INFINITE MODE ──────────────────────────────────────────────────────
+    // Add this function to fetch unlocked modules
+    const fetchUnlockedModules = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                // Fallback to all modules if no token
+                setUnlockedModuleTypes(['alphabet', 'numbers', 'greetings', 'survival']);
+                return;
+            }
+
+            const response = await api.getUnlockedModules();
+            if (response && response.success && response.unlocked_modules) {
+                // Extract module types from the response
+                const types = response.unlocked_modules.map((m: any) => m.type);
+                // Remove duplicates
+                const uniqueTypes = [...new Set(types)];
+
+                // Ensure alphabet is always first (or use the order from backend)
+                const orderedTypes = ['alphabet', 'numbers', 'greetings', 'survival']
+                    .filter(type => uniqueTypes.includes(type));
+
+                console.log('🔓 Unlocked modules:', orderedTypes);
+                setUnlockedModuleTypes(orderedTypes);
+            } else {
+                // Fallback
+                setUnlockedModuleTypes(['alphabet', 'numbers', 'greetings', 'survival']);
+            }
+        } catch (error) {
+            console.error('❌ Error fetching unlocked modules:', error);
+            // Fallback to all modules
+            setUnlockedModuleTypes(['alphabet', 'numbers', 'greetings', 'survival']);
+        }
+    };
+
+    // Update the startInfiniteMode function
     const startInfiniteMode = () => {
-        // Prevent multiple starts - but allow if not started yet
+        // Prevent multiple starts
         if (isInfiniteStarted) {
             console.log('♾️ Infinite mode already started, skipping...');
             return;
         }
         setIsInfiniteStarted(true);
 
-        console.log('♾️ Starting Infinite Mode with alphabet');
+        // 🔥 Use unlocked modules instead of all modules
+        const availableStages = unlockedModuleTypes.length > 0
+            ? unlockedModuleTypes
+            : ['alphabet']; // Fallback
 
-        // Start with alphabet
-        const currentModule = 'alphabet';
+        console.log('♾️ Starting Infinite Mode with unlocked modules:', availableStages);
+
+        // Start with the first unlocked module
+        const currentModule = availableStages[0];
         const roundSigns = pickInfiniteBatch(currentModule);
 
         setModuleType(currentModule);
@@ -914,16 +961,21 @@ export default function ChallengeScreen() {
         startCountdown(roundSigns);
     };
 
-    /** Advance to the next infinite-mode batch (no countdown after the first). */
+    // Update advanceInfiniteBatch to use unlocked modules
     const advanceInfiniteBatch = (completedStageIdx: number) => {
         if (!shouldProcessMessages.current || isWebViewPaused.current) return;
 
-        // Move to next stage cyclically (alphabet → numbers → greetings → survival → alphabet → ...)
-        const nextStageIdx = (completedStageIdx + 1) % INFINITE_STAGE_ORDER.length;
-        const nextModule = INFINITE_STAGE_ORDER[nextStageIdx];
+        // 🔥 Use unlocked modules instead of all modules
+        const availableStages = unlockedModuleTypes.length > 0
+            ? unlockedModuleTypes
+            : ['alphabet'];
+
+        // Move to next stage cyclically within unlocked modules
+        const nextStageIdx = (completedStageIdx + 1) % availableStages.length;
+        const nextModule = availableStages[nextStageIdx];
         const roundSigns = pickInfiniteBatch(nextModule);
 
-        console.log(`🔄 Infinite: Moving from ${STAGE_LABELS[INFINITE_STAGE_ORDER[completedStageIdx]]} to ${STAGE_LABELS[nextModule]}`);
+        console.log(`🔄 Infinite: Moving from ${STAGE_LABELS[availableStages[completedStageIdx]]} to ${STAGE_LABELS[nextModule]}`);
 
         setInfiniteModuleIndex(nextStageIdx);
         setRoundNumber(prev => prev + 1);

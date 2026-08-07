@@ -30,7 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
-
+import { buildMediaUrl } from '../config/api';
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -48,19 +48,19 @@ const ALPHABET_PART1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', '
 // Based on your file structure: sign_language_media/Alphabets/
 // Images for letters that have static images, videos for those with video files
 const SIGN_MEDIA: Record<string, { url: string; isVideo: boolean }> = {
-    'A': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/1_A.png', isVideo: false },
-    'B': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/2_B.png', isVideo: false },
-    'C': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/3_C.png', isVideo: false },
-    'D': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/4_D.png', isVideo: false },
-    'E': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/5_E.png', isVideo: false },
-    'F': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/6_F.png', isVideo: false },
-    'G': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/7_G.png', isVideo: false },
-    'H': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/8_H.png', isVideo: false },
-    'I': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/9_I.png', isVideo: false },
-    'J': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/10_J.mp4', isVideo: true },
-    'K': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/11_K.png', isVideo: false },
-    'L': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/12_L.png', isVideo: false },
-    'M': { url: 'http://192.168.1.45:8000/storage/sign_language_media/Alphabets/13_M.png', isVideo: false },
+    'A': { url: buildMediaUrl('sign_language_media/Alphabets/1_A.png'), isVideo: false },
+    'B': { url: buildMediaUrl('sign_language_media/Alphabets/2_B.png'), isVideo: false },
+    'C': { url: buildMediaUrl('sign_language_media/Alphabets/3_C.png'), isVideo: false },
+    'D': { url: buildMediaUrl('sign_language_media/Alphabets/4_D.png'), isVideo: false },
+    'E': { url: buildMediaUrl('sign_language_media/Alphabets/5_E.png'), isVideo: false },
+    'F': { url: buildMediaUrl('sign_language_media/Alphabets/6_F.png'), isVideo: false },
+    'G': { url: buildMediaUrl('sign_language_media/Alphabets/7_G.png'), isVideo: false },
+    'H': { url: buildMediaUrl('sign_language_media/Alphabets/8_H.png'), isVideo: false },
+    'I': { url: buildMediaUrl('sign_language_media/Alphabets/9_I.png'), isVideo: false },
+    'J': { url: buildMediaUrl('sign_language_media/Alphabets/10_J.mp4'), isVideo: true },
+    'K': { url: buildMediaUrl('sign_language_media/Alphabets/11_K.png'), isVideo: false },
+    'L': { url: buildMediaUrl('sign_language_media/Alphabets/12_L.png'), isVideo: false },
+    'M': { url: buildMediaUrl('sign_language_media/Alphabets/13_M.png'), isVideo: false },
 };
 
 // Senya's encouragement messages (without emojis)

@@ -625,6 +625,47 @@ export const api = {
     },
 
     /**
+ * 🔓 Get unlocked gesture modules for the student (for Infinite Mode)
+ * GET /api/student/unlocked-modules
+ */
+    getUnlockedModules: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🔓 Fetching unlocked modules...');
+
+            const response = await fetch(`${API_URL}/student/unlocked-modules`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🔓 Unlocked modules response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch unlocked modules');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching unlocked modules:', error);
+            // Return empty array as fallback
+            return {
+                success: false,
+                unlocked_modules: [],
+                student_level: 'beginner',
+            };
+        }
+    },
+
+    /**
     * Get student's gesture module progress and XP for the dashboard
     */
     getGestureProgress: async () => {
