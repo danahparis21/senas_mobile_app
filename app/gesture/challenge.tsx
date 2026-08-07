@@ -80,6 +80,18 @@ const MODULE_URLS: Record<string, string> = {
     survival: GESTURE_URL_SURVIVAL,
 };
 
+// ─── MASTER MODE STAGE ORDER ───────────────────────────────────────────────
+// Master Challenge now runs through every module back-to-back in this order.
+// Each stage lives on its own WebView HTML file, so "finishing" a stage just
+// swaps the WebView source to the next stage's URL instead of leaving the screen.
+const STAGE_ORDER: string[] = ['alphabet', 'numbers', 'greetings', 'survival'];
+const STAGE_LABELS: Record<string, string> = {
+    alphabet: 'Alphabet',
+    numbers: 'Numbers',
+    greetings: 'Greetings',
+    survival: 'Survival Signs',
+};
+
 // ─── SENYA MESSAGES ──────────────────────────────────────────────────────
 const SENYA_MESSAGES = {
     welcome: "Let's start the challenge! 🏆",
@@ -130,7 +142,13 @@ export default function ChallengeScreen() {
     const { settings, refreshSettings } = useSettings();
 
     const mode = params.mode || 'master';
-    const moduleType = params.moduleType || 'alphabet';
+
+    // ─── CURRENT STAGE (was a const derived from params — now stateful so
+    // Master Mode can advance Alphabets → Numbers → Greetings → Survival
+    // without leaving this screen). Master Mode always begins at stage 1.
+    const [moduleType, setModuleType] = useState<string>(
+        (params.mode || 'master') === 'master' ? STAGE_ORDER[0] : (params.moduleType || 'alphabet')
+    );
 
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
@@ -141,11 +159,61 @@ export default function ChallengeScreen() {
 
     useFocusEffect(
         React.useCallback(() => {
-            console.log('🔄 Challenge screen focused, refreshing settings...');
+            console.log('🔄 Challenge screen focused');
             refreshSettings();
+
+            // Resume camera when returning
+            if (isWebViewPaused.current && webViewRef.current) {
+                console.log('📸 Resuming camera on focus');
+                isWebViewPaused.current = false;
+                shouldProcessMessages.current = true;
+                // The WebView will reload automatically
+            }
+
+            return () => {
+                // FULL STOP when screen loses focus
+                console.log('🛑 Challenge screen lost focus - HARD STOP');
+
+                // 1. Stop all timers
+                stopTimer();
+                if (countdownRef.current) {
+                    clearInterval(countdownRef.current);
+                    countdownRef.current = null;
+                }
+                if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                }
+                if (timeoutRef.current) {
+                    clearTimeout(timeoutRef.current);
+                    timeoutRef.current = null;
+                }
+
+                // 2. Stop processing messages
+                shouldProcessMessages.current = false;
+                isWebViewPaused.current = true;
+                isTimeUpProcessingRef.current = false;
+                isProcessingRef.current = false;
+
+                // 3. Stop the camera
+                stopWebViewCamera();
+
+                // 4. Unload ALL sounds
+                if (gestureSound) {
+                    gestureSound.unloadAsync().catch(() => { });
+                    setGestureSound(null);
+                }
+                if (completeSound) {
+                    completeSound.unloadAsync().catch(() => { });
+                    setCompleteSound(null);
+                }
+                if (countdownSound) {
+                    countdownSound.unloadAsync().catch(() => { });
+                    setCountdownSound(null);
+                }
+            };
         }, [refreshSettings])
     );
-
 
     // ─── CAMERA PERMISSIONS ──────────────────────────────────────────────────
     const [permission, requestPermission] = useCameraPermissions();
@@ -189,7 +257,7 @@ export default function ChallengeScreen() {
     const [popupSubMessage, setPopupSubMessage] = useState('');
     const [popupType, setPopupType] = useState<'success' | 'error' | 'timeup'>('success');
 
-
+    const [isInfiniteStarted, setIsInfiniteStarted] = useState(false);
     // Senya bounce
     const senyaBounceAnim = useRef(new Animated.Value(0)).current;
     const [senyaMessage, setSenyaMessage] = useState(SENYA_MESSAGES.welcome);
@@ -219,12 +287,27 @@ export default function ChallengeScreen() {
     const [completeSound, setCompleteSound] = useState<Audio.Sound | null>(null);
 
 
+    const COUNTDOWN_SOUND = require('../../assets/music/countdown.mp3');
+
+    const [countdownSound, setCountdownSound] = useState<Audio.Sound | null>(null);
+
     const [xpEarned, setXpEarned] = useState(0);
     const [xpResult, setXpResult] = useState<any>(null)
     const [infiniteSignCount, setInfiniteSignCount] = useState(0);
 
     const [totalAttemptedSigns, setTotalAttemptedSigns] = useState(0);
     const [showFinishButton, setShowFinishButton] = useState(false);
+
+    const [infiniteModuleIndex, setInfiniteModuleIndex] = useState(0);
+    // Tracks whether the initial infinite-mode countdown has already been shown
+    // so subsequent rounds skip the 3-2-1 and go straight into the timer.
+    const infiniteCountdownShownRef = useRef(false);
+
+    // ─── MASTER MODE STAGE PROGRESS (Alphabet → Numbers → Greetings → Survival) ──
+    // Running total of XP earned across all 4 stages this session, so the final
+    // xp-progress screen (shown after Survival) reflects the whole run, not just
+    // the last stage.
+    const [cumulativeXp, setCumulativeXp] = useState(0);
 
 
     const shouldProcessMessages = useRef(true);
@@ -238,19 +321,15 @@ export default function ChallengeScreen() {
         try {
             console.log('🔍 fetchWeakSigns STARTED');
 
+            // 🔥 FIX: If infinite mode, DO NOT call startInfiniteMode again
+            if (mode === 'infinite') {
+                console.log('♾️ Infinite mode - fetchWeakSigns is bypassed');
+                return;
+            }
+
             const token = await AsyncStorage.getItem('userToken');
             console.log('🔍 Token:', token ? 'Found' : 'Not found');
 
-            // 🔥 FIX: If infinite mode, start infinite immediately
-            if (mode === 'infinite') {
-                console.log('♾️ Infinite mode detected - using all signs');
-                const all = MODULE_GESTURES[moduleType] || [];
-                setAllSigns(all);
-                setWeakSigns([]);
-                setRemainingSigns([]);
-                startInfiniteMode();
-                return;
-            }
 
             if (!token) {
                 console.log('⚠️ No token found - using all signs');
@@ -288,17 +367,34 @@ export default function ChallengeScreen() {
                 const weakSignNames = response.weak_signs?.map((s: any) => s.name) || [];
 
                 console.log(`📊 Found ${weakSignNames.length} weak signs:`, weakSignNames);
-
                 if (weakSignNames.length === 0) {
-                    // All mastered!
-                    console.log('🎉 All signs mastered!');
+                    console.log('🎉 All signs mastered for this stage!');
+
+                    const nextStage = mode === 'master'
+                        ? STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1]
+                        : undefined;
+
+                    if (nextStage) {
+                        console.log(`➡️ Silently skipping ${STAGE_LABELS[moduleType]} (all mastered), moving to ${STAGE_LABELS[nextStage]}`);
+                        // Don't show Senya message - skip silently
+                        // Just advance to next stage without any UI flash
+                        advanceToNextStageSilent(nextStage);
+                        return;
+                    }
+
+                    // No more stages - ALL DONE!
+                    console.log('🏆 ALL STAGES COMPLETE!');
                     setIsComplete(true);
-                    setSenyaMessage(SENYA_MESSAGES.complete);
+                    setLoading(false); // Make sure loading is false
+                    // Show results immediately
+                    setShowResults(true);
                     return;
                 }
 
                 setWeakSigns(weakSignNames);
                 setRemainingSigns([...weakSignNames]);
+                // Set loading to true only when we actually have signs to practice
+                setLoading(true);
                 startRound(weakSignNames);
             } else {
                 // If API fails or returns no data, use all signs as fallback
@@ -319,12 +415,108 @@ export default function ChallengeScreen() {
             startRound([...all]);
         }
     };
+    // ─── ADVANCE TO NEXT STAGE (SILENT - no UI flash) ──────────────────────────
+    const advanceToNextStageSilent = (nextStage: string) => {
+        console.log(`🔄 Silently advancing to next stage: ${nextStage}`);
 
-    // ─── FETCH WEAK SIGNS WHEN COMPONENT MOUNTS ──────────────────────────────
+        stopTimer();
+        if (countdownRef.current) {
+            clearInterval(countdownRef.current);
+            countdownRef.current = null;
+        }
+        isTimeUpProcessingRef.current = false;
+        isProcessingRef.current = false;
+        shouldProcessMessages.current = true;
+
+        // Don't show any UI changes - keep everything as is
+        setShowResults(false);
+        setIsComplete(false);
+        // Don't set loading to true or show any messages
+
+        setMasteredSigns(new Set());
+        setCompletedSigns(new Set());
+        setWeakSigns([]);
+        setAllSigns([]);
+        setRemainingSigns([]);
+        setCurrentRoundSigns([]);
+        setCurrentIndex(0);
+        setSessionHistory([]);
+        setRoundNumber(1);
+        setResultsData(null);
+        setStarRating(1);
+        setXpEarned(0);
+        setLiveLetter('—');
+        setLiveConfidence(0);
+
+        // Swap the stage silently
+        setModuleType(nextStage);
+    };
+
+
+
+    // ─── ADVANCE TO NEXT STAGE (Master Mode only) ────────────────────────────
+    // Called once a stage (Alphabet / Numbers / Greetings / Survival) is fully
+    // mastered. Resets the per-stage challenge state and swaps the WebView to
+    // the next stage's HTML file — the existing fetchWeakSigns/startRound flow
+    // (below) then picks it up automatically via the [moduleType] effect.
+    const advanceToNextStage = (nextStage: string) => {
+        console.log(`🔄 Advancing to next stage: ${nextStage}`);
+
+        stopTimer();
+        if (countdownRef.current) {
+            clearInterval(countdownRef.current);
+            countdownRef.current = null;
+        }
+        isTimeUpProcessingRef.current = false;
+        isProcessingRef.current = false;
+        shouldProcessMessages.current = true;
+
+        setShowResults(false);
+        setIsComplete(false);
+        setIsConnected(false);
+        setLoading(true);
+
+        setMasteredSigns(new Set());
+        setCompletedSigns(new Set());
+        setWeakSigns([]);
+        setAllSigns([]);
+        setRemainingSigns([]);
+        setCurrentRoundSigns([]);
+        setCurrentIndex(0);
+        setSessionHistory([]);
+        setRoundNumber(1);
+        setResultsData(null);
+        setStarRating(1);
+        setXpEarned(0);
+        setLiveLetter('—');
+        setLiveConfidence(0);
+
+        setSenyaMessage(`🎉 ${STAGE_LABELS[moduleType]} mastered! Starting ${STAGE_LABELS[nextStage]}...`);
+
+        // Swap the stage — this triggers the [moduleType] effect below
+        setModuleType(nextStage);
+    };
+
     useEffect(() => {
-        console.log('🔍 ChallengeScreen mounted, fetching weak signs for module:', moduleType);
-        fetchWeakSigns();
+        // Only fetch weak signs if NOT in infinite mode
+        if (mode !== 'infinite') {
+            console.log('🔍 ChallengeScreen mounted, fetching weak signs for module:', moduleType);
+            // Only show loading if we're not already in a silent skip
+            // The fetchWeakSigns function will handle showing/hiding loading
+            fetchWeakSigns();
+        }
     }, [moduleType]);
+
+
+    // ─── START INFINITE MODE ON MOUNT ──────────────────────────────────────────
+    useEffect(() => {
+        // If in infinite mode, start it once when component mounts
+        if (mode === 'infinite') {
+            console.log('♾️ Starting Infinite Mode on mount');
+            startInfiniteMode();
+        }
+    }, []);
+
 
     // ─── CLEANUP ─────────────────────────────────────────────────────────
     useEffect(() => {
@@ -392,6 +584,11 @@ export default function ChallengeScreen() {
     };
     // ─── TIMER LOGIC - FIXED ──────────────────────────────────────────────────────────
     const startTimer = (signs: string[], index: number) => {
+        // ✅ Guard: don't start timer if screen is no longer active
+        if (!shouldProcessMessages.current || isWebViewPaused.current) {
+            console.log('⏰ startTimer skipped – screen not active');
+            return;
+        }
         console.log('⏰ Starting timer for sign:', signs[index]);
         setIsTimerActive(true);
         setTimeLeft(10);
@@ -406,6 +603,12 @@ export default function ChallengeScreen() {
         const currentIdx = index;
 
         timerRef.current = setInterval(() => {
+            // ✅ Guard inside the interval: stop if screen lost focus
+            if (!shouldProcessMessages.current || isWebViewPaused.current) {
+                clearInterval(timerRef.current!);
+                timerRef.current = null;
+                return;
+            }
             setTimeLeft((prev) => {
                 const newTime = prev - 0.1;
 
@@ -423,6 +626,37 @@ export default function ChallengeScreen() {
             });
         }, 100);
     };
+
+    useEffect(() => {
+        return () => {
+            // Full cleanup when component unmounts
+            console.log('🧹 ChallengeScreen unmounting - stopping everything');
+            stopWebViewCamera();
+            shouldProcessMessages.current = false;
+            isWebViewPaused.current = true;
+            stopTimer();
+
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+                countdownRef.current = null;
+            }
+
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+
+            // Unload sounds
+            if (gestureSound) gestureSound.unloadAsync();
+            if (completeSound) completeSound.unloadAsync();
+            if (countdownSound) countdownSound.unloadAsync();
+        };
+    }, []);
 
     const handleTimeUp = (signs: string[], index: number) => {
         // 🔥 Prevent multiple time-up calls
@@ -474,23 +708,19 @@ export default function ChallengeScreen() {
 
         // Safety check
         if (index >= signs.length) {
-            console.log('⚠️ Index out of bounds - stopping everything!');
+            console.log('⚠️ Index out of bounds - treating as batch complete');
             stopTimer();
 
-            // 🔥 STOP THE CAMERA COMPLETELY
-            stopWebViewCamera();
-            shouldProcessMessages.current = false;
-
             if (mode === 'infinite') {
-                const allGestures = MODULE_GESTURES[moduleType] || [];
-                const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
-                setCurrentRoundSigns(shuffled);
-                setCurrentIndex(0);
-                setCompletedSigns(new Set());
-                setTotalAttemptedSigns(prev => prev + shuffled.length);
-                setRoundNumber(prev => prev + 1);
-                startCountdown(shuffled);
+                // Add this batch to the running total
+                setInfiniteSignCount(prev => prev + signs.length);
+                // Advance to the next ordered batch (no countdown)
+                advanceInfiniteBatch(infiniteModuleIndex);
+                return;
             } else {
+                // 🔥 STOP THE CAMERA COMPLETELY
+                stopWebViewCamera();
+                shouldProcessMessages.current = false;
                 showRoundResults();
             }
             return;
@@ -516,19 +746,10 @@ export default function ChallengeScreen() {
             stopTimer();
 
             if (mode === 'infinite') {
-                const allGestures = MODULE_GESTURES[moduleType] || [];
-                const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
-
-                setCurrentRoundSigns(shuffled);
-                setCurrentIndex(0);
-                setCompletedSigns(new Set());
-
-                // Add completely finished round to the running total
+                // Add this batch to the running total
                 setInfiniteSignCount(prev => prev + signs.length);
-                setTotalAttemptedSigns(prev => prev + signs.length);
-                setRoundNumber(prev => prev + 1);
-
-                startCountdown(shuffled);
+                // Advance to the next ordered batch (no countdown replay)
+                advanceInfiniteBatch(infiniteModuleIndex);
             } else {
                 showRoundResults();
             }
@@ -539,37 +760,28 @@ export default function ChallengeScreen() {
         }
     };
 
-    // ─── MODIFIED START ROUND FOR INFINITE ──────────────────────────────────────────
+    // ─── START ROUND ──────────────────────────────────────────────────────────
     const startRound = (signs: string[]) => {
         if (signs.length === 0) {
             if (mode === 'master') {
                 setIsComplete(true);
                 setSenyaMessage(SENYA_MESSAGES.complete);
             } else {
-                // Infinite mode: loop forever - just get all signs again
-                const allGestures = MODULE_GESTURES[moduleType] || [];
-                const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
-                setCurrentRoundSigns(shuffled);
-                setCurrentIndex(0);
-                // 🔥 FIX: Add to both counters
-                setInfiniteSignCount(prev => prev + shuffled.length);
-                setTotalAttemptedSigns(prev => prev + shuffled.length);
-                startCountdown(shuffled);
+                // Infinite mode: should not normally reach here since
+                // fetchWeakSigns calls startInfiniteMode() directly.
+                startInfiniteMode();
             }
             return;
         }
 
-        let roundSigns: string[];
         if (mode === 'infinite') {
-            const allGestures = MODULE_GESTURES[moduleType] || [];
-            const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
-            roundSigns = shuffled;
-            // 🔥 FIX: Add to both counters
-            setInfiniteSignCount(prev => prev + roundSigns.length);
-            setTotalAttemptedSigns(prev => prev + roundSigns.length);
-        } else {
-            roundSigns = signs.slice(0, 10);
+            // Infinite entry is handled by startInfiniteMode; guard anyway.
+            startInfiniteMode();
+            return;
         }
+
+        // Master mode: cap at 10 signs per round
+        const roundSigns = signs.slice(0, 10);
 
         console.log(`📋 Starting round ${roundNumber} with ${roundSigns.length} signs:`, roundSigns);
 
@@ -580,15 +792,57 @@ export default function ChallengeScreen() {
     };
 
 
+
+
     // ─── COUNTDOWN LOGIC ──────────────────────────────────────────────────────
-    const startCountdown = (signs: string[]) => {
+    const startCountdown = async (signs: string[]) => {
+        // ✅ In Infinite Mode, only show countdown once (the very first time)
+        if (mode === 'infinite' && infiniteCountdownShownRef.current) {
+            // Skip countdown and start timer directly
+            setCountdown(null);
+            startTimer(signs, 0);
+            return;
+        }
+        if (!shouldProcessMessages.current || isWebViewPaused.current) {
+            console.log('⏳ startCountdown skipped – screen not active');
+            return;
+        }
+
         if (countdownRef.current) clearInterval(countdownRef.current);
 
-        setCountdown(5);
-        setSenyaMessage(`Round ${roundNumber} starting in 5...`);
+        // Play countdown sound if enabled
+        if (settings.soundEnabled) {
+            try {
+                if (countdownSound) await countdownSound.unloadAsync();
+                const { sound } = await Audio.Sound.createAsync(
+                    COUNTDOWN_SOUND,
+                    { shouldPlay: true, isLooping: false, volume: 0.8 }
+                );
+                setCountdownSound(sound);
+                sound.setOnPlaybackStatusUpdate((status) => {
+                    if (status.isLoaded && status.didJustFinish) {
+                        sound.unloadAsync();
+                        setCountdownSound(null);
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to play countdown sound:', error);
+            }
 
-        let count = 5;
+
+        }
+
+        setCountdown(3);
+        setSenyaMessage(`Round ${roundNumber} starting in 3...`);
+
+        let count = 3;
         countdownRef.current = setInterval(() => {
+            // ✅ Guard inside the interval
+            if (!shouldProcessMessages.current || isWebViewPaused.current) {
+                clearInterval(countdownRef.current!);
+                countdownRef.current = null;
+                return;
+            }
             count -= 1;
             if (count > 0) {
                 setCountdown(count);
@@ -601,6 +855,7 @@ export default function ChallengeScreen() {
             }
         }, 1000);
     };
+
     const stopTimer = () => {
         if (timerRef.current) {
             clearInterval(timerRef.current);
@@ -613,60 +868,105 @@ export default function ChallengeScreen() {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;
         }
+
+        infiniteCountdownShownRef.current = true;
+    };
+
+    // ─── INFINITE MODE: ordered stage list (cycles endlessly) ────────────────
+    // Order: alphabet → numbers → greetings → survival → alphabet → …
+    // Each "batch" = 5 randomly-picked signs from that stage.
+    const INFINITE_STAGE_ORDER = ['alphabet', 'numbers', 'greetings', 'survival'] as const;
+    const INFINITE_BATCH_SIZE = 5;
+
+    /** Pick a fresh batch of `INFINITE_BATCH_SIZE` signs from a module. */
+    const pickInfiniteBatch = (module: string): string[] => {
+        const pool = MODULE_GESTURES[module] || [];
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, INFINITE_BATCH_SIZE);
     };
 
     // ─── START INFINITE MODE ──────────────────────────────────────────────────────
     const startInfiniteMode = () => {
-        const allGestures = MODULE_GESTURES[moduleType] || [];
-        const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
+        // Prevent multiple starts - but allow if not started yet
+        if (isInfiniteStarted) {
+            console.log('♾️ Infinite mode already started, skipping...');
+            return;
+        }
+        setIsInfiniteStarted(true);
 
-        setCurrentRoundSigns(shuffled);
+        console.log('♾️ Starting Infinite Mode with alphabet');
+
+        // Start with alphabet
+        const currentModule = 'alphabet';
+        const roundSigns = pickInfiniteBatch(currentModule);
+
+        setModuleType(currentModule);
+        setInfiniteModuleIndex(0);
+        setCurrentRoundSigns(roundSigns);
         setCurrentIndex(0);
         setCompletedSigns(new Set());
-
-        // Start counts at 0 for a running tally!
         setInfiniteSignCount(0);
         setTotalAttemptedSigns(0);
         setShowFinishButton(true);
-        setSenyaMessage('♾️ Infinite Mode - Keep practicing!');
+        setSenyaMessage(`♾️ ${STAGE_LABELS[currentModule]} - Keep practicing!`);
 
-        startCountdown(shuffled);
+        // Show countdown only ONCE at the very start
+        startCountdown(roundSigns);
+    };
+
+    /** Advance to the next infinite-mode batch (no countdown after the first). */
+    const advanceInfiniteBatch = (completedStageIdx: number) => {
+        if (!shouldProcessMessages.current || isWebViewPaused.current) return;
+
+        // Move to next stage cyclically (alphabet → numbers → greetings → survival → alphabet → ...)
+        const nextStageIdx = (completedStageIdx + 1) % INFINITE_STAGE_ORDER.length;
+        const nextModule = INFINITE_STAGE_ORDER[nextStageIdx];
+        const roundSigns = pickInfiniteBatch(nextModule);
+
+        console.log(`🔄 Infinite: Moving from ${STAGE_LABELS[INFINITE_STAGE_ORDER[completedStageIdx]]} to ${STAGE_LABELS[nextModule]}`);
+
+        setInfiniteModuleIndex(nextStageIdx);
+        setRoundNumber(prev => prev + 1);
+        setCurrentRoundSigns(roundSigns);
+        setCurrentIndex(0);
+        setCompletedSigns(new Set());
+        setTotalAttemptedSigns(prev => prev + roundSigns.length);
+        setSenyaMessage(`♾️ ${STAGE_LABELS[nextModule]} — keep going! 💪`);
+
+        // Switch WebView if needed, then start timer immediately (NO countdown)
+        if (nextModule !== moduleType) {
+            console.log(`🔄 Switching WebView to: ${nextModule}`);
+            setModuleType(nextModule);
+            // Wait for WebView to load, then start timer
+            setTimeout(() => {
+                if (shouldProcessMessages.current && !isWebViewPaused.current) {
+                    startTimer(roundSigns, 0);
+                }
+            }, 800);
+        } else {
+            startTimer(roundSigns, 0);
+        }
     };
 
     const handleInfiniteMode = () => {
-        const allGestures = MODULE_GESTURES[moduleType] || [];
-        const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
-        const roundSigns = shuffled.slice(0, 10);
-
+        // Legacy helper – kept for safety but not used in the new flow
+        const roundSigns = pickInfiniteBatch(moduleType);
         setCurrentRoundSigns(roundSigns);
         setCurrentIndex(0);
         setTimeLeft(10);
-
-        // Start timer with the signs array and index 0
         startTimer(roundSigns, 0);
         setSenyaMessage('♾️ Infinite mode - Keep practicing!');
     };
 
 
-    // ─── SHOW ROUND RESULTS FOR INFINITE ──────────────────────────────────────────
+    // ─── SHOW ROUND RESULTS ────────────────────────────────────────────────────
     const showRoundResults = () => {
         stopTimer();
 
-
-        // 🔥 FIX: Don't auto-show results in infinite mode on round completion
+        // Infinite mode: NEVER show results modal - just advance to next batch
         if (mode === 'infinite') {
-            if (currentIndex >= currentRoundSigns.length - 1) {
-                const allGestures = MODULE_GESTURES[moduleType] || [];
-                const shuffled = [...allGestures].sort(() => Math.random() - 0.5);
-                setCurrentRoundSigns(shuffled);
-                setCurrentIndex(0);
-                setCompletedSigns(new Set());
-                setTotalAttemptedSigns(prev => prev + shuffled.length);
-                setRoundNumber(prev => prev + 1);
-                setSenyaMessage(`♾️ Round ${roundNumber + 1} - Keep practicing!`);
-                startCountdown(shuffled);
-                return;
-            }
+            setInfiniteSignCount(prev => prev + currentRoundSigns.length);
+            advanceInfiniteBatch(infiniteModuleIndex);
             return;
         }
 
@@ -715,9 +1015,8 @@ export default function ChallengeScreen() {
         setShowResults(false);
 
         if (mode === 'infinite') {
-            // 🔥 FIX: On finish, award XP and navigate to XP progress
+            // Award XP and go to XP progress screen
             const result = await awardModuleXp(starRating);
-            await saveChallengeResults();
 
             if (result && result.xp_earned > 0) {
                 const level = result.level || 1;
@@ -727,12 +1026,9 @@ export default function ChallengeScreen() {
                 const levelName = getLevelName(level);
                 const nextLevelXp = getNextLevelXp(level);
 
-                // 🔥 FIX: Fetch the actual streak from API
                 try {
                     const streakData = await api.getStreak();
                     const streakDays = streakData.streak_days || 0;
-                    console.log('📊 Fetched streak from API:', streakDays);
-
                     router.push({
                         pathname: '/lesson/xp-progress',
                         params: {
@@ -748,7 +1044,6 @@ export default function ChallengeScreen() {
                     });
                 } catch (error) {
                     console.error('Error fetching streak:', error);
-                    // Fallback to 0 if streak fetch fails
                     router.push({
                         pathname: '/lesson/xp-progress',
                         params: {
@@ -768,70 +1063,89 @@ export default function ChallengeScreen() {
             }
             return;
         }
-
         // Master mode logic
         const remaining = remainingSigns;
         if (remaining.length === 0) {
+            // This stage is fully mastered
             const result = await awardModuleXp(starRating);
             await saveChallengeResults();
 
-            if (result && result.xp_earned > 0) {
-                const level = result.level || 1;
-                const totalXp = result.total_xp || 0;
-                const xpEarned = result.xp_earned || 0;
-                const previousXp = totalXp - xpEarned;
-                const levelName = getLevelName(level);
-                const nextLevelXp = getNextLevelXp(level);
+            // Use cumulativeXp which tracks XP across all stages
+            const newCumulativeXp = cumulativeXp + xpEarned;
+            setCumulativeXp(newCumulativeXp);
 
-                // 🔥 FIX: Fetch the actual streak from API
-                try {
-                    const streakData = await api.getStreak();
-                    const streakDays = streakData.streak_days || 0;
-                    console.log('📊 Fetched streak from API:', streakDays);
+            const nextStage = STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1];
 
-                    router.push({
-                        pathname: '/lesson/xp-progress',
-                        params: {
-                            xpEarned: String(xpEarned),
-                            totalXp: String(totalXp),
-                            level: String(level),
-                            levelName: levelName,
-                            previousXp: String(previousXp),
-                            nextLevelXp: String(nextLevelXp),
-                            showStreak: 'true',
-                            streakDays: String(streakDays),
-                        },
-                    });
-                } catch (error) {
-                    console.error('Error fetching streak:', error);
-                    // Fallback
-                    router.push({
-                        pathname: '/lesson/xp-progress',
-                        params: {
-                            xpEarned: String(xpEarned),
-                            totalXp: String(totalXp),
-                            level: String(level),
-                            levelName: levelName,
-                            previousXp: String(previousXp),
-                            nextLevelXp: String(nextLevelXp),
-                            showStreak: 'true',
-                            streakDays: String(0),
-                        },
-                    });
-                }
-            } else {
-                router.back();
+            if (nextStage) {
+                // Not the last stage yet — move straight into the next one.
+                advanceToNextStage(nextStage);
+                return;
             }
+
+            // Last stage complete — show XP progress with cumulative XP
+            // Get the current user's level and total XP from the last result
+            const level = result?.level || 1;
+            const totalXp = result?.total_xp || 0;
+            // Use cumulativeXp for the session XP (all stages combined)
+            const sessionXp = newCumulativeXp || xpEarned || 0;
+            const previousXp = totalXp - sessionXp;
+            const levelName = getLevelName(level);
+            const nextLevelXp = getNextLevelXp(level);
+
+            // Fetch streak
+            let streakDays = 0;
+            try {
+                const streakData = await api.getStreak();
+                streakDays = streakData.streak_days || 0;
+                console.log('📊 Fetched streak from API:', streakDays);
+            } catch (error) {
+                console.error('Error fetching streak:', error);
+                streakDays = 0;
+            }
+
+            router.push({
+                pathname: '/lesson/xp-progress',
+                params: {
+                    xpEarned: String(sessionXp),
+                    totalXp: String(totalXp),
+                    level: String(level),
+                    levelName: levelName,
+                    previousXp: String(previousXp),
+                    nextLevelXp: String(nextLevelXp),
+                    showStreak: 'true',
+                    streakDays: String(streakDays),
+                },
+            });
         } else {
             setRoundNumber(prev => prev + 1);
             startRound(remaining);
         }
     };
+
     // ─── HANDLE FINISH INFINITE MODE ──────────────────────────────────────────
     const handleFinishInfinite = async () => {
+        // HARD STOP everything
+        console.log('🛑 Finishing Infinite Mode - HARD STOP');
+        shouldProcessMessages.current = false;
+        isWebViewPaused.current = true;
         stopTimer();
+
+        if (countdownRef.current) {
+            clearInterval(countdownRef.current);
+            countdownRef.current = null;
+        }
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+        stopWebViewCamera();
         setIsProcessing(true);
 
+        // Calculate results
         const mastered = Array.from(masteredSigns);
         const attemptsData: Record<string, { correct: number; wrong: number }> = {};
 
@@ -846,7 +1160,6 @@ export default function ChallengeScreen() {
             }
         });
 
-        // Exact number of signs attempted
         const totalShown = infiniteSignCount + currentIndex;
         const finalTotal = totalShown > 0 ? totalShown : 1;
 
@@ -866,11 +1179,9 @@ export default function ChallengeScreen() {
         setStarRating(calculatedStars);
         setXpEarned(xp);
         setResultsData(result);
-        setShowResults(true);
         setShowFinishButton(false);
+        setShowResults(true); // Show results modal immediately
         setIsProcessing(false);
-        // 🔥 The continue button will use handleContinueAfterResults
-        // which now fetches the streak correctly
     };
 
     // ─── GET LEVEL NAME ──────────────────────────────────────────────────────────
@@ -917,15 +1228,12 @@ export default function ChallengeScreen() {
             };
             const moduleName = moduleNameMap[moduleType] || moduleType;
 
-            // ✅ Use the XP that was already calculated and stored
-            // The star rating determines the XP amount, but we already have the XP value
-            // from calculateXP - use the xpEarned state
-            const xpToAward = xpEarned; // Use the state value from calculateXP
+            // If xpEarned is 0, still award 0 XP but mark the module as completed
+            const xpToAward = xpEarned || 0;
 
             console.log(`⭐ Awarding Challenge XP for ${moduleName} with ${starRating} star(s)...`);
             console.log(`📊 XP to award: ${xpToAward}`);
 
-            // 🔥 Use the new challenge XP endpoint (no cap)
             const result = await api.awardChallengeXp(moduleName, xpToAward, starRating);
 
             if (result && result.success) {
@@ -955,7 +1263,6 @@ export default function ChallengeScreen() {
             // Convert session history to API format
             const performance = allSigns.map(sign => {
                 const history = sessionHistory.filter(h => h.sign === sign);
-                // Sum up all attempts (including bonuses)
                 const totalAttempts = history.reduce((sum, h) => sum + h.attempts, 0);
                 const successCount = history.filter(h => h.success).length;
 
@@ -967,6 +1274,13 @@ export default function ChallengeScreen() {
                     consecutive_wrong: 0,
                 };
             });
+
+            // ✅ Skip saving if no performance data (all signs mastered already)
+            const totalAttempts = performance.reduce((sum, p) => sum + p.attempts, 0);
+            if (totalAttempts === 0) {
+                console.log(`ℹ️ No new performance data for ${moduleName}, skipping save`);
+                return;
+            }
 
             console.log(`📤 Saving challenge results for module: ${moduleName}`);
             console.log('📊 Performance data:', JSON.stringify(performance, null, 2));
@@ -1086,15 +1400,16 @@ export default function ChallengeScreen() {
     };
 
     const stopWebViewCamera = () => {
-        if (webViewRef.current && !isWebViewPaused.current) {
-            console.log('📸 Stopping WebView camera...');
+        if (webViewRef.current) {
+            console.log('📸 Stopping WebView camera completely...');
             isWebViewPaused.current = true;
+            shouldProcessMessages.current = false;
 
             webViewRef.current.injectJavaScript(`
             (function() {
-                console.log('📸 Stopping camera from app');
+                console.log('📸 Force stopping all media from app');
                 
-                // Stop all media tracks
+                // 1. Stop all media tracks
                 if (window.stream) {
                     window.stream.getTracks().forEach(track => {
                         track.stop();
@@ -1103,7 +1418,7 @@ export default function ChallengeScreen() {
                     window.stream = null;
                 }
                 
-                // Clear video feed
+                // 2. Clear video feed
                 const video = document.querySelector('video');
                 if (video) {
                     video.srcObject = null;
@@ -1111,25 +1426,46 @@ export default function ChallengeScreen() {
                     video.style.display = 'none';
                 }
                 
-                // Clear canvas
+                // 3. Clear canvas
                 const canvas = document.querySelector('canvas');
                 if (canvas) {
                     const ctx = canvas.getContext('2d');
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    if (ctx) {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
                 }
                 
-                // Stop any ongoing detection loops
+                // 4. Stop detection loops
                 if (window.stopDetection) {
                     window.stopDetection();
                 }
                 
-                // Stop the model status check interval
+                // 5. Clear all intervals
                 if (window._modelCheckInterval) {
                     clearInterval(window._modelCheckInterval);
                     window._modelCheckInterval = null;
                 }
+                if (window._detectionInterval) {
+                    clearInterval(window._detectionInterval);
+                    window._detectionInterval = null;
+                }
                 
-                console.log('✅ Camera stopped completely');
+                // 6. Disconnect from the model
+                if (window._ws) {
+                    window._ws.close();
+                    window._ws = null;
+                }
+                
+                // 7. Prevent any new frame requests
+                if (window.requestAnimationFrame) {
+                    const origRAF = window.requestAnimationFrame;
+                    window.requestAnimationFrame = function(callback) {
+                        // No-op to prevent further animation
+                        return 0;
+                    };
+                }
+                
+                console.log('✅ Camera completely stopped');
                 true;
             })();
         `);
@@ -1241,7 +1577,17 @@ export default function ChallengeScreen() {
             setLiveConfidence(Math.round(confidence * 100));
 
             // Check if it matches the target - ONLY if timer is active
-            if (matchValue === currentTarget && !isProcessing && !isComplete && isTimerActive && !isTimeUpProcessingRef.current) {
+            // 🔥 FIX: compare case-insensitively. `matchValue` is normalized to
+            // Title Case for display (e.g. "Hello"), but `currentTarget` can come
+            // from two different sources with different casing: the local
+            // MODULE_GESTURES fallback list is Title Case ("Hello"), while signs
+            // returned by the weak-signs API are the same ALL-CAPS canonical names
+            // the individual Greetings/Survival module screens save to the backend
+            // (e.g. "HELLO"). A strict === comparison silently never matched
+            // whenever the target came from the API, even at 99% detection
+            // confidence — this is why Greetings/Survival always timed out.
+            const isMatch = matchValue.trim().toUpperCase() === currentTarget.trim().toUpperCase();
+            if (isMatch && !isProcessing && !isComplete && isTimerActive && !isTimeUpProcessingRef.current) {
                 // Success!
                 setIsProcessing(true);
                 stopTimer();
@@ -1548,6 +1894,11 @@ export default function ChallengeScreen() {
 
     // ─── RENDER ──────────────────────────────────────────────────────────
     const gestureUrl = MODULE_URLS[moduleType] || GESTURE_URL_ALPHABET;
+    // Is this stage fully mastered, and is there another stage after it?
+    const isStageFullyMastered = (masteredSigns.size >= allSigns.length && allSigns.length > 0) ||
+        (mode === 'master' && isComplete && allSigns.length === 0);
+
+    const nextStageForModal = mode === 'master' ? STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1] : undefined;
     const progress = currentRoundSigns.length > 0
         ? (currentIndex / currentRoundSigns.length)
         : 0;
@@ -1562,7 +1913,19 @@ export default function ChallengeScreen() {
         <SafeAreaView style={styles.container}>
             {/* ─── HEADER ────────────────────────────────────────────────── */}
             <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+                <Pressable
+                    onPress={() => {
+                        // Stop everything before going back
+                        console.log('🔙 Back button pressed - stopping everything');
+                        stopWebViewCamera();
+                        shouldProcessMessages.current = false;
+                        isWebViewPaused.current = true;
+                        stopTimer();
+                        router.back();
+                    }}
+                    style={styles.backBtn}
+                    hitSlop={8}
+                >
                     <Ionicons name="arrow-back" size={20} color="#0f3172" />
                 </Pressable>
                 <Text style={styles.headerTitle}>
@@ -1633,6 +1996,14 @@ export default function ChallengeScreen() {
                             ? 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36'
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
+                    // 🔥 Camera permission bypass: we've already asked once via
+                    // useCameraPermissions() above, so we avoid re-prompting per
+                    // stage's HTML file.
+                    // Android: the WebView already inherits the app's granted
+                    // camera permission automatically — no extra prop needed there,
+                    // and react-native-webview doesn't type onPermissionRequest.
+                    // iOS 15+ (WKWebView): grant camera/mic without the system prompt
+                    mediaCapturePermissionGrantType="grant"
                 />
 
                 {/* ─── HUD: TOP-LEFT — target sign overlay ───────────── */}
@@ -1912,15 +2283,19 @@ export default function ChallengeScreen() {
                         </View>
 
                         <Text style={styles.modalTitle}>
-                            {masteredSigns.size >= allSigns.length && allSigns.length > 0 ? 'You Did It!' : 'Round Complete!'}
+                            {isStageFullyMastered
+                                ? (nextStageForModal ? `${STAGE_LABELS[moduleType]} Mastered!` : 'You Did It!')
+                                : 'Round Complete!'}
                         </Text>
                         <Text style={styles.modalSubtitle}>
                             {(() => {
                                 const r = getResults();
-                                const allDone = masteredSigns.size >= allSigns.length && allSigns.length > 0;
-                                return allDone
-                                    ? `All ${allSigns.length} signs mastered!`
-                                    : `${r.masteredCount} of ${r.totalCount} signs mastered this round`;
+                                if (isStageFullyMastered) {
+                                    return nextStageForModal
+                                        ? `All ${allSigns.length} signs mastered! Next up: ${STAGE_LABELS[nextStageForModal]}`
+                                        : `All ${allSigns.length} signs mastered!`;
+                                }
+                                return `${r.masteredCount} of ${r.totalCount} signs mastered this round`;
                             })()}
                         </Text>
 
@@ -2066,18 +2441,38 @@ export default function ChallengeScreen() {
                         })()}
 
 
-                        <TouchableOpacity
-                            style={styles.continueButton}
-                            activeOpacity={0.85}
-                            onPress={handleContinueAfterResults}
-                        >
-                            <Text style={styles.continueButtonText}>
-                                {masteredSigns.size >= allSigns.length && allSigns.length > 0
-                                    ? '🎉 All Done!'
-                                    : `Continue (${resultsData ? resultsData.remainingSigns.length : 0} left)`}
-                            </Text>
-                            <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
-                        </TouchableOpacity>
+                        {/* ─── CONTINUE BUTTON ─────────────────────────────────── */}
+                        {(() => {
+                            const isStageComplete = resultsData && resultsData.remainingSigns.length === 0;
+                            const nextStage = mode === 'master' ? STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1] : undefined;
+
+                            let buttonText = 'Continue';
+                            let showArrow = true;
+
+                            if (isStageComplete && nextStage) {
+                                buttonText = `Next: ${STAGE_LABELS[nextStage]} →`;
+                                showArrow = false; // Arrow is already in the text
+                            } else if (isStageComplete && !nextStage) {
+                                buttonText = '🎉 All Done!';
+                                showArrow = false;
+                            } else if (resultsData) {
+                                buttonText = `Continue (${resultsData.remainingSigns.length} left)`;
+                                showArrow = true;
+                            }
+
+                            return (
+                                <TouchableOpacity
+                                    style={styles.continueButton}
+                                    activeOpacity={0.85}
+                                    onPress={handleContinueAfterResults}
+                                >
+                                    <Text style={styles.continueButtonText}>{buttonText}</Text>
+                                    {showArrow && (
+                                        <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        })()}
                     </View>
                 </View>
             </Modal>

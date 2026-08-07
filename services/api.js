@@ -736,8 +736,8 @@ export const api = {
     },
 
     /**
-   * Get weak signs for a student
-   */
+  * Get weak signs for a student
+  */
     getWeakSigns: async (moduleName) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
@@ -763,12 +763,24 @@ export const api = {
                 throw new Error(data.message || data.error || 'Failed to fetch weak signs');
             }
 
-            return data;
+            // ✅ Ensure consistent return format
+            return {
+                success: data.success || true,
+                weak_signs: data.weak_signs || [],
+                module: data.module || null,
+                count: data.count || 0,
+            };
         } catch (error) {
             console.error('❌ Error fetching weak signs:', error);
-            throw error;
+            // Return empty array instead of throwing
+            return {
+                success: false,
+                weak_signs: [],
+                count: 0,
+            };
         }
     },
+
 
     /**
  * Award XP for challenge mode (no cap)

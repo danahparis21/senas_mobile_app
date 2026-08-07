@@ -22,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
+import GestureTutorialModal, { shouldShowGestureTutorial, markGestureTutorialSeen } from '../../components/GestureTutorialModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -418,6 +419,7 @@ export default function GestureMain() {
   const [refreshing, setRefreshing] = useState(false);
   const [challengeModalVisible, setChallengeModalVisible] = useState(false);
   const [challengeLoading, setChallengeLoading] = useState(false);
+  const [tutorialVisible, setTutorialVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   // Fetch gesture progress from API
@@ -459,10 +461,19 @@ export default function GestureMain() {
     }
   };
 
+  // Check if tutorial should show on first visit
+  const checkTutorialStatus = async () => {
+    const shouldShow = await shouldShowGestureTutorial();
+    if (shouldShow) {
+      setTutorialVisible(true);
+    }
+  };
+
   // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       fetchGestureProgress();
+      checkTutorialStatus();
     }, [])
   );
 
@@ -573,13 +584,26 @@ export default function GestureMain() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {/* Header - Reduced spacing to blend with AppHeader */}
+          {/* Header - With tutorial button */}
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
               <Text style={styles.greeting}>Let's Practice </Text>
               <Text style={styles.title}>Gestures</Text>
             </View>
+            <TouchableOpacity
+              style={styles.tutorialButton}
+              onPress={() => setTutorialVisible(true)}
+              hitSlop={8}
+            >
+              <LinearGradient
+                colors={['#4B7BBB', '#6FA8E6']}
+                style={styles.tutorialButtonGradient}
+              >
+                <Ionicons name="help-circle" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
+
           {/* Category Filters */}
           <View style={styles.categoriesContainer}>
             <ScrollView
@@ -747,6 +771,12 @@ export default function GestureMain() {
         onSelectMode={handleChallengeMode}
         isLoading={challengeLoading}
       />
+
+      {/* Tutorial Modal */}
+      <GestureTutorialModal
+        visible={tutorialVisible}
+        onClose={() => setTutorialVisible(false)}
+      />
     </LinearGradient>
   );
 }
@@ -775,13 +805,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 4, // Reduced from 16 to blend with AppHeader
-    paddingBottom: 4, // Reduced from 8
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   headerTitleRow: {
     flexDirection: 'row',
-    alignItems: 'baseline', // Aligns text baselines
-    gap: 8, // Space between texts
+    alignItems: 'baseline',
+    gap: 8,
   },
   greeting: {
     fontSize: 14,
@@ -796,9 +826,23 @@ const styles = StyleSheet.create({
     color: '#0F3172',
     marginTop: 2,
   },
-  // REMOVED: headerRight, xpBadge, xpBadgeText, settingsButton
+  tutorialButton: {
+    marginLeft: 8,
+  },
+  tutorialButtonGradient: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F3172',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   categoriesContainer: {
-    marginVertical: 8, // Reduced from 12
+    marginVertical: 8,
   },
   categoriesContent: {
     paddingHorizontal: 20,
@@ -838,7 +882,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   carouselSection: {
-    marginVertical: 8, // Reduced from 12
+    marginVertical: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1091,9 +1135,9 @@ const styles = StyleSheet.create({
     width: 18,
   },
   quickAccess: {
-    marginTop: 8, // Reduced from 12
+    marginTop: 8,
     paddingHorizontal: 20,
-    marginBottom: 8, // Reduced from 12
+    marginBottom: 8,
   },
   quickAccessGrid: {
     flexDirection: 'row',
@@ -1141,14 +1185,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     marginHorizontal: 20,
-    marginVertical: 12, // Reduced from 16
+    marginVertical: 12,
     padding: 16,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(15, 49, 114, 0.1)',
     alignItems: 'center',
     gap: 14,
-    marginBottom: 24, // Reduced from 30
+    marginBottom: 24,
     shadowColor: '#0F3172',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,

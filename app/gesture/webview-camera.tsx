@@ -791,6 +791,18 @@ export default function WebViewCameraScreen() {
 
         setShowResults(false);
 
+        // Fetch streak regardless of XP
+        let streakDays = 0;
+        try {
+            const streakData = await api.getStreak();
+            streakDays = streakData.streak_days || 0;
+            console.log('📊 Fetched streak from API:', streakDays);
+        } catch (error) {
+            console.error('Error fetching streak:', error);
+            streakDays = 0;
+        }
+
+        // If we have XP, show XP progress
         if (xpResult && xpResult.xp_earned > 0) {
             const level = xpResult.level || 1;
             const totalXp = xpResult.total_xp || 0;
@@ -798,16 +810,6 @@ export default function WebViewCameraScreen() {
             const previousXp = totalXp - xpEarned;
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
-
-            let streakDays = 0;
-            try {
-                const streakData = await api.getStreak();
-                streakDays = streakData.streak_days || 0;
-                console.log('📊 Fetched streak from API:', streakDays);
-            } catch (error) {
-                console.error('Error fetching streak:', error);
-                streakDays = 0;
-            }
 
             router.push({
                 pathname: '/lesson/xp-progress',
@@ -823,7 +825,13 @@ export default function WebViewCameraScreen() {
                 },
             });
         } else {
-            router.back();
+            // No XP earned - show the streak screen
+            router.push({
+                pathname: '/lesson/streak',
+                params: {
+                    streakDays: String(streakDays),
+                },
+            });
         }
     };
 
@@ -928,6 +936,13 @@ export default function WebViewCameraScreen() {
                 if (result) {
                     console.log(`⭐ XP awarded: ${result.xp_earned} XP, Total: ${result.total_xp} XP`);
                     setXpResult(result);
+                }
+                // Pre-fetch streak so it's ready when user clicks Continue
+                try {
+                    const streakData = await api.getStreak();
+                    console.log('📊 Pre-fetched streak:', streakData.streak_days || 0);
+                } catch (error) {
+                    console.error('Error pre-fetching streak:', error);
                 }
             }, 2000);
         }
