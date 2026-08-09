@@ -100,7 +100,6 @@ function ScreenBackground({ intensity = 'soft' }: { intensity?: 'soft' | 'bold' 
   );
 }
 
-
 // ─── Senya ───────────────────────────────────────────────────────────────────
 // Mascot with a layered glow. Breathes at rest, squashes + pops when she
 // absorbs an answer, and orbits a dashed halo while she is thinking.
@@ -113,6 +112,11 @@ const SenyaCharacter = React.forwardRef<
   const squish = useRef(new Animated.Value(1)).current;
   const glow = useRef(new Animated.Value(0.5)).current;
   const ringRotate = useRef(new Animated.Value(0)).current;
+
+  // ✅ Golden sparkle glow for answer absorption
+  const sparkleGlow = useRef(new Animated.Value(0)).current;
+  const sparkleScale = useRef(new Animated.Value(1)).current;
+  const sparkleRotate = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -146,26 +150,122 @@ const SenyaCharacter = React.forwardRef<
     return () => loop.stop();
   }, [thinking]);
 
-  // "Absorb" reaction
+  // "Absorb" reaction - single bounce with golden sparkle
   useEffect(() => {
     if (pulseKey === 0) return;
+
+    // ✅ Single bounce animation - only use bounce, not squish
     Animated.sequence([
-      Animated.timing(squish, { toValue: 0.88, duration: 110, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.spring(squish, { toValue: 1, friction: 4, tension: 150, useNativeDriver: true }),
-    ]).start();
-    Animated.sequence([
-      Animated.timing(bounce, { toValue: 1.16, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(bounce, { toValue: 1.15, duration: 130, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       Animated.spring(bounce, { toValue: 1, friction: 4.5, tension: 120, useNativeDriver: true }),
+    ]).start();
+
+    // ✅ Golden sparkle animation - single sparkle burst
+    sparkleGlow.setValue(0);
+    sparkleScale.setValue(0.8);
+    sparkleRotate.setValue(0);
+
+    Animated.parallel([
+      // Glow fades in and out smoothly - once
+      Animated.sequence([
+        Animated.timing(sparkleGlow, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true
+        }),
+        Animated.timing(sparkleGlow, {
+          toValue: 0.3,
+          duration: 700,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true
+        }),
+        Animated.timing(sparkleGlow, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true
+        }),
+      ]),
+      // Scale expands gently - once
+      Animated.sequence([
+        Animated.timing(sparkleScale, {
+          toValue: 1.3,
+          duration: 400,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true
+        }),
+        Animated.timing(sparkleScale, {
+          toValue: 1.0,
+          duration: 600,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true
+        }),
+      ]),
+      // Slow rotation for sparkle effect - once
+      Animated.timing(sparkleRotate, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true
+      }),
     ]).start();
   }, [pulseKey]);
 
   const breatheScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] });
   const floatY = breathe.interpolate({ inputRange: [0, 1], outputRange: [3, -5] });
   const spin = ringRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const sparkleSpin = sparkleRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  const ringScale = sparkleScale.interpolate({
+    inputRange: [0.8, 1.3],
+    outputRange: [0.9, 1.3],
+  });
 
   return (
     <View ref={ref} collapsable={false} style={{ width: size * 1.6, height: size * 1.6, alignItems: 'center', justifyContent: 'center' }}>
-      {/* outer glow */}
+      {/* ✅ Golden sparkle glow - elegant warm glow behind Senya */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          width: size * 2.2,
+          height: size * 2.2,
+          borderRadius: size,
+          backgroundColor: 'rgba(255, 215, 0, 0.3)',
+          opacity: sparkleGlow.interpolate({
+            inputRange: [0, 0.3, 0.6, 1],
+            outputRange: [0, 0.7, 0.4, 0],
+          }),
+          transform: [
+            { scale: sparkleScale },
+            { rotate: sparkleSpin },
+          ],
+        }}
+      />
+
+      {/* ✅ Inner golden ring sparkle */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          width: size * 1.8,
+          height: size * 1.8,
+          borderRadius: size,
+          borderWidth: 2,
+          borderColor: 'rgba(255, 215, 0, 0.5)',
+          opacity: sparkleGlow.interpolate({
+            inputRange: [0, 0.2, 0.5, 1],
+            outputRange: [0, 0.8, 0.3, 0],
+          }),
+          transform: [
+            { scale: ringScale },
+            { rotate: sparkleSpin },
+          ],
+        }}
+      />
+
+      {/* Outer glow - breathing effect */}
       <Animated.View
         pointerEvents="none"
         style={{
@@ -178,6 +278,7 @@ const SenyaCharacter = React.forwardRef<
           transform: [{ scale: glow.interpolate({ inputRange: [0.5, 1], outputRange: [0.95, 1.08] }) }],
         }}
       />
+
       <View
         pointerEvents="none"
         style={{
@@ -188,6 +289,7 @@ const SenyaCharacter = React.forwardRef<
           backgroundColor: 'rgba(92,209,255,0.28)',
         }}
       />
+
       {thinking && (
         <Animated.View
           pointerEvents="none"
@@ -203,17 +305,28 @@ const SenyaCharacter = React.forwardRef<
           }}
         />
       )}
+
+      {/* Senya image with horizontal stretch and single bounce */}
       <Animated.View
         style={{
-          transform: [{ translateY: floatY }, { scale: Animated.multiply(Animated.multiply(breatheScale, bounce), squish) }],
+          transform: [
+            { translateY: floatY },
+            { scale: Animated.multiply(breatheScale, bounce) }  // ✅ Removed squish
+          ],
         }}
       >
-        <Image source={SENYA_IMG} style={{ width: size, height: size, resizeMode: 'contain' }} />
+        <Image
+          source={require('../assets/images/img/senya_face.png')}
+          style={{
+            width: size * 1.3,
+            height: size,
+            resizeMode: 'contain',
+          }}
+        />
       </Animated.View>
     </View>
   );
 });
-
 // ─── Option card ─────────────────────────────────────────────────────────────
 function AnimatedOptionCard({
   option,
@@ -869,7 +982,7 @@ export default function Assessment() {
                 <View style={styles.statTile}>
                   <BarChart3 size={16} color={tone} strokeWidth={2.4} />
                   <Text style={styles.statLabel}>Level</Text>
-                  <Text style={[styles.statValue, { color: tone }]} numberOfLines={1}>
+                  <Text style={[styles.statValue, { color: tone }]} numberOfLines={1} adjustsFontSizeToFit>
                     {level}
                   </Text>
                 </View>
@@ -1296,6 +1409,16 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
+    minHeight: 80, // ✅ Add minimum height
+  },
+  statValue: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: palette.textPrimary,
+    textAlign: 'center',
+    textTransform: 'capitalize',
+    flexShrink: 1, // ✅ Allow shrinking
+    width: '100%', // ✅ Take full width
   },
   statLabel: {
     fontSize: 10.5,
@@ -1304,12 +1427,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: palette.textMuted,
   },
-  statValue: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: palette.textPrimary,
-    textAlign: 'center',
-    textTransform: 'capitalize',
-  },
+
   ctaWrap: { width: '100%', marginTop: 28 },
 });

@@ -550,7 +550,7 @@ export default function Onboarding() {
             {!isLast && (
               <AnimatedPressable
                 style={[styles.skipBtn, { backgroundColor: skipBgAnim, borderColor: skipBorderAnim }]}
-                onPress={() => router.replace('/role')}
+                onPress={() => router.replace('/login')}
               >
                 <Animated.Text style={[styles.skipText, { color: skipTxtAnim }]}>Skip</Animated.Text>
               </AnimatedPressable>

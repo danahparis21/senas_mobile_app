@@ -31,13 +31,16 @@ const ACHIEVEMENT_IMAGES: Record<string, any> = {
 // Default image for achievements without specific mapping
 const DEFAULT_IMAGE = require('../../assets/images/img/badges.png');
 
+// Mirrors the level thresholds used on the dashboard, spaced ~1k apart
+// so "XP Milestones" here lines up with the Level Progress card there.
 const MILESTONES = [
-  { label: "50 XP", xp: 50 },
-  { label: "100 XP", xp: 100 },
-  { label: "250 XP", xp: 250 },
-  { label: "500 XP", xp: 500 },
   { label: "1000 XP", xp: 1000 },
+  { label: "2000 XP", xp: 2000 },
+  { label: "3000 XP", xp: 3000 },
+  { label: "4000 XP", xp: 4000 },
+  { label: "5000 XP", xp: 5000 },
 ];
+const MAX_MILESTONE_XP = MILESTONES[MILESTONES.length - 1].xp;
 
 function MilestoneIcon({ done }: { done: boolean }) {
   return (
@@ -58,10 +61,10 @@ function MilestoneIcon({ done }: { done: boolean }) {
 }
 
 // ── ICONS (no emoji) ────────────────────────────────────────────────
-function LightningIcon({ size = 12, color = '#1848c8' }: { size?: number; color?: string }) {
+function StarIcon({ size = 12, color = '#1848c8' }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M13 2 4.5 13.5H11L10 22 19.5 10.5H13L13 2Z" />
+      <Path d="M12 2.5l2.9 6.16 6.6.72-4.9 4.62 1.3 6.5-5.9-3.34-5.9 3.34 1.3-6.5-4.9-4.62 6.6-.72Z" />
     </Svg>
   );
 }
@@ -259,7 +262,7 @@ export default function Achievements() {
                     <Text style={styles.heroBadgeTextOrange}>{earnedCount}/{totalCount} badges</Text>
                   </View>
                   <View style={styles.heroBadgeBlue}>
-                    <LightningIcon size={12} color="#1848c8" />
+                    <StarIcon size={12} color="#1848c8" />
                     <Text style={styles.heroBadgeTextBlue}>{totalXP} XP</Text>
                   </View>
                   <View style={[styles.heroBadgeBlue, { backgroundColor: 'rgba(239,68,68,0.10)' }]}>
@@ -277,9 +280,9 @@ export default function Achievements() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>XP Milestones</Text>
             <View style={styles.xpToNextBadge}>
-              {totalXP >= 500 && <TrophyIcon size={12} color="#4b7bbb" />}
+              {totalXP >= MAX_MILESTONE_XP && <TrophyIcon size={12} color="#4b7bbb" />}
               <Text style={styles.xpToNextText}>
-                {totalXP < 500 ? `${500 - totalXP} XP to next` : 'Max Level!'}
+                {totalXP < MAX_MILESTONE_XP ? `${MAX_MILESTONE_XP - totalXP} XP to next` : 'Max Level!'}
               </Text>
             </View>
           </View>
@@ -308,10 +311,10 @@ export default function Achievements() {
             <View style={styles.progressSection}>
               <View style={styles.progressHeader}>
                 <Text style={styles.progressTitle}>CURRENT PROGRESS</Text>
-                <Text style={styles.progressValue}>{totalXP} / 500 XP</Text>
+                <Text style={styles.progressValue}>{totalXP} / {MAX_MILESTONE_XP} XP</Text>
               </View>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${Math.min((totalXP / 500) * 100, 100)}%` }]} />
+                <View style={[styles.progressFill, { width: `${Math.min((totalXP / MAX_MILESTONE_XP) * 100, 100)}%` }]} />
               </View>
             </View>
           </GlassCard>

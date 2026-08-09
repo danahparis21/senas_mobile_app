@@ -50,6 +50,42 @@ const C = {
   sky: '#E6F1FF',
 };
 
+// ── LEVEL / XP SYSTEM ───────────────────────────────────────────────
+// Cumulative total XP required to REACH each level. Level 10 is the max
+// level, capped at 5000 total XP. Progress within a level is derived
+// from these cumulative floors (not a flat per-level number), so the
+// ring/bar always reflects how far through the *current* level you are
+// instead of comparing lifetime XP against a tiny per-level threshold.
+const LEVEL_XP_TABLE: Record<number, number> = {
+  1: 0,
+  2: 100,
+  3: 250,
+  4: 500,
+  5: 800,
+  6: 1200,
+  7: 1800,
+  8: 2600,
+  9: 3600,
+  10: 5000, // max level
+};
+const MAX_LEVEL = 10;
+
+function getLevelProgress(totalXp: number, currentLevel: number) {
+  const level = Math.min(Math.max(currentLevel || 1, 1), MAX_LEVEL);
+  const isMaxLevel = level >= MAX_LEVEL;
+  const floor = LEVEL_XP_TABLE[level] ?? 0;
+  const ceiling = LEVEL_XP_TABLE[level + 1] ?? LEVEL_XP_TABLE[MAX_LEVEL];
+  const xpForThisLevel = Math.max(ceiling - floor, 1);
+  const xpIntoLevel = Math.min(Math.max(totalXp - floor, 0), xpForThisLevel);
+  const pct = isMaxLevel ? 100 : Math.min((xpIntoLevel / xpForThisLevel) * 100, 100);
+  const xpToNextLevel = isMaxLevel ? 0 : Math.max(ceiling - totalXp, 0);
+  return { xpForThisLevel, xpIntoLevel, pct, xpToNextLevel, isMaxLevel };
+}
+
+// Today's Goal is tracked client-side (see updateTodayXp below) since the
+// backend only exposes a lifetime total_xp, not a daily figure.
+const DAILY_GOAL_TARGET = 100;
+
 interface ChallengeGoal {
   id: string;
   type: string;
@@ -237,7 +273,7 @@ export default function Dashboard() {
   const [studentName, setStudentName] = useState<string>('Student');
   const [studentLevel, setStudentLevel] = useState<string>('Beginner');
   const [xp, setXp] = useState<number>(0);
-  const [xpMax, setXpMax] = useState<number>(100);
+  const [todayXp, setTodayXp] = useState<number>(0);
   const [streak, setStreak] = useState<number>(0);
   const [level, setLevel] = useState<number>(1);
   const [learningPathLessons, setLearningPathLessons] = useState<Lesson[]>([]);
@@ -633,6 +669,40 @@ export default function Dashboard() {
     ).start();
   };
 
+  // Local YYYY-MM-DD for "today", so the goal resets at local midnight
+  // rather than UTC midnight.
+  const getTodayDateKey = (): string => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // Today's Goal tracker. The backend only gives us a lifetime total_xp,
+  // so we snapshot that total once per calendar day (the "baseline") and
+  // treat anything earned above the baseline as today's XP. On a new day
+  // (or first-ever launch) the baseline resets to the current total, so
+  // the goal correctly starts at 0/DAILY_GOAL_TARGET.
+  const updateTodayXp = async (totalXp: number): Promise<void> => {
+    try {
+      const todayKey = getTodayDateKey();
+      const storedDate = await AsyncStorage.getItem('xpDayDate');
+      const storedBaselineRaw = await AsyncStorage.getItem('xpDayBaseline');
+      const storedBaseline = storedBaselineRaw !== null ? parseInt(storedBaselineRaw, 10) : null;
+
+      // If it's a new day or no baseline exists, reset
+      if (storedDate !== todayKey || storedBaseline === null) {
+        await AsyncStorage.setItem('xpDayDate', todayKey);
+        await AsyncStorage.setItem('xpDayBaseline', String(totalXp));
+        setTodayXp(0);
+      } else {
+        // Calculate today's XP as current total - baseline
+        const todayXpEarned = Math.max(totalXp - storedBaseline, 0);
+        setTodayXp(todayXpEarned);
+      }
+    } catch (error) {
+      console.error('Error updating today XP:', error);
+    }
+  };
+
   const fetchStudentData = async (): Promise<void> => {
     try {
       setLoading(true);
@@ -646,6 +716,7 @@ export default function Dashboard() {
 
         if (student?.total_xp !== undefined && student?.total_xp !== null) {
           setXp(student.total_xp);
+          await updateTodayXp(student.total_xp); // ✅ Make sure this is awaited and runs
         }
         if (student?.streak_days !== undefined && student?.streak_days !== null) {
           setStreak(student.streak_days);
@@ -656,10 +727,6 @@ export default function Dashboard() {
         if (student?.level_name) {
           setLevelName(student.level_name);
         }
-
-        const levelXpMap: Record<number, number> = { 1: 100, 2: 250, 3: 500, 4: 800, 5: 1200 };
-        const maxXp = levelXpMap[student?.level || 1] || 100;
-        setXpMax(maxXp);
       }
     } catch (error) {
       console.error('Error fetching student data:', error);
@@ -801,6 +868,7 @@ export default function Dashboard() {
         if (response.student) {
           if (response.student.total_xp !== undefined && response.student.total_xp !== null) {
             setXp(response.student.total_xp);
+            updateTodayXp(response.student.total_xp);
           }
           if (response.student.streak_days !== undefined && response.student.streak_days !== null) {
             setStreak(response.student.streak_days);
@@ -812,9 +880,6 @@ export default function Dashboard() {
             setLevelName(response.student.level_name);
           }
 
-          const levelXpMap: Record<number, number> = { 1: 100, 2: 250, 3: 500, 4: 800, 5: 1200 };
-          const maxXp = levelXpMap[response.student.level || 1] || 100;
-          setXpMax(maxXp);
 
           if (response.student.fsl_mastery_level) {
             setStudentLevel(response.student.fsl_mastery_level);
@@ -961,7 +1026,9 @@ export default function Dashboard() {
     );
   };
 
-  const xpPct = xpMax > 0 ? Math.min((xp / xpMax) * 100, 100) : 0;
+  const levelProgress = getLevelProgress(xp, level);
+  const xpPct = levelProgress.pct;
+  const todayGoalPct = DAILY_GOAL_TARGET > 0 ? Math.min((todayXp / DAILY_GOAL_TARGET) * 100, 100) : 0;
 
   if (loading) {
     return (
@@ -1090,7 +1157,7 @@ export default function Dashboard() {
             />
           }
         >
-          {/* ── Hero Greeting + Senya ── */}
+          {/* ─── Hero Greeting + Senya ── */}
           <View style={styles.heroWrap}>
             <View style={styles.heroText}>
               <Text style={styles.greetingText}>{getGreeting()}</Text>
@@ -1098,13 +1165,13 @@ export default function Dashboard() {
               <Text style={styles.heroSub}>You've got this. Let's{"\n"}make it a signing day!</Text>
             </View>
             <Image
-              source={require('../../assets/images/img/senya_blue.png')}
+              source={require('../../assets/images/img/happy-senya.png')}
               style={styles.senyaHero}
               contentFit="contain"
             />
           </View>
 
-          {/* ── Today's Goal Card (ring + level progress) ── */}
+          {/* ── Combined Progress Card (Total XP + Today's Goal) ── */}
           <View style={styles.section}>
             <View style={styles.goalCard}>
               <View style={styles.goalRingSide}>
@@ -1114,33 +1181,52 @@ export default function Dashboard() {
                     <Text style={styles.goalRingPct}>{Math.round(xpPct)}%</Text>
                   </View>
                 </View>
-                <Text style={styles.goalRingLabel}>Progress</Text>
+                <Text style={styles.goalRingLabel}>Level {level}</Text>
               </View>
 
               <View style={styles.goalInfo}>
-                <Text style={styles.goalTitle}>Today's Goal</Text>
+                <View style={styles.goalHeaderRow}>
+                  <Text style={styles.goalTitle}>Total XP</Text>
+                  <View style={styles.levelTag}>
+                    <Text style={styles.levelTagText}>LEVEL {level}</Text>
+                  </View>
+                </View>
+
                 <View style={styles.goalXpRow} ref={xpDisplayRef}>
                   <Animated.Text style={[styles.goalXpBig, { transform: [{ scale: xpPopAnim }] }]}>
                     {displayXp}
                   </Animated.Text>
-                  <Text style={styles.goalXpSmall}> / {xpMax} XP</Text>
+                  <Text style={styles.goalXpSmall}> XP</Text>
                 </View>
+
                 <View style={styles.progressTrack}>
                   <View style={[styles.progressFill, { width: `${xpPct}%` }]} />
                 </View>
-                <View style={styles.goalTagRow}>
-                  <View style={styles.levelTag}>
-                    <Text style={styles.levelTagText}>LEVEL {level}</Text>
-                  </View>
-                  <Text style={styles.levelTitle} numberOfLines={1}>{levelName}</Text>
-                </View>
+
                 <Text style={styles.xpStatusText}>
-                  {studentLevel} · {Math.max(0, xpMax - xp)} XP to next level 💪
+                  {studentLevel} ·{' '}
+                  {levelProgress.isMaxLevel ? 'Max level reached 🎉' : `${levelProgress.xpToNextLevel} XP to next level 💪`}
                 </Text>
+
+                {/* ── Today's Goal (integrated into the same card) ── */}
+                <View style={styles.todayGoalDivider} />
+                <View style={styles.todayGoalInline}>
+                  <View style={styles.todayGoalIconWrapSmall}>
+                    <SparkleIcon size={14} />
+                  </View>
+                  <View style={styles.todayGoalInlineInfo}>
+                    <View style={styles.todayGoalInlineHeader}>
+                      <Text style={styles.todayGoalInlineTitle}>Today's Goal</Text>
+                      <Text style={styles.todayGoalInlineXp}>{todayXp} / {DAILY_GOAL_TARGET} XP</Text>
+                    </View>
+                    <View style={styles.todayGoalInlineTrack}>
+                      <View style={[styles.todayGoalInlineFill, { width: `${todayGoalPct}%` }]} />
+                    </View>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
-
           {/* ── Promotion Banner Card ── */}
           {promotionData && showEnvelope && (
             <Animated.View style={[
@@ -1539,34 +1625,126 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 16, fontSize: 14, color: C.inkSoft, fontWeight: '600' },
 
   // Hero greeting
-  heroWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 6, zIndex: 1 },
+  heroWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 6,
+    zIndex: 1
+  },
   heroText: { flex: 1, paddingRight: 6 },
   greetingText: { color: C.ink, fontSize: 26, fontWeight: '800', lineHeight: 32 },
   nameText: { color: C.blueDeep, fontSize: 28, fontWeight: '900', lineHeight: 36, marginBottom: 8 },
   heroSub: { color: C.inkSoft, fontSize: 13.5, fontWeight: '600', lineHeight: 20 },
-  senyaHero: { width: 148, height: 168, marginRight: -5 },
-
+  senyaHero: {
+    width: 170,  // ✅ Increased from 148
+    height: 190, // ✅ Increased from 168
+    marginRight: -5
+  },
   section: { paddingHorizontal: 16, marginBottom: 14, zIndex: 1 },
 
   // Today's goal card
-  goalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 26, padding: 16, gap: 14, borderWidth: 1, borderColor: C.cardLine, ...CARD_SHADOW },
-  goalRingSide: { alignItems: 'center', paddingRight: 14, borderRightWidth: 1, borderRightColor: 'rgba(18,58,107,0.08)' },
+  goalCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',  // Changed from 'center' to 'flex-start'
+    backgroundColor: C.card,
+    borderRadius: 26,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: C.cardLine,
+    ...CARD_SHADOW
+  },
+  goalRingSide: {
+    alignItems: 'center',
+    paddingRight: 14,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(18,58,107,0.08)',
+    paddingTop: 4,
+  },
   goalRingWrap: { alignItems: 'center', justifyContent: 'center' },
   goalRingCenter: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   goalRingPct: { fontSize: 19, fontWeight: '900', color: C.ink },
   goalRingLabel: { fontSize: 11, fontWeight: '700', color: C.inkSoft, marginTop: 6 },
   goalInfo: { flex: 1 },
-  goalTitle: { fontSize: 16, fontWeight: '800', color: C.ink, marginBottom: 4 },
+  goalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  goalTitle: { fontSize: 16, fontWeight: '800', color: C.ink },
   goalXpRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
   goalXpBig: { fontSize: 22, fontWeight: '900', color: C.blue },
   goalXpSmall: { fontSize: 13, fontWeight: '700', color: C.inkSoft },
   progressTrack: { backgroundColor: 'rgba(18,58,107,0.10)', borderRadius: 99, height: 8, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: C.sun, borderRadius: 99 },
-  goalTagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 9 },
   levelTag: { backgroundColor: C.blue, borderRadius: 7, paddingVertical: 3, paddingHorizontal: 8 },
   levelTagText: { fontSize: 9, fontWeight: '900', color: '#fff', letterSpacing: 1 },
-  levelTitle: { fontSize: 13, fontWeight: '800', color: C.ink, flex: 1 },
   xpStatusText: { fontSize: 10.5, color: C.inkSoft, fontWeight: '700', marginTop: 5 },
+  // Today's Goal (daily, resets each day — separate from Total XP above)
+  todayGoalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 20, padding: 14, gap: 12, borderWidth: 1, borderColor: C.cardLine, ...CARD_SHADOW },
+  todayGoalIconWrap: { width: 40, height: 40, borderRadius: 14, backgroundColor: C.peach, alignItems: 'center', justifyContent: 'center' },
+  todayGoalInfo: { flex: 1 },
+  todayGoalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  todayGoalTitle: { fontSize: 13.5, fontWeight: '800', color: C.ink },
+  todayGoalXpText: { fontSize: 12, fontWeight: '800', color: C.inkSoft },
+  todayGoalTrack: { backgroundColor: 'rgba(18,58,107,0.10)', borderRadius: 99, height: 7, overflow: 'hidden' },
+  todayGoalFill: { height: '100%', backgroundColor: C.sun, borderRadius: 99 },
+
+
+  // Today's Goal - integrated into main card
+  todayGoalDivider: {
+    height: 1,
+    backgroundColor: 'rgba(18,58,107,0.08)',
+    marginVertical: 10,
+    marginTop: 10,
+  },
+  todayGoalInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  todayGoalIconWrapSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: C.peach,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayGoalInlineInfo: {
+    flex: 1,
+  },
+  todayGoalInlineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  todayGoalInlineTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.ink,
+  },
+  todayGoalInlineXp: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.inkSoft,
+  },
+  todayGoalInlineTrack: {
+    backgroundColor: 'rgba(18,58,107,0.10)',
+    borderRadius: 99,
+    height: 5,
+    overflow: 'hidden',
+  },
+  todayGoalInlineFill: {
+    height: '100%',
+    backgroundColor: C.sun,
+    borderRadius: 99,
+  },
+
 
   // Generic white panel
   panel: { backgroundColor: C.card, borderRadius: 26, padding: 16, borderWidth: 1, borderColor: C.cardLine, ...CARD_SHADOW },

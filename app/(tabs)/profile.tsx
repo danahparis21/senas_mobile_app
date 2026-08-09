@@ -95,6 +95,18 @@ function SignOutIcon() {
   );
 }
 
+// Same sparkle/star shape used for "Today's Goal" on the dashboard.
+function SparkleIcon({ size = 22, color = '#F59E0B' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2 L14.3 9.7 L22 12 L14.3 14.3 L12 22 L9.7 14.3 L2 12 L9.7 9.7 Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
 function TeacherIcon({ size = 20 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -766,10 +778,11 @@ export default function Profile() {
     }, [])
   );
 
-  // Stats data
+  // Stats data. Total XP uses an SVG IconComponent (matching the
+  // dashboard's Today's Goal sparkle) instead of an image icon.
   const stats = [
     { label: 'Lessons Done', value: totalLessons.toString(), icon: require('../../assets/images/img/lesson.png'), color: '#3B82F6' },
-    { label: 'Total XP', value: totalXp.toString(), icon: require('../../assets/images/img/energy.png'), color: '#F59E0B' },
+    { label: 'Total XP', value: totalXp.toString(), IconComponent: SparkleIcon, color: '#F59E0B' },
     { label: 'Day Streak', value: streakDays.toString(), icon: require('../../assets/images/img/streak.png'), color: '#EF4444' },
     { label: 'Badges', value: totalBadges.toString(), icon: require('../../assets/images/img/badges.png'), color: '#8B5CF6' },
   ];
@@ -911,7 +924,11 @@ export default function Profile() {
               {stats.map((s, i) => (
                 <View key={i} style={styles.statItem}>
                   <View style={[styles.statIconBox, { backgroundColor: s.color + '22' }]}>
-                    <Image source={s.icon} style={styles.statIcon} contentFit="contain" />
+                    {s.IconComponent ? (
+                      <s.IconComponent size={22} color={s.color} />
+                    ) : (
+                      <Image source={s.icon} style={styles.statIcon} contentFit="contain" />
+                    )}
                   </View>
                   <Text style={styles.statValue}>{s.value}</Text>
                   <Text style={styles.statLabel}>{s.label}</Text>

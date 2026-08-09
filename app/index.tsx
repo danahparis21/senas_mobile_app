@@ -92,6 +92,7 @@ function Sparkle({
     />
   );
 }
+
 /**
  * A complete cloud formation (all puffs together)
  */
@@ -244,14 +245,14 @@ function CloudBank({
 }
 
 /**
- * Letter-by-letter text animation with bounce
- * Now properly handles Ñ character
+ * Letter-by-letter text animation with sign language images ABOVE the letters
+ * Order: S, E, Ñ (N + Y), A, S
  */
-function AnimatedText({
+function AnimatedTextWithSigns({
   text,
   style,
   delay = 0,
-  stagger = 55,
+  stagger = 140,
   onComplete,
 }: {
   text: string;
@@ -260,8 +261,32 @@ function AnimatedText({
   stagger?: number;
   onComplete?: () => void;
 }) {
-  const [letters] = useState(text.split(''));
+  // Split text into characters
+  const letters = text.split('');
   const anims = useRef(letters.map(() => new Animated.Value(0))).current;
+
+  // Define sign image paths for each SIGN position
+  const getSignImagesForPosition = (signIndex: number) => {
+    const imageMap: { [key: number]: any[] } = {
+      0: [require('../assets/images/img/letter/S.png')],
+      1: [require('../assets/images/img/letter/E.png')],
+      2: [require('../assets/images/img/letter/N.png')],
+      3: [require('../assets/images/img/letter/Y.png')],
+      4: [require('../assets/images/img/letter/A.png')],
+      5: [require('../assets/images/img/letter/S.png')],
+    };
+    return imageMap[signIndex] || [];
+  };
+
+  // Map each letter position to its corresponding sign positions
+  const getSignIndicesForLetter = (letterIndex: number) => {
+    if (letterIndex === 0) return [0]; // S
+    if (letterIndex === 1) return [1]; // E
+    if (letterIndex === 2) return [2, 3]; // Ñ (N + Y)
+    if (letterIndex === 3) return [4]; // A
+    if (letterIndex === 4) return [5]; // S
+    return [];
+  };
 
   useEffect(() => {
     const animations = anims.map((anim, index) =>
@@ -279,34 +304,77 @@ function AnimatedText({
   }, []);
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
-      {letters.map((letter, index) => (
-        <Animated.Text
-          key={index}
-          style={[
-            style,
-            {
-              opacity: anims[index],
-              transform: [
+    <View style={{ alignItems: 'center' }}>
+      {/* Row for sign images - positioned above the letters */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 4, height: 50 }}>
+        {letters.map((letter, letterIndex) => {
+          const signIndices = getSignIndicesForLetter(letterIndex);
+          return (
+            <View key={`sign-${letterIndex}`} style={{ width: 45, alignItems: 'center' }}>
+              <Animated.View
+                style={{
+                  opacity: anims[letterIndex],
+                  transform: [
+                    {
+                      translateY: anims[letterIndex].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-20, 0],
+                      }),
+                    },
+                  ],
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                }}
+              >
+                {signIndices.map((signIndex) => {
+                  const images = getSignImagesForPosition(signIndex);
+                  return images.map((img, imgIndex) => (
+                    <Image
+                      key={`${signIndex}-${imgIndex}`}
+                      source={img}
+                      style={styles.signImage}
+                      contentFit="contain"
+                    />
+                  ));
+                })}
+              </Animated.View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Row for text letters - completely separate */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+        {letters.map((letter, letterIndex) => (
+          <View key={`letter-${letterIndex}`} style={{ width: 45, alignItems: 'center' }}>
+            <Animated.Text
+              style={[
+                style,
                 {
-                  translateY: anims[index].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [22, 0],
-                  }),
+                  opacity: anims[letterIndex],
+                  transform: [
+                    {
+                      translateY: anims[letterIndex].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [22, 0],
+                      }),
+                    },
+                    {
+                      scale: anims[letterIndex].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.55, 1],
+                      }),
+                    },
+                  ],
+                  textAlign: 'center',
                 },
-                {
-                  scale: anims[index].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.55, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          {letter === ' ' ? '\u00A0' : letter}
-        </Animated.Text>
-      ))}
+              ]}
+            >
+              {letter === ' ' ? '\u00A0' : letter}
+            </Animated.Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -315,7 +383,6 @@ export default function SplashScreen() {
   const router = useRouter();
   const soundRef = useRef<Audio.Sound | null>(null);
   const transitionSoundRef = useRef<Audio.Sound | null>(null);
-  const titleSoundRef = useRef<Audio.Sound | null>(null);
 
   // All hooks at top level
   const logoScale = useRef(new Animated.Value(0.3)).current;
@@ -332,68 +399,60 @@ export default function SplashScreen() {
   const [showSubtitle, setShowSubtitle] = useState(false);
   const [showSparkles, setShowSparkles] = useState(false);
 
-  // Load and play sound
+  // Load and play twinkle sound
   useEffect(() => {
-    async function loadSounds() {
+    async function loadSound() {
       try {
-        // Main app start sound
-        const { sound: mainSound } = await Audio.Sound.createAsync(
-          require('../assets/music/app-start.mp3'),
-          { shouldPlay: true, volume: 0.8 }
-        );
-        soundRef.current = mainSound;
-
-        // Title twinkle sound
-        const { sound: titleSound } = await Audio.Sound.createAsync(
+        const { sound } = await Audio.Sound.createAsync(
           require('../assets/music/twinkle.mp3'),
-          { shouldPlay: false, volume: 0.9 }
+          { shouldPlay: true, volume: 0.8, isLooping: false }
         );
-        titleSoundRef.current = titleSound;
+        soundRef.current = sound;
       } catch (error) {
-        console.log('Error loading sounds:', error);
+        console.log('Error loading sound:', error);
       }
     }
-    loadSounds();
+    loadSound();
 
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
-      if (transitionSoundRef.current) {
-        transitionSoundRef.current.unloadAsync();
-      }
-      if (titleSoundRef.current) {
-        titleSoundRef.current.unloadAsync();
-      }
     };
   }, []);
 
-  // Load transition sound when transitioning
+  // Load transition sound
   useEffect(() => {
     async function loadTransitionSound() {
       try {
-        const { sound: transitionSound } = await Audio.Sound.createAsync(
+        const { sound } = await Audio.Sound.createAsync(
           require('../assets/music/clouds-transition.mp3'),
           { shouldPlay: false, volume: 0.9 }
         );
-        transitionSoundRef.current = transitionSound;
+        transitionSoundRef.current = sound;
       } catch (error) {
         console.log('Error loading transition sound:', error);
       }
     }
     loadTransitionSound();
+
+    return () => {
+      if (transitionSoundRef.current) {
+        transitionSoundRef.current.unloadAsync();
+      }
+    };
   }, []);
 
   useEffect(() => {
-    // FASTER TIMELINE - show elements almost immediately
+    // Show elements with slower timing to match music
     const timers = [
-      setTimeout(() => setShowLogo(true), 400),  // Show logo quickly
-      setTimeout(() => setShowTitle(true), 600),  // Title starts quickly
-      setTimeout(() => setShowSubtitle(true), 900), // Subtitle follows
-      setTimeout(() => setShowSparkles(true), 500), // Sparkles start
+      setTimeout(() => setShowLogo(true), 400),
+      setTimeout(() => setShowTitle(true), 900),
+      setTimeout(() => setShowSubtitle(true), 1400),
+      setTimeout(() => setShowSparkles(true), 600),
     ];
 
-    // Logo animation - quick entrance
+    // Logo animation
     const logoAnimation = setTimeout(() => {
       Animated.parallel([
         Animated.timing(logoOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -402,16 +461,17 @@ export default function SplashScreen() {
       ]).start();
     }, 400);
 
-    // Subtitle animation - quick
+    // Subtitle animation - slower
     const subtitleAnimation = setTimeout(() => {
       Animated.parallel([
-        Animated.timing(subtitleOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(subtitleTranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(subtitleOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(subtitleTranslateY, { toValue: 0, duration: 600, useNativeDriver: true }),
       ]).start();
-    }, 900);
+    }, 1400);
 
-    // Play transition sound and start wash animation
+    // Start wash animation with transition sound
     const washAnimation = setTimeout(async () => {
+      // Play transition sound
       try {
         if (transitionSoundRef.current) {
           await transitionSoundRef.current.playAsync();
@@ -424,11 +484,11 @@ export default function SplashScreen() {
         Animated.timing(washOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
         Animated.timing(logoScale, { toValue: 0.7, duration: 800, useNativeDriver: true }),
       ]).start();
-    }, 3000); // Shorter wait before transition
+    }, 4500);
 
     const transition = setTimeout(() => {
       router.replace('/onboarding');
-    }, 4200); // Total splash time ~4.2 seconds
+    }, 5800);
 
     return () => {
       timers.forEach(clearTimeout);
@@ -439,7 +499,7 @@ export default function SplashScreen() {
     };
   }, []);
 
-  // Sparkle positions - more sparkles
+  // Sparkle positions
   const sparkles = [
     { x: width * 0.1, y: height * 0.15, delay: 0, size: 8 },
     { x: width * 0.85, y: height * 0.1, delay: 300, size: 6 },
@@ -460,13 +520,6 @@ export default function SplashScreen() {
     { x: width * 0.75, y: height * 0.8, delay: 1400, size: 5 },
   ];
 
-  // Play title sound when title shows
-  useEffect(() => {
-    if (showTitle && titleSoundRef.current) {
-      titleSoundRef.current.playAsync();
-    }
-  }, [showTitle]);
-
   return (
     <View style={styles.container}>
       <StatusBar style="light" translucent />
@@ -481,7 +534,7 @@ export default function SplashScreen() {
       <View style={styles.blob1} />
       <View style={styles.blob2} />
 
-      {/* Cloud layers — original positions */}
+      {/* Cloud layers */}
       <CloudBank
         bottom={height * 0.28}
         scale={0.8}
@@ -536,7 +589,7 @@ export default function SplashScreen() {
         />
       ))}
 
-      {/* Centered Brand Hero Container - adjusted slightly higher */}
+      {/* Centered Brand Hero Container */}
       <View style={styles.heroCenterContainer}>
         {/* Logo */}
         {showLogo && (
@@ -550,7 +603,7 @@ export default function SplashScreen() {
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 10,
-              marginBottom: 12,
+              marginBottom: 8,
             }}
           >
             <Image
@@ -561,19 +614,19 @@ export default function SplashScreen() {
           </Animated.View>
         )}
 
-        {/* App Name - Letter by letter with proper Ñ */}
+        {/* App Name - Letter by letter with sign language images ABOVE */}
         {showTitle && (
           <View style={styles.titleWrapper}>
-            <AnimatedText
+            <AnimatedTextWithSigns
               text="SEÑAS"
               style={styles.title}
               delay={0}
-              stagger={55}
+              stagger={140}
             />
           </View>
         )}
 
-        {/* Subtitle - split cleanly across two lines */}
+        {/* Subtitle */}
         {showSubtitle && (
           <Animated.View
             style={[
@@ -590,7 +643,7 @@ export default function SplashScreen() {
         )}
       </View>
 
-      {/* Hand-off wash into the app — matches onboarding's first-slide navy */}
+      {/* Hand-off wash into the app */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { backgroundColor: NAVY, opacity: washOpacity, zIndex: 20 }]}
@@ -633,7 +686,7 @@ const styles = StyleSheet.create({
   heroCenterContainer: {
     position: 'absolute',
     top: '50%',
-    marginTop: -170, // Moved up by 10px (was -120)
+    marginTop: -170,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -644,7 +697,7 @@ const styles = StyleSheet.create({
   titleWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   title: {
     fontSize: 44,
@@ -657,6 +710,11 @@ const styles = StyleSheet.create({
     textShadowRadius: 20,
     includeFontPadding: false,
     textAlignVertical: 'center',
+  },
+  signImage: {
+    width: 45,
+    height: 45,
+    marginHorizontal: 0,
   },
   subtitleWrapper: {
     alignItems: 'center',
