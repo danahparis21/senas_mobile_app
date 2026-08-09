@@ -16,9 +16,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import { useSettings } from '../contexts/SettingsContext';
-
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,6 +54,7 @@ interface PromotionModalProps {
   promotionData: PromotionData | null;
   onClose: () => void;
   studentName?: string;
+  teacherName?: string;
 }
 
 const DEFAULT_GRADIENT: [string, string, string] = ['#0f3172', '#1a4f8a', '#2563eb'];
@@ -90,22 +92,61 @@ const buildStarRing = (cx: number, cy: number, r: number, count: number, color: 
   }).join('');
 };
 
-export default function PromotionModal({ visible, promotionData, onClose, studentName }: PromotionModalProps) {
+// Helper to build clean file names for downloaded PDFs (e.g. Hanad-Sirap-Achievement-Certificate.pdf)
+const getSanitizedFileName = (name: string, type: 'Certificate' | 'Report', isGraduation: boolean) => {
+  const cleanName = (name || 'Learner').trim().replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-');
+  if (type === 'Certificate') {
+    const certSuffix = isGraduation ? 'Completion-Certificate' : 'Achievement-Certificate';
+    return `${cleanName}-${certSuffix}.pdf`;
+  }
+  return `${cleanName}-Grade-Report.pdf`;
+};
+
+export default function PromotionModal({ visible, promotionData, onClose, studentName, teacherName }: PromotionModalProps) {
   const [scaleAnim] = useState(new Animated.Value(0.88));
   const [fadeAnim] = useState(new Animated.Value(0));
   const [frontPaper, setFrontPaper] = useState<'certificate' | 'report'>('certificate');
   const swapAnim = useRef(new Animated.Value(0)).current;
   const envelopeAnim = useRef(new Animated.Value(0)).current;
+  const [adviserName, setAdviserName] = useState<string>(teacherName || 'Emma Ruth');
 
   // 🎵 Sound Effect
   const [sound, setSound] = useState<Audio.Sound | null>(null);
 
   const { settings } = useSettings();
+
+  // ── Fetch Teacher / Adviser Name ──
+  useEffect(() => {
+    if (teacherName && teacherName.trim() !== '') {
+      setAdviserName(teacherName);
+      return;
+    }
+    const loadTeacher = async () => {
+      try {
+        const userData = await AsyncStorage.getItem('userData');
+        if (userData) {
+          const user = JSON.parse(userData);
+          const student = user.student;
+          if (student?.teacher) {
+            const t = student.teacher;
+            const full = `${t.first_name || ''} ${t.last_name || ''}`.trim();
+            if (full) {
+              setAdviserName(full);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Error loading teacher in modal:', e);
+      }
+      setAdviserName('Emma Ruth');
+    };
+    loadTeacher();
+  }, [teacherName, visible]);
+
   // ─── Play Sound When Modal Opens OR Settings Change ──────────────────
-  // ─── Handle Sound Based on Settings ──────────────────────────────────
   useEffect(() => {
     const handleSound = async () => {
-      // If sound is disabled, stop and unload any playing sound
       if (!settings.soundEnabled) {
         console.log('🔇 Sound disabled, stopping certificate sound');
         if (sound) {
@@ -116,10 +157,8 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
         return;
       }
 
-      // If sound is enabled and modal is visible, play sound
       if (visible && settings.soundEnabled) {
         try {
-          // Unload existing sound if any
           if (sound) {
             await sound.unloadAsync();
             setSound(null);
@@ -148,6 +187,7 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       }
     };
   }, [visible, settings.soundEnabled]);
+
   useEffect(() => {
     if (visible) {
       Animated.parallel([
@@ -202,7 +242,6 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
     return null;
   }
 
-
   const toLevelLower = (promotionData.to_level || '').toLowerCase();
   const fromLevelLower = (promotionData.from_level || '').toLowerCase();
 
@@ -225,7 +264,6 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
     });
 
   const recipientName = studentName || 'Learner';
-  const teacherName = '';  // Teacher signature line — pass in via prop later if needed
 
   const targetLevelUpper = promotionData.to_level.toUpperCase();
   const formattedPillText = targetLevelUpper.includes('LEVEL')
@@ -242,12 +280,20 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
         ? `for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels of Filipino Sign Language. Congratulations on this remarkable achievement!`
         : `for successfully completing the <span class="level-highlight">${promotionData.from_level} Level</span> of the SEÑAS Filipino Sign Language Learning Platform and demonstrating the knowledge and skills required to advance to the next stage.`;
 
-      // Medal geometry: gold scalloped seal (cx,cy = 70,120) hanging from a two-tail navy ribbon.
-      const medalCx = 89, medalCy = 148;
-      const medalScallop = buildScallopPoints(medalCx, medalCy, 66, 56, 14);
-      const medalStarRing = buildStarRing(medalCx, medalCy, 52, 20, '#92400e');
-      const medalTopArc = `M ${medalCx - 34},${medalCy} A 34,34 0 1,1 ${medalCx + 34},${medalCy}`;
-      const medalBottomArc = `M ${medalCx + 34},${medalCy + 5} A 34,34 0 1,1 ${medalCx - 34},${medalCy + 5}`;
+      // Color Theme variables (Royal Blue for Achievement, Golden Yellow for Completion)
+      const isGold = isGraduation;
+      const themePrimary = isGold ? '#ca8a04' : '#1d4ed8';
+      const themeSecondary = isGold ? '#eab308' : '#2563eb';
+      const themeDark = isGold ? '#713f12' : '#0f2a5c';
+      const themeLightBg = isGold ? '#fef9c3' : '#eff6ff';
+      const themeBorder = isGold ? '#fef08a' : '#bfdbfe';
+      const frameGrad = isGold
+        ? 'linear-gradient(135deg, #ca8a04 0%, #eab308 50%, #854d0e 100%)'
+        : 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #1d4ed8 100%)';
+      const waveBg = isGold
+        ? 'radial-gradient(circle, #fef08a 0%, #fefcbf 70%, transparent 100%)'
+        : 'radial-gradient(circle, #dbeafe 0%, #eff6ff 70%, transparent 100%)';
+      const watermarkStroke = isGold ? '#fde047' : '#93c5fd';
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -260,151 +306,231 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
     html, body {
       width: 100%;
       height: 100%;
+      background: #ffffff;
     }
     body {
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      background: #ffffff;
     }
-    .cert-frame {
+    .cert-outer-canvas {
       width: 100%;
       height: 100%;
-      background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 45%, #38bdf8 75%, #1d4ed8 100%);
+      background: ${frameGrad};
       padding: 14px;
     }
-    .cert-container {
+    .cert-card {
       width: 100%;
       height: 100%;
       background: #ffffff;
+      border-radius: 18px;
       position: relative;
       overflow: hidden;
-      padding: 44px 60px 36px 60px;
+      padding: 34px 50px 110px 60px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
     }
-    /* Decorative organic blobs, top-left and bottom-right */
-    .blob-tl {
+
+    /* Solid Header & Footer Bars */
+    .header-accent-bar {
       position: absolute;
-      top: -140px;
-      left: -160px;
-      width: 440px;
-      height: 440px;
-      background: linear-gradient(135deg, #bfdbfe 0%, #eff6ff 100%);
-      border-radius: 42% 58% 65% 35% / 45% 40% 60% 55%;
-      z-index: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 10px;
+      background: ${themePrimary};
+      z-index: 4;
     }
-    .blob-br {
+    .footer-solid-bar {
       position: absolute;
-      bottom: -180px;
-      right: -170px;
-      width: 520px;
-      height: 520px;
-      background: linear-gradient(135deg, #bfdbfe 0%, #eff6ff 100%);
-      border-radius: 60% 40% 35% 65% / 55% 60% 40% 45%;
-      z-index: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 90px;
+      background: ${themePrimary};
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 54px 0 60px;
+      border-radius: 0 0 18px 18px;
     }
-    .cert-inner { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
-    .sparkle-star {
-      position: absolute;
-      color: #60a5fa;
-      z-index: 1;
-      line-height: 1;
+    .footer-bar-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.7);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 3px;
     }
-    /* Gold medal hanging from a navy two-tail ribbon, top-right */
-    .medal-wrap {
-      width: 178px;
-      height: 275px;
-      position: absolute;
-      top: -6px;
-      right: 56px;
-      z-index: 10;
-    }
-    .stamp-center-text {
+    .footer-bar-value {
       font-size: 13px;
       font-weight: 900;
-      letter-spacing: 0.5px;
+      color: #ffffff;
+      white-space: nowrap;
     }
+    .footer-bar-divider {
+      width: 1px;
+      height: 36px;
+      background: rgba(255,255,255,0.3);
+    }
+
+    /* Decorative Corner Blobs matching Canva Image 1 */
+    .wave-tl {
+      position: absolute;
+      top: -120px;
+      left: -130px;
+      width: 390px;
+      height: 390px;
+      background: ${waveBg};
+      border-radius: 50%;
+      z-index: 0;
+      opacity: 0.85;
+    }
+    .wave-tr {
+      position: absolute;
+      top: -100px;
+      right: -100px;
+      width: 340px;
+      height: 340px;
+      background: ${waveBg};
+      border-radius: 50%;
+      z-index: 0;
+      opacity: 0.75;
+    }
+    .wave-bl {
+      position: absolute;
+      bottom: -110px;
+      left: -110px;
+      width: 360px;
+      height: 360px;
+      background: ${waveBg};
+      border-radius: 50%;
+      z-index: 0;
+      opacity: 0.75;
+    }
+    .wave-br {
+      position: absolute;
+      bottom: -140px;
+      right: -130px;
+      width: 440px;
+      height: 440px;
+      background: ${waveBg};
+      border-radius: 50%;
+      z-index: 0;
+      opacity: 0.85;
+    }
+
+    /* Stars scattered all over the certificate */
+    .star-sparkle {
+      position: absolute;
+      color: ${isGold ? '#eab308' : '#3b82f6'};
+      z-index: 1;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    /* Faint Hand Sign Gesture Watermarks on Left Background */
+    .hand-watermarks {
+      position: absolute;
+      top: 50px;
+      left: 20px;
+      bottom: 50px;
+      width: 120px;
+      z-index: 1;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+
+    /* Top-Right Vertical Ribbon Banner */
+    .ribbon-banner {
+      position: absolute;
+      top: 0;
+      right: 48px;
+      width: 140px;
+      height: 275px;
+      z-index: 10;
+    }
+
+    /* Top Left Header */
     .header-left {
+      position: relative;
+      z-index: 2;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
+      margin-top: 4px;
     }
     .logo-img {
-      height: 48px;
+      height: 52px;
       object-fit: contain;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .brand-tagline {
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 800;
-      letter-spacing: 1.4px;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
-      color: #1d4ed8;
+      color: ${themePrimary};
     }
+
+    /* Main Certificate Content */
     .cert-content {
-      text-align: left;
-      max-width: 610px;
-      margin-top: 6px;
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      margin-top: 10px;
+      max-width: 660px;
     }
     .cert-title {
-      font-size: 29px;
+      font-size: 34px;
       font-weight: 900;
-      color: #0f2a5c;
-      letter-spacing: 0.4px;
+      color: ${themeDark};
+      letter-spacing: 0.8px;
       text-transform: uppercase;
       margin-bottom: 14px;
     }
     .presented-to {
-      font-size: 14px;
+      font-size: 16px;
       color: #64748b;
-      font-weight: 500;
+      font-weight: 600;
       margin-bottom: 4px;
     }
     .recipient-name {
-      font-size: 42px;
+      font-size: 52px;
       font-weight: 900;
-      color: #0f2a5c;
-      margin-bottom: 6px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #0f2a5c;
-      display: inline-block;
-      min-width: 420px;
+      color: ${themeDark};
+      line-height: 1.1;
+      margin-bottom: 4px;
     }
-    .divider-row {
-      position: relative;
-      width: 100%;
+    .name-line {
+      height: 3px;
+      background: linear-gradient(90deg, ${themeDark}, ${themeSecondary}, ${themeDark});
+      width: 90%;
       max-width: 580px;
-      height: 1.5px;
-      background: linear-gradient(90deg, transparent, #a9c9f7, #a9c9f7, transparent);
-      margin: 8px 0 18px 0;
+      margin-bottom: 16px;
+      border-radius: 2px;
     }
-    .divider-diamond {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #2563eb;
-      font-size: 15px;
-      line-height: 1;
-      background: #ffffff;
-      padding: 0 8px;
-    }
+
     .cert-body-text {
-      font-size: 14.5px;
+      font-size: 16px;
       color: #334155;
-      line-height: 1.7;
+      line-height: 1.75;
+      max-width: 650px;
       margin-bottom: 18px;
-      max-width: 580px;
     }
     .level-highlight {
-      color: #2563eb;
-      font-weight: 800;
+      font-weight: 900;
+      color: ${themeSecondary};
     }
+
+    /* Promoted To Section - EXPANDED DESIGN */
     .promoted-section {
       margin-bottom: 18px;
     }
     .promoted-label {
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 800;
       color: #64748b;
       letter-spacing: 2px;
@@ -415,26 +541,28 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      background: #eaf2ff;
-      border: 1.5px solid #bfdbfe;
-      padding: 9px 26px;
+      background: ${themeLightBg};
+      border: 2px solid ${themeBorder};
+      padding: 10px 30px;
       border-radius: 26px;
-      color: #1d4ed8;
-      font-size: 16px;
+      color: ${themePrimary};
+      font-size: 18px;
       font-weight: 900;
-      letter-spacing: 0.4px;
-      box-shadow: 0 3px 8px rgba(37,99,235,0.10);
+      letter-spacing: 0.6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
     }
-    .pill-star {
+    .star-bullet {
       color: #f59e0b;
-      font-size: 14px;
+      font-size: 16px;
     }
+
+    /* Quote Box */
     .quote-box {
       display: flex;
       align-items: flex-start;
-      gap: 6px;
-      max-width: 540px;
-      font-size: 13.5px;
+      gap: 8px;
+      max-width: 580px;
+      font-size: 14.5px;
       color: #475569;
       font-style: italic;
       line-height: 1.55;
@@ -443,203 +571,291 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
       font-family: Georgia, serif;
       font-style: normal;
       font-weight: 900;
-      font-size: 24px;
-      color: #2563eb;
+      font-size: 28px;
+      color: ${themeSecondary};
       line-height: 1;
     }
+
+    /* Decorative Left Sidebar Box */
+    .left-deco-box {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 38px;
+      background: linear-gradient(180deg, ${themePrimary} 0%, ${themeSecondary} 100%);
+      z-index: 3;
+      border-radius: 18px 0 0 18px;
+    }
+
+    /* Footer Section */
     .cert-footer {
+      position: relative;
+      z-index: 2;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
       width: 100%;
+      margin-bottom: 4px;
+      gap: 0;
     }
     .date-container {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
+      flex-shrink: 0;
+      min-width: 180px;
     }
     .date-badge {
-      width: 52px;
-      height: 52px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
-      background: #eaf2ff;
-      border: 1px solid #bfdbfe;
+      background: ${themeLightBg};
+      border: 1.5px solid ${themeBorder};
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
     .date-label {
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 800;
       color: #64748b;
       letter-spacing: 1.4px;
-      margin-bottom: 4px;
       text-transform: uppercase;
+      margin-bottom: 3px;
     }
     .date-val {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 800;
-      color: #0f2a5c;
-      line-height: 1.2;
+      color: ${themeDark};
+      white-space: nowrap;
     }
+
     .signatures-group {
       display: flex;
-      align-items: center;
-      gap: 28px;
+      align-items: flex-end;
+      gap: 24px;
       margin-right: 200px;
+      flex-shrink: 0;
     }
     .sig-box {
       text-align: center;
-      width: 150px;
+      min-width: 120px;
     }
     .sig-name {
       font-size: 14px;
-      font-weight: 700;
-      color: #0f2a5c;
+      font-weight: 800;
+      color: ${themeDark};
       font-style: italic;
-      min-height: 20px;
-      padding-bottom: 2px;
+      white-space: nowrap;
+      padding-bottom: 3px;
       margin-bottom: 0;
     }
     .sig-line {
-      border-top: 1.5px solid #0f2a5c;
-      padding-top: 6px;
-      font-size: 11px;
+      border-top: 1.5px solid ${themeDark};
+      padding-top: 5px;
+      font-size: 9.5px;
       font-weight: 800;
       color: #64748b;
-      letter-spacing: 1.2px;
+      letter-spacing: 1px;
       text-transform: uppercase;
+      white-space: nowrap;
     }
     .sig-divider {
-      height: 26px;
+      height: 36px;
       width: 1px;
       background-color: #cbd5e1;
+      align-self: flex-end;
+      margin-bottom: 8px;
     }
+
+    /* Senya Mascot - cleared above footer bar */
     .senya-mascot {
       position: absolute;
-      bottom: -4px;
-      right: 30px;
-      height: 225px;
+      bottom: 94px;
+      right: 10px;
+      height: 260px;
       object-fit: contain;
-      z-index: 6;
+      z-index: 3;
     }
   </style>
 </head>
 <body>
-  <div class="cert-frame">
-  <div class="cert-container">
-    <div class="blob-tl"></div>
-    <div class="blob-br"></div>
-    <span class="sparkle-star" style="top:38px; left:210px; font-size:16px; opacity:0.55;">✦</span>
-    <span class="sparkle-star" style="top:96px; left:150px; font-size:10px; opacity:0.4;">✦</span>
-    <span class="sparkle-star" style="top:150px; left:250px; font-size:12px; opacity:0.35;">✦</span>
-    <span class="sparkle-star" style="bottom:120px; right:260px; font-size:18px; opacity:0.5;">✦</span>
-    <span class="sparkle-star" style="bottom:70px; right:340px; font-size:10px; opacity:0.4;">✦</span>
-    <span class="sparkle-star" style="bottom:190px; right:200px; font-size:11px; opacity:0.35;">✦</span>
-    <div class="medal-wrap">
-      <svg width="178" height="275" viewBox="0 0 178 275" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-        <defs>
-          <linearGradient id="ribbonGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#0f2a5c" />
-            <stop offset="50%" stop-color="#1e3a8a" />
-            <stop offset="100%" stop-color="#0f2a5c" />
-          </linearGradient>
-          <linearGradient id="medalGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#fde68a" />
-            <stop offset="45%" stop-color="#f2b53d" />
-            <stop offset="100%" stop-color="#b8791a" />
-          </linearGradient>
-          <linearGradient id="medalFaceGrad" x1="0.2" y1="0.1" x2="0.8" y2="0.9">
-            <stop offset="0%" stop-color="#fef3c7" />
-            <stop offset="55%" stop-color="#f6c453" />
-            <stop offset="100%" stop-color="#e0a530" />
-          </linearGradient>
-        </defs>
-        <!-- ribbon top band, extends behind the medal so ribbon reads as continuous -->
-        <rect x="64" y="0" width="50" height="155" fill="url(#ribbonGrad)" />
-        <line x1="74" y1="0" x2="74" y2="155" stroke="#ffffff" stroke-width="1" opacity="0.35" />
-        <line x1="104" y1="0" x2="104" y2="155" stroke="#ffffff" stroke-width="1" opacity="0.35" />
-        <!-- ribbon tails, connected to top band via the medal, each with a small V notch -->
-        <polygon points="58,205 89,205 92,268 74,248 54,268" fill="url(#ribbonGrad)" />
-        <polygon points="120,205 89,205 86,268 104,248 124,268" fill="url(#ribbonGrad)" />
-        <line x1="66" y1="205" x2="60" y2="262" stroke="#ffffff" stroke-width="1" opacity="0.3" />
-        <line x1="112" y1="205" x2="118" y2="262" stroke="#ffffff" stroke-width="1" opacity="0.3" />
-        <!-- gold scalloped medal -->
-        <polygon points="${medalScallop}" fill="url(#medalGrad)" stroke="#92400e" stroke-width="1" />
-        <circle cx="${medalCx}" cy="${medalCy}" r="38" fill="url(#medalFaceGrad)" stroke="#c99a3b" stroke-width="1.5" />
-        <circle cx="${medalCx}" cy="${medalCy}" r="34.5" fill="none" stroke="#92400e" stroke-width="0.6" opacity="0.55" />
-        ${medalStarRing}
-        <path id="medalTopPath" d="${medalTopArc}" fill="none" />
-        <path id="medalBottomPath" d="${medalBottomArc}" fill="none" />
-        <text font-size="5.6" font-weight="800" letter-spacing="0.6" fill="#7c4a03">
-          <textPath href="#medalTopPath" xlink:href="#medalTopPath" startOffset="50%" text-anchor="middle">OFFICIAL</textPath>
-        </text>
-        <text font-size="5.6" font-weight="800" letter-spacing="0.6" fill="#7c4a03">
-          <textPath href="#medalBottomPath" xlink:href="#medalBottomPath" startOffset="50%" text-anchor="middle">CERTIFICATE</textPath>
-        </text>
-        <text x="${medalCx}" y="${medalCy + 5}" font-size="13" font-weight="900" fill="#7c4a03" text-anchor="middle" class="stamp-center-text">SEÑAS</text>
+  <div class="cert-outer-canvas">
+  <div class="cert-card">
+    <!-- Solid Header Bar with inline style to guarantee color rendering -->
+    <div style="position:absolute;top:0;left:0;right:0;height:12px;background:${themePrimary};z-index:10;"></div>
+
+    <!-- Decorative Left Sidebar (plain color strip) -->
+    <div style="position:absolute;left:0;top:0;bottom:0;width:38px;background:linear-gradient(180deg,${themePrimary} 0%,${themeSecondary} 100%);z-index:3;border-radius:18px 0 0 18px;"></div>
+
+    <div class="wave-tl"></div>
+    <div class="wave-tr"></div>
+    <div class="wave-bl"></div>
+    <div class="wave-br"></div>
+
+    <!-- Floating Stars All Over Certificate -->
+    <span class="star-sparkle" style="top: 35px; left: 190px; font-size: 18px; opacity: 0.65;">✦</span>
+    <span class="star-sparkle" style="top: 85px; left: 130px; font-size: 14px; opacity: 0.5;">★</span>
+    <span class="star-sparkle" style="top: 140px; left: 260px; font-size: 16px; opacity: 0.45;">✨</span>
+    <span class="star-sparkle" style="top: 60px; right: 220px; font-size: 20px; opacity: 0.55;">✦</span>
+    <span class="star-sparkle" style="top: 120px; right: 300px; font-size: 12px; opacity: 0.4;">★</span>
+    <span class="star-sparkle" style="top: 220px; left: 170px; font-size: 15px; opacity: 0.5;">✦</span>
+    <span class="star-sparkle" style="top: 280px; left: 90px; font-size: 18px; opacity: 0.45;">✨</span>
+    <span class="star-sparkle" style="top: 340px; left: 240px; font-size: 13px; opacity: 0.5;">★</span>
+    <span class="star-sparkle" style="bottom: 160px; left: 150px; font-size: 17px; opacity: 0.55;">✦</span>
+    <span class="star-sparkle" style="bottom: 90px; left: 260px; font-size: 14px; opacity: 0.4;">✨</span>
+    <span class="star-sparkle" style="bottom: 220px; right: 280px; font-size: 19px; opacity: 0.5;">✦</span>
+    <span class="star-sparkle" style="bottom: 140px; right: 340px; font-size: 13px; opacity: 0.45;">★</span>
+    <span class="star-sparkle" style="bottom: 70px; right: 300px; font-size: 16px; opacity: 0.5;">✨</span>
+
+    <!-- Hand Gesture Watermarks -->
+    <div class="hand-watermarks">
+      <svg width="100" height="400" viewBox="0 0 100 400" fill="none" stroke="${watermarkStroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <g transform="translate(10, 20) scale(0.65)">
+          <path d="M30 80 V40 C30 35 35 30 40 30 C45 30 50 35 50 40 V60" />
+          <path d="M50 50 C50 45 55 40 60 40 C65 40 70 45 70 50 V65" />
+          <path d="M70 55 C70 50 75 45 80 45 C85 45 90 50 90 55 V70" />
+          <path d="M20 70 C20 60 25 55 30 55" />
+          <path d="M15 90 C15 75 30 70 30 70 L30 110 C30 120 40 130 60 130 C80 130 90 120 90 110 V70" />
+        </g>
+        <g transform="translate(10, 160) scale(0.65)">
+          <path d="M35 80 V20 C35 15 40 10 45 10 C50 10 55 15 55 20 V60" />
+          <path d="M60 60 V25 C60 20 65 15 70 15 C75 15 80 20 80 25 V65" />
+          <path d="M20 90 C20 75 30 70 30 70 L30 110 C30 120 45 130 65 130 C85 130 90 120 90 110 V65" />
+        </g>
+        <g transform="translate(10, 290) scale(0.65)">
+          <path d="M20 60 V30 C20 25 25 20 30 20 C35 20 40 25 40 30 V65" />
+          <path d="M40 50 V20 C40 15 45 10 50 10 C55 10 60 15 60 20 V65" />
+          <path d="M60 50 V25 C60 20 65 15 70 15 C75 15 80 20 80 25 V65" />
+          <path d="M70 55 V35 C70 30 75 25 80 25 C85 25 90 30 90 35 V70" />
+          <path d="M15 90 C15 75 30 70 30 70 L30 110 C30 120 45 130 65 130 C85 130 90 120 90 110 V70" />
+        </g>
       </svg>
     </div>
-    <div class="cert-inner">
-      <div class="header-left">
-        <img src="${logoUri}" class="logo-img" alt="SEÑAS Logo" />
-        <div class="brand-tagline">Filipino Sign Language Learning Platform</div>
+
+    <!-- Top-Right Ribbon Banner -->
+    <div class="ribbon-banner">
+      <svg width="140" height="275" viewBox="0 0 140 275" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <defs>
+          <linearGradient id="ribbonBgGrad" x1="0" y1="0" x2="0" y2="1">
+            ${isGold
+          ? '<stop offset="0%" stop-color="#854d0e"/><stop offset="50%" stop-color="#ca8a04"/><stop offset="100%" stop-color="#eab308"/>'
+          : '<stop offset="0%" stop-color="#0f2a5c"/><stop offset="50%" stop-color="#1e3a8a"/><stop offset="100%" stop-color="#2563eb"/>'}
+          </linearGradient>
+        </defs>
+        <!-- Ribbon Base Path with Chevron Tail V-notch -->
+        <path d="M 0,0 L 140,0 L 140,260 L 70,225 L 0,260 Z" fill="url(#ribbonBgGrad)" />
+        <!-- Dashed Inner Stitched Line -->
+        <path d="M 8,0 L 8,247 L 70,215 L 132,247 L 132,0" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-dasharray="4,4" opacity="0.8" />
+        <!-- Top Ribbon Header Text -->
+        <text x="70" y="32" font-size="10.5" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="1">OFFICIAL</text>
+        <text x="70" y="46" font-size="10.5" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="1">CERTIFICATE</text>
+
+        <!-- Center Circular SEÑAS Badge/Seal -->
+        <g transform="translate(70, 136)">
+          <!-- Outer Circle Fill -->
+          <circle cx="0" cy="0" r="43" fill="#ffffff" stroke="${isGold ? '#ca8a04' : '#1e3a8a'}" stroke-width="2.5" />
+          <!-- Inner Dashed Ring -->
+          <circle cx="0" cy="0" r="38.5" fill="none" stroke="${isGold ? '#eab308' : '#2563eb'}" stroke-width="1" stroke-dasharray="3,3" />
+          <!-- Curved Text Paths -->
+          <path id="sealTopArc" d="M -31,0 A 31,31 0 0,1 31,0" fill="none" />
+          <path id="sealBottomArc" d="M 31,0 A 31,31 0 0,1 -31,0" fill="none" />
+          <text font-size="5.2" font-weight="800" fill="${isGold ? '#ca8a04' : '#1e3a8a'}" letter-spacing="0.5">
+            <textPath href="#sealTopArc" xlink:href="#sealTopArc" startOffset="50%" text-anchor="middle">FILIPINO SIGN LANGUAGE</textPath>
+          </text>
+          <text x="0" y="4" font-size="12.5" font-weight="900" fill="${isGold ? '#ca8a04' : '#1e3a8a'}" text-anchor="middle" letter-spacing="0.5">SEÑAS</text>
+          <text font-size="5" font-weight="800" fill="${isGold ? '#ca8a04' : '#1e3a8a'}" letter-spacing="0.5">
+            <textPath href="#sealBottomArc" xlink:href="#sealBottomArc" startOffset="50%" text-anchor="middle">LEARNING PLATFORM</textPath>
+          </text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="header-left">
+      <img src="${logoUri}" class="logo-img" alt="SEÑAS Logo" />
+      <div class="brand-tagline">Filipino Sign Language Learning Platform</div>
+    </div>
+
+    <div class="cert-content">
+      <div class="cert-title">${certTitle}</div>
+      <div class="presented-to">Presented to</div>
+      <div class="recipient-name">${recipientName}</div>
+      <div class="name-line"></div>
+      <div class="cert-body-text">${certBodyText}</div>
+      ${!isGraduation ? `
+      <div class="promoted-section">
+        <div class="promoted-label">PROMOTED TO</div>
+        <div class="promoted-pill">
+          <span class="star-bullet">★</span> ${formattedPillText} <span class="star-bullet">★</span>
+        </div>
       </div>
-      <div class="cert-content">
-        <div class="cert-title">${certTitle}</div>
-        <div class="presented-to">Presented to</div>
-        <div class="recipient-name">${recipientName}</div>
-        <div class="divider-row"><div class="divider-diamond">✦</div></div>
-        <div class="cert-body-text">${certBodyText}</div>
-        ${!isGraduation ? `
-        <div class="promoted-section">
-          <div class="promoted-label">PROMOTED TO</div>
-          <div class="promoted-pill">
-            <span class="pill-star">★</span> ${formattedPillText} <span class="pill-star">★</span>
-          </div>
+      ` : ''}
+      <div class="quote-box">
+        <span class="quote-mark">&ldquo;</span>
+        <span>Keep learning, keep signing, and continue making communication more inclusive.</span>
+      </div>
+    </div>
+
+    <div class="cert-footer" style="margin-bottom:14px;">
+      <div class="date-container">
+        <div class="date-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${themeSecondary}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
         </div>
-        ` : ''}
-        <div class="quote-box">
-          <span class="quote-mark">&ldquo;</span>
-          <span>Keep learning, keep signing, and continue making communication more inclusive.</span>
+        <div>
+          <div class="date-label">DATE AWARDED</div>
+          <div class="date-val">${promotionDateFormatted}</div>
         </div>
       </div>
-      <div class="cert-footer">
-        <div class="date-container">
-          <div class="date-badge">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-          </div>
-          <div>
-            <div class="date-label">DATE</div>
-            <div class="date-val">${promotionDateFormatted}</div>
-          </div>
+      <div class="signatures-group">
+        <div class="sig-box">
+          <div class="sig-name">${adviserName}</div>
+          <div class="sig-line">Adviser / Teacher</div>
         </div>
-        <div class="signatures-group">
-          <div class="sig-box">
-            <div class="sig-name">${teacherName || ' '}</div>
-            <div class="sig-line">Adviser</div>
-          </div>
-          <div class="sig-divider"></div>
-          <div class="sig-box">
-            <div class="sig-name"> </div>
-            <div class="sig-line">FSL Academic Committee</div>
-          </div>
+        <div class="sig-divider"></div>
+        <div class="sig-box">
+          <div class="sig-name">&nbsp;</div>
+          <div class="sig-line">FSL Academic Committee</div>
         </div>
       </div>
     </div>
+
+    <!-- Solid Footer Bar with INLINE style to guarantee background color renders in expo-print -->
+    <div style="position:absolute;bottom:0;left:0;right:0;height:90px;background:${themePrimary};z-index:10;display:flex;align-items:center;justify-content:space-between;padding:0 54px 0 60px;border-radius:0 0 18px 18px;">
+      <div>
+        <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Issuing Date</div>
+        <div style="font-size:13px;font-weight:900;color:#ffffff;white-space:nowrap;">${promotionDateFormatted}</div>
+      </div>
+      <div style="width:1px;height:36px;background:rgba(255,255,255,0.35);"></div>
+      <div style="text-align:center;">
+        <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Platform</div>
+        <div style="font-size:13px;font-weight:900;color:#ffffff;">senas.edu.ph</div>
+      </div>
+      <div style="width:1px;height:36px;background:rgba(255,255,255,0.35);"></div>
+      <div style="text-align:right;">
+        <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Certificate Type</div>
+        <div style="font-size:13px;font-weight:900;color:#ffffff;white-space:nowrap;">${isGraduation ? 'Certificate of Completion' : 'Certificate of Achievement'}</div>
+      </div>
+    </div>
+
     <img src="${senyaUri}" class="senya-mascot" alt="Senya Mascot" />
   </div>
   </div>
 </body>
 </html>
-            `;
+      `;
+
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Download Official Certificate' });
+      const fileName = getSanitizedFileName(recipientName, 'Certificate', isGraduation);
+      const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
+      await FileSystem.copyAsync({ from: uri, to: destinationUri });
+      await Sharing.shareAsync(destinationUri, { mimeType: 'application/pdf', dialogTitle: 'Download Official Certificate', UTI: 'com.adobe.pdf' });
     } catch (error) {
       console.error('Error generating PDF Certificate:', error);
       Alert.alert('Error', 'Failed to generate PDF Certificate. Please try again.');
@@ -960,7 +1176,10 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 </html>
             `;
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Download Grade Report' });
+      const fileName = getSanitizedFileName(recipientName, 'Report', isGraduation);
+      const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
+      await FileSystem.copyAsync({ from: uri, to: destinationUri });
+      await Sharing.shareAsync(destinationUri, { mimeType: 'application/pdf', dialogTitle: 'Download Grade Report', UTI: 'com.adobe.pdf' });
     } catch (error) {
       console.error('Error generating PDF Report:', error);
       Alert.alert('Error', 'Failed to generate PDF Report. Please try again.');
@@ -1014,7 +1233,7 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
             {/* Envelope Body - Rectangle with rounded bottom */}
             <View style={styles.envelopeBody}>
               <LinearGradient
-                colors={['#1e3a8a', '#1d4ed8', '#0f3172'] as const}
+                colors={isGraduation ? (['#854d0e', '#ca8a04', '#eab308'] as const) : (['#1e3a8a', '#1d4ed8', '#0f3172'] as const)}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
@@ -1023,8 +1242,8 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
             </View>
 
             {/* Envelope Top Flap - Triangle that connects to body */}
-            <View style={styles.envelopeTriangleFlap} />
-            <View style={styles.envelopeTriangleFlapShade} />
+            <View style={[styles.envelopeTriangleFlap, isGraduation && { borderBottomColor: '#854d0e' }]} />
+            <View style={[styles.envelopeTriangleFlapShade, isGraduation && { borderBottomColor: '#ca8a04' }]} />
 
             {/* Close Button */}
             <Pressable style={styles.closeIconButton} onPress={onClose} hitSlop={12}>
@@ -1083,8 +1302,8 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
               {/* Certificate Card - WITHOUT download button inside */}
               <Animated.View style={[styles.paperCard, certTransform, { zIndex: frontPaper === 'certificate' ? 2 : 1 }]}>
                 <Pressable style={styles.paperTapArea} onPress={() => bringToFront('certificate')}>
-                  <View style={styles.canvaCertFrame}>
-                    <View style={styles.canvaRibbonBanner}>
+                  <View style={[styles.canvaCertFrame, isGraduation && { backgroundColor: '#fffff6ff', borderColor: '#FEF08A' }]}>
+                    <View style={[styles.canvaRibbonBanner, isGraduation && { backgroundColor: '#eab94fff', shadowColor: '#CA8A04' }]}>
                       <Text style={styles.canvaRibbonTitle}>OFFICIAL{'\n'}CERTIFICATE</Text>
                       <View style={styles.canvaRibbonStamp}>
                         <Text style={styles.canvaStampTop}>FSL PLATFORM</Text>
@@ -1097,14 +1316,10 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
                     </View>
 
                     <View style={styles.canvaContent}>
-                      <Text style={styles.canvaTitle}>{isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT'}</Text>
+                      <Text style={[styles.canvaTitle, isGraduation && { color: '#713f12' }]}>{isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT'}</Text>
                       <Text style={styles.canvaPresentedTo}>Presented to</Text>
-                      <Text style={styles.canvaRecipientName} numberOfLines={1}>{recipientName}</Text>
-                      <View style={styles.canvaStarDivider}>
-                        <View style={styles.canvaDividerLine} />
-                        <Text style={styles.canvaStarIcon}>✦</Text>
-                        <View style={styles.canvaDividerLine} />
-                      </View>
+                      <Text style={[styles.canvaRecipientName, isGraduation && { color: '#713f12' }]} numberOfLines={1}>{recipientName}</Text>
+                      <View style={[styles.canvaNameLine, isGraduation && { backgroundColor: '#CA8A04' }]} />
                       {isGraduation ? (
                         <Text style={styles.canvaBodyText}>for successfully completing the entire Filipino Sign Language curriculum in the SEÑAS Learning Platform. Through dedication, perseverance, and continuous learning, this learner has demonstrated proficiency across the Beginner, Intermediate, and Advanced levels. Congratulations!</Text>
                       ) : (
@@ -1124,21 +1339,23 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
                     </View>
                     <View style={styles.canvaFooter}>
                       <View style={styles.canvaDateGroup}>
-                        <View style={styles.canvaDateIconBox}>
-                          <Ionicons name="calendar-outline" size={14} color="#2563EB" />
+                        <View style={[styles.canvaDateIconBox, isGraduation && { backgroundColor: '#FEF9C3', borderColor: '#FEF08A' }]}>
+                          <Ionicons name="calendar-outline" size={14} color={isGraduation ? '#CA8A04' : '#2563EB'} />
                         </View>
                         <View>
                           <Text style={styles.canvaDateLabel}>DATE</Text>
-                          <Text style={styles.canvaDateValue}>{promotionDateFormatted}</Text>
+                          <Text style={[styles.canvaDateValue, isGraduation && { color: '#713f12' }]}>{promotionDateFormatted}</Text>
                         </View>
                       </View>
                       <View style={styles.canvaSigsGroup}>
                         <View style={styles.canvaSigCol}>
+                          <Text style={styles.canvaSigName}>{adviserName}</Text>
                           <View style={styles.canvaSigLine} />
-                          <Text style={styles.canvaSigTitle}>SEÑAS Team</Text>
+                          <Text style={styles.canvaSigTitle}>Adviser</Text>
                         </View>
                         <View style={styles.canvaSigVertLine} />
                         <View style={styles.canvaSigCol}>
+                          <Text style={styles.canvaSigName}> </Text>
                           <View style={styles.canvaSigLine} />
                           <Text style={styles.canvaSigTitle}>FSL Academic Committee</Text>
                         </View>
@@ -1153,13 +1370,13 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
             {/* Download Buttons - Positioned independently ABOVE the paper cards */}
             <View style={styles.downloadButtonsContainer}>
               {frontPaper === 'certificate' && (
-                <Pressable style={styles.paperDownloadBtn} onPress={handleDownloadLetter}>
+                <Pressable style={[styles.paperDownloadBtn, isGraduation && { backgroundColor: '#CA8A04', shadowColor: '#CA8A04' }]} onPress={handleDownloadLetter}>
                   <Ionicons name="download-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
                   <Text style={styles.paperDownloadBtnText}>Download Certificate</Text>
                 </Pressable>
               )}
               {frontPaper === 'report' && (
-                <Pressable style={styles.paperDownloadBtn} onPress={handleDownloadReportCard}>
+                <Pressable style={[styles.paperDownloadBtn, isGraduation && { backgroundColor: '#CA8A04', shadowColor: '#CA8A04' }]} onPress={handleDownloadReportCard}>
                   <Ionicons name="download-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
                   <Text style={styles.paperDownloadBtnText}>Download Report Card</Text>
                 </Pressable>
@@ -1169,7 +1386,7 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
             {/* Envelope Front Pocket - Covers bottom of papers */}
             <View style={styles.envelopeFrontPocket} pointerEvents="none">
               <LinearGradient
-                colors={['#2563eb', '#1d4ed8', '#0f3172'] as const}
+                colors={isGraduation ? (['#eab308', '#ca8a04', '#854d0e'] as const) : (['#2563eb', '#1d4ed8', '#0f3172'] as const)}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
@@ -1195,24 +1412,24 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
             {/* Tab Buttons - Now directly below wax seal */}
             <View style={styles.tabRow}>
               <Pressable
-                style={[styles.tabButton, frontPaper === 'certificate' && styles.tabButtonActive]}
+                style={[styles.tabButton, frontPaper === 'certificate' && styles.tabButtonActive, isGraduation && frontPaper === 'certificate' && { borderColor: '#CA8A04', shadowColor: '#CA8A04' }]}
                 onPress={() => bringToFront('certificate')}
               >
-                <Ionicons name="ribbon-outline" size={16} color={frontPaper === 'certificate' ? '#2563EB' : '#64748B'} style={{ marginRight: 6 }} />
-                <Text style={[styles.tabButtonText, frontPaper === 'certificate' && styles.tabButtonTextActive]}>Certificate</Text>
+                <Ionicons name="ribbon-outline" size={16} color={frontPaper === 'certificate' ? (isGraduation ? '#CA8A04' : '#2563EB') : '#64748B'} style={{ marginRight: 6 }} />
+                <Text style={[styles.tabButtonText, frontPaper === 'certificate' && styles.tabButtonTextActive, isGraduation && frontPaper === 'certificate' && { color: '#CA8A04' }]}>Certificate</Text>
               </Pressable>
               <Pressable
-                style={[styles.tabButton, frontPaper === 'report' && styles.tabButtonActive]}
+                style={[styles.tabButton, frontPaper === 'report' && styles.tabButtonActive, isGraduation && frontPaper === 'report' && { borderColor: '#CA8A04', shadowColor: '#CA8A04' }]}
                 onPress={() => bringToFront('report')}
               >
-                <Ionicons name="stats-chart-outline" size={16} color={frontPaper === 'report' ? '#2563EB' : '#64748B'} style={{ marginRight: 6 }} />
-                <Text style={[styles.tabButtonText, frontPaper === 'report' && styles.tabButtonTextActive]}>Grade Report</Text>
+                <Ionicons name="stats-chart-outline" size={16} color={frontPaper === 'report' ? (isGraduation ? '#CA8A04' : '#2563EB') : '#64748B'} style={{ marginRight: 6 }} />
+                <Text style={[styles.tabButtonText, frontPaper === 'report' && styles.tabButtonTextActive, isGraduation && frontPaper === 'report' && { color: '#CA8A04' }]}>Grade Report</Text>
               </Pressable>
             </View>
 
             {/* Continue Button - Raised higher, envelope shorter */}
             <Pressable style={styles.closeButton} onPress={onClose}>
-              <LinearGradient colors={['#2563eb', '#1d4ed8'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.closeButtonGradient} />
+              <LinearGradient colors={isGraduation ? (['#ca8a04', '#eab308'] as const) : (['#2563eb', '#1d4ed8'] as const)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.closeButtonGradient} />
               <View style={styles.closeButtonContent}>
                 <Ionicons name="sparkles" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
                 <Text style={styles.closeButtonText}>{isGraduation ? 'Awesome, Continue' : 'Continue Learning'}</Text>
@@ -1630,6 +1847,13 @@ const styles = StyleSheet.create({
     color: '#2563EB',
     marginHorizontal: 4,
   },
+  canvaNameLine: {
+    width: '75%',
+    height: 1.5,
+    backgroundColor: '#0F3172',
+    marginVertical: 3,
+    borderRadius: 1,
+  },
   canvaBodyText: {
     fontSize: 9,
     color: '#334155',
@@ -1717,6 +1941,14 @@ const styles = StyleSheet.create({
   canvaSigCol: {
     alignItems: 'center',
   },
+  canvaSigName: {
+    fontSize: 7.5,
+    fontWeight: '800',
+    color: '#0F3172',
+    fontStyle: 'italic',
+    marginBottom: 1,
+    minHeight: 9,
+  },
   canvaSigLine: {
     width: 60,
     height: 1,
@@ -1735,10 +1967,10 @@ const styles = StyleSheet.create({
   },
   canvaSenyaMascot: {
     position: 'absolute',
-    bottom: 60,
+    bottom: 50,
     right: 4,
-    width: 68,
-    height: 80,
+    width: 84,
+    height: 98,
     zIndex: 10,
   },
   tabRow: {

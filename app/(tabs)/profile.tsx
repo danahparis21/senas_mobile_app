@@ -827,6 +827,7 @@ export default function Profile() {
           promotionData={selectedPromotion}
           onClose={() => setShowPromotionModal(false)}
           studentName={userName}
+          teacherName={teacherName || 'Emma Ruth'}
         />
       )}
 

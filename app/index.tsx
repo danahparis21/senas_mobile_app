@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Audio } from 'expo-av';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -252,7 +252,7 @@ function AnimatedTextWithSigns({
   text,
   style,
   delay = 0,
-  stagger = 140,
+  stagger = 500,
   onComplete,
 }: {
   text: string;
@@ -303,14 +303,30 @@ function AnimatedTextWithSigns({
     });
   }, []);
 
+  // Calculate total sign images needed for spacing
+  const totalSignSlots = letters.reduce((total, letter, index) => {
+    const indices = getSignIndicesForLetter(index);
+    return total + indices.length;
+  }, 0);
+
   return (
     <View style={{ alignItems: 'center' }}>
       {/* Row for sign images - positioned above the letters */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 4, height: 50 }}>
         {letters.map((letter, letterIndex) => {
           const signIndices = getSignIndicesForLetter(letterIndex);
+          const isDoubleSign = signIndices.length === 2;
+          
           return (
-            <View key={`sign-${letterIndex}`} style={{ width: 45, alignItems: 'center' }}>
+            <View 
+              key={`sign-${letterIndex}`} 
+              style={{ 
+                width: isDoubleSign ? 90 : 45, // Double width for Ñ
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+              }}
+            >
               <Animated.View
                 style={{
                   opacity: anims[letterIndex],
@@ -324,6 +340,7 @@ function AnimatedTextWithSigns({
                   ],
                   flexDirection: 'row',
                   justifyContent: 'center',
+                  gap: 2,
                 }}
               >
                 {signIndices.map((signIndex) => {
@@ -447,8 +464,8 @@ export default function SplashScreen() {
     // Show elements with slower timing to match music
     const timers = [
       setTimeout(() => setShowLogo(true), 400),
-      setTimeout(() => setShowTitle(true), 900),
-      setTimeout(() => setShowSubtitle(true), 1400),
+      setTimeout(() => setShowTitle(true), 1000),
+      setTimeout(() => setShowSubtitle(true), 1600),
       setTimeout(() => setShowSparkles(true), 600),
     ];
 
@@ -686,7 +703,7 @@ const styles = StyleSheet.create({
   heroCenterContainer: {
     position: 'absolute',
     top: '50%',
-    marginTop: -170,
+    marginTop: -210,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -712,9 +729,9 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
   signImage: {
-    width: 45,
-    height: 45,
-    marginHorizontal: 0,
+    width: 40,
+    height: 40,
+    marginHorizontal: 1,
   },
   subtitleWrapper: {
     alignItems: 'center',
