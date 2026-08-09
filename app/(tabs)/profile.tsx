@@ -798,7 +798,7 @@ export default function Profile() {
       <SignOutModal
         visible={showSignOutModal}
         onClose={() => setShowSignOutModal(false)}
-        onConfirm={() => { setShowSignOutModal(false); router.replace('/onboarding'); }}
+        onConfirm={() => { setShowSignOutModal(false); router.replace('/'); }}
       />
       <HelpSupportModal
         visible={showHelpModal}

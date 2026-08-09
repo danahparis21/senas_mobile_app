@@ -1,5 +1,5 @@
 // app/help.tsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View,
     Text,
@@ -10,10 +10,16 @@ import {
     ActivityIndicator,
     Alert,
     ScrollView,
+    KeyboardAvoidingView,
+    Platform,
+    TouchableWithoutFeedback,
+    Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Line, Polyline, Rect, G } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '@/services/api';
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
 
@@ -94,6 +100,8 @@ export default function HelpSupport() {
     const router = useRouter();
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
+    const scrollViewRef = useRef<ScrollView>(null);
+    const textInputRef = useRef<TextInput>(null);
 
     const faqs = [
         {
@@ -130,104 +138,148 @@ export default function HelpSupport() {
         },
         {
             question: 'How do I contact support?',
-            answer: 'You\'re already here! Fill out the message form below and we\'ll get back to you within 24 hours. You can also email us directly from the About page.'
+            answer: 'You\'re already here! Fill out the message form below and we\'ll get back to you within 24 hours.'
         },
     ];
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!message.trim()) {
-            Alert.alert('Please enter a message');
+            Alert.alert('Message Required', 'Please describe your issue or question.');
             return;
         }
+
         setSending(true);
-        // Simulate sending
-        setTimeout(() => {
+
+        try {
+            const result = await api.sendHelpRequest(message);
+
+            Alert.alert(
+                '✅ Message Sent!',
+                'We\'ll get back to you within 24 hours.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            setMessage('');
+                            router.back();
+                        }
+                    }
+                ]
+            );
+        } catch (error: any) {
+            Alert.alert(
+                'Error',
+                error.message || 'Failed to send message. Please try again.'
+            );
+        } finally {
             setSending(false);
-            Alert.alert('✅ Message Sent!', 'We\'ll get back to you within 24 hours.');
-            setMessage('');
-            router.back();
-        }, 1500);
+        }
+    };
+
+    // Dismiss keyboard when tapping outside
+    const dismissKeyboard = () => {
+        Keyboard.dismiss();
     };
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Header with Back Button */}
-                <View style={styles.header}>
-                    <Pressable style={styles.backBtn} onPress={() => router.back()}>
-                        <BackIcon />
-                    </Pressable>
-                    <Text style={styles.headerTitle}>Help & Support</Text>
-                    <View style={styles.headerSpacer} />
-                </View>
+            <KeyboardAvoidingView
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <TouchableWithoutFeedback onPress={dismissKeyboard}>
+                    <ScrollView
+                        ref={scrollViewRef}
+                        contentContainerStyle={styles.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {/* Header */}
+                        <View style={styles.header}>
+                            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                                <BackIcon />
+                            </Pressable>
+                            <Text style={styles.headerTitle}>Help & Support</Text>
+                            <View style={styles.headerSpacer} />
+                        </View>
 
-                {/* Content */}
-                <View style={styles.content}>
-                    {/* FAQ Section */}
-                    <View style={styles.faqSection}>
-                        <View style={styles.sectionHeader}>
-                            <View style={styles.iconBox}>
-                                <FAQIcon />
+                        {/* Content */}
+                        <View style={styles.content}>
+                            {/* FAQ Section */}
+                            <View style={styles.faqSection}>
+                                <View style={styles.sectionHeader}>
+                                    <View style={styles.iconBox}>
+                                        <FAQIcon />
+                                    </View>
+                                    <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
+                                </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Find quick answers to common questions below.
+                                </Text>
+
+                                <View style={styles.faqList}>
+                                    {faqs.map((faq, index) => (
+                                        <FAQItem
+                                            key={index}
+                                            question={faq.question}
+                                            answer={faq.answer}
+                                        />
+                                    ))}
+                                </View>
                             </View>
-                            <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
-                        </View>
-                        <Text style={styles.sectionSubtitle}>
-                            Find quick answers to common questions below.
-                        </Text>
 
-                        <View style={styles.faqList}>
-                            {faqs.map((faq, index) => (
-                                <FAQItem
-                                    key={index}
-                                    question={faq.question}
-                                    answer={faq.answer}
-                                />
-                            ))}
-                        </View>
-                    </View>
+                            <View style={styles.divider} />
 
-                    <View style={styles.divider} />
+                            {/* Contact Form - NO EMAIL */}
+                            <View style={styles.contactSection}>
+                                <View style={styles.sectionHeader}>
+                                    <View style={styles.iconBox}>
+                                        <EmailIcon />
+                                    </View>
+                                    <Text style={styles.sectionTitle}>Still Need Help?</Text>
+                                </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Send us a message and we'll get back to you within 24 hours.
+                                </Text>
 
-                    {/* Contact Form */}
-                    <View style={styles.contactSection}>
-                        <View style={styles.sectionHeader}>
-                            <View style={styles.iconBox}>
-                                <EmailIcon />
+                                <View style={styles.fieldBlock}>
+                                    <Text style={styles.fieldLabel}>Your Message</Text>
+                                    <TextInput
+                                        ref={textInputRef}
+                                        style={styles.messageInput}
+                                        value={message}
+                                        onChangeText={setMessage}
+                                        placeholder="Describe your issue or question..."
+                                        placeholderTextColor="#9CA3AF"
+                                        multiline
+                                        numberOfLines={6}
+                                        textAlignVertical="top"
+                                        returnKeyType="done"
+                                        blurOnSubmit={true}
+                                        onSubmitEditing={dismissKeyboard}
+                                    />
+                                </View>
+
+                                <Pressable
+                                    style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
+                                    onPress={handleSubmit}
+                                    disabled={sending}
+                                >
+                                    {sending ? (
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    ) : (
+                                        <Text style={styles.sendBtnText}>Send Message</Text>
+                                    )}
+                                </Pressable>
+
+                                {/* Extra bottom padding for keyboard */}
+                                <View style={styles.bottomSpacer} />
                             </View>
-                            <Text style={styles.sectionTitle}>Still Need Help?</Text>
                         </View>
-                        <Text style={styles.sectionSubtitle}>
-                            Send us a message and we'll help you out within 24 hours.
-                        </Text>
-
-                        <View style={styles.fieldBlock}>
-                            <Text style={styles.fieldLabel}>Your Message</Text>
-                            <TextInput
-                                style={styles.messageInput}
-                                value={message}
-                                onChangeText={setMessage}
-                                placeholder="Describe your issue or question..."
-                                placeholderTextColor="#9CA3AF"
-                                multiline
-                                numberOfLines={6}
-                                textAlignVertical="top"
-                            />
-                        </View>
-
-                        <Pressable
-                            style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                            onPress={handleSubmit}
-                            disabled={sending}
-                        >
-                            {sending ? (
-                                <ActivityIndicator color="#fff" size="small" />
-                            ) : (
-                                <Text style={styles.sendBtnText}>Send Message</Text>
-                            )}
-                        </Pressable>
-                    </View>
-                </View>
-            </ScrollView>
+                    </ScrollView>
+                </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
@@ -236,6 +288,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#eaf5fd',
+    },
+    keyboardAvoidingView: {
+        flex: 1,
     },
     scrollContent: {
         flexGrow: 1,
@@ -359,6 +414,7 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: 'rgba(15,49,114,0.05)',
         paddingLeft: 34,
+        textAlign: 'justify',
     },
     divider: {
         height: 1,
@@ -384,6 +440,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         color: '#1F2937',
         minHeight: 140,
+        maxHeight: 250,
+        textAlignVertical: 'top',
     },
     sendBtn: {
         backgroundColor: '#1848c8',
@@ -395,6 +453,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 14,
         elevation: 8,
+        marginTop: 8,
     },
     sendBtnDisabled: {
         opacity: 0.7,
@@ -403,5 +462,8 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '700',
         color: '#fff',
+    },
+    bottomSpacer: {
+        height: 100, // Extra space at bottom for keyboard
     },
 });

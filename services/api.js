@@ -16,15 +16,15 @@ const _cache = {};
 /** Cache TTLs per URL pattern (ms). 0 = no cache. */
 const CACHE_TTL = {
     '/student/adaptive-lessons': 60_000,   // 60 s
-    '/student/mastery':          60_000,   // 60 s
-    '/student/lessons':          30_000,   // 30 s
-    '/student/learning-path':    30_000,   // 30 s
-    '/student/achievements':     120_000,  // 2 min
-    '/student/streak':           60_000,   // 60 s
+    '/student/mastery': 60_000,   // 60 s
+    '/student/lessons': 30_000,   // 30 s
+    '/student/learning-path': 30_000,   // 30 s
+    '/student/achievements': 120_000,  // 2 min
+    '/student/streak': 60_000,   // 60 s
     '/student/gesture-progress': 60_000,   // 60 s
-    '/student/notifications':    30_000,   // 30 s
-    '/student/promotion':        30_000,   // 30 s
-    '/student/profile':          120_000,  // 2 min
+    '/student/notifications': 30_000,   // 30 s
+    '/student/promotion': 30_000,   // 30 s
+    '/student/profile': 120_000,  // 2 min
 };
 
 function getCacheTtl(url) {
@@ -92,7 +92,7 @@ async function apiFetch(url, options = {}) {
         if (resp.ok) {
             try {
                 parsedData = JSON.parse(bodyText);
-            } catch (e) {}
+            } catch (e) { }
         }
 
         // Cache successful GET responses
@@ -111,7 +111,7 @@ async function apiFetch(url, options = {}) {
     if (isGet) {
         const promise = doFetch().finally(() => { delete _inflight[cacheKey]; });
         _inflight[cacheKey] = promise;
-        
+
         const result = await promise;
         return new Response(result.body, {
             status: result.status,
@@ -2066,6 +2066,116 @@ export const api = {
             return data;
         } catch (error) {
             console.error('❌ Error fetching teacher:', error);
+            throw error;
+        }
+    },
+
+    /**
+   * 📨 Submit a help request (no email needed - student is already authenticated)
+   * POST /api/student/help-request
+   */
+    sendHelpRequest: async (message) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📨 Sending help request...');
+
+            const response = await fetch(`${API_URL}/student/help-request`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message.trim(),
+                }),
+            });
+
+            const data = await response.json();
+            console.log('📨 Help request response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to send help request');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error sending help request:', error);
+            throw error;
+        }
+    },
+    /**
+     * 📨 Get all help requests for the student
+     * GET /api/student/help-requests
+     */
+    getHelpRequests: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('📨 Fetching help requests...');
+
+            const response = await apiFetch(`${API_URL}/student/help-requests`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📨 Help requests response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch help requests');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching help requests:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 📨 Get a specific help request by ID
+     * GET /api/student/help-request/{id}
+     */
+    getHelpRequestById: async (helpRequestId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`📨 Fetching help request ${helpRequestId}...`);
+
+            const response = await fetch(`${API_URL}/student/help-request/${helpRequestId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('📨 Help request details response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch help request');
+            }
+
+            return data;
+        } catch (error) {
+            console.error(`❌ Error fetching help request ${helpRequestId}:`, error);
             throw error;
         }
     },

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
+import { StatusBar } from 'expo-status-bar';
 
 const { width, height } = Dimensions.get('window');
 
@@ -91,7 +92,6 @@ function Sparkle({
     />
   );
 }
-
 /**
  * A complete cloud formation (all puffs together)
  */
@@ -115,13 +115,13 @@ function CloudFormation({
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 800,
+          duration: 350,
           useNativeDriver: true,
         }),
         Animated.spring(translateY, {
           toValue: 0,
           friction: 6,
-          tension: 40,
+          tension: 60,
           useNativeDriver: true,
         }),
       ]),
@@ -251,25 +251,31 @@ function AnimatedText({
   text,
   style,
   delay = 0,
-  duration = 150,
+  stagger = 55,
+  onComplete,
 }: {
   text: string;
   style: any;
   delay?: number;
-  duration?: number;
+  stagger?: number;
+  onComplete?: () => void;
 }) {
   const [letters] = useState(text.split(''));
-  const [visibleLetters, setVisibleLetters] = useState<string[]>([]);
+  const anims = useRef(letters.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      letters.forEach((_, index) => {
-        setTimeout(() => {
-          setVisibleLetters(prev => [...prev, letters[index]]);
-        }, index * duration);
-      });
-    }, delay);
-    return () => clearTimeout(timer);
+    const animations = anims.map((anim, index) =>
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 480,
+        delay: delay + index * stagger,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      })
+    );
+    Animated.parallel(animations).start(() => {
+      if (onComplete) onComplete();
+    });
   }, []);
 
   return (
@@ -280,19 +286,25 @@ function AnimatedText({
           style={[
             style,
             {
-              opacity: visibleLetters[index] ? 1 : 0,
+              opacity: anims[index],
               transform: [
                 {
-                  translateY: visibleLetters[index] ? 0 : 30,
+                  translateY: anims[index].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [22, 0],
+                  }),
                 },
                 {
-                  scale: visibleLetters[index] ? 1 : 0.5,
+                  scale: anims[index].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.55, 1],
+                  }),
                 },
               ],
             },
           ]}
         >
-          {letter}
+          {letter === ' ' ? '\u00A0' : letter}
         </Animated.Text>
       ))}
     </View>
@@ -303,6 +315,7 @@ export default function SplashScreen() {
   const router = useRouter();
   const soundRef = useRef<Audio.Sound | null>(null);
   const transitionSoundRef = useRef<Audio.Sound | null>(null);
+  const titleSoundRef = useRef<Audio.Sound | null>(null);
 
   // All hooks at top level
   const logoScale = useRef(new Animated.Value(0.3)).current;
@@ -312,15 +325,11 @@ export default function SplashScreen() {
   const subtitleOpacity = useRef(new Animated.Value(0)).current;
   const subtitleTranslateY = useRef(new Animated.Value(20)).current;
 
-  const taglineOpacity = useRef(new Animated.Value(0)).current;
-  const taglineTranslateY = useRef(new Animated.Value(12)).current;
-
   const washOpacity = useRef(new Animated.Value(0)).current;
 
   const [showLogo, setShowLogo] = useState(false);
   const [showTitle, setShowTitle] = useState(false);
   const [showSubtitle, setShowSubtitle] = useState(false);
-  const [showTagline, setShowTagline] = useState(false);
   const [showSparkles, setShowSparkles] = useState(false);
 
   // Load and play sound
@@ -333,8 +342,15 @@ export default function SplashScreen() {
           { shouldPlay: true, volume: 0.8 }
         );
         soundRef.current = mainSound;
+
+        // Title twinkle sound
+        const { sound: titleSound } = await Audio.Sound.createAsync(
+          require('../assets/music/twinkle.mp3'),
+          { shouldPlay: false, volume: 0.9 }
+        );
+        titleSoundRef.current = titleSound;
       } catch (error) {
-        console.log('Error loading main sound:', error);
+        console.log('Error loading sounds:', error);
       }
     }
     loadSounds();
@@ -345,6 +361,9 @@ export default function SplashScreen() {
       }
       if (transitionSoundRef.current) {
         transitionSoundRef.current.unloadAsync();
+      }
+      if (titleSoundRef.current) {
+        titleSoundRef.current.unloadAsync();
       }
     };
   }, []);
@@ -366,43 +385,33 @@ export default function SplashScreen() {
   }, []);
 
   useEffect(() => {
-    // Extended timeline for better readability
+    // FASTER TIMELINE - show elements almost immediately
     const timers = [
-      setTimeout(() => setShowLogo(true), 2800),
-      setTimeout(() => setShowTitle(true), 3400),
-      setTimeout(() => setShowSubtitle(true), 4600),
-      setTimeout(() => setShowTagline(true), 5200),
-      setTimeout(() => setShowSparkles(true), 2800),
+      setTimeout(() => setShowLogo(true), 400),  // Show logo quickly
+      setTimeout(() => setShowTitle(true), 600),  // Title starts quickly
+      setTimeout(() => setShowSubtitle(true), 900), // Subtitle follows
+      setTimeout(() => setShowSparkles(true), 500), // Sparkles start
     ];
 
-    // Logo animation with extended duration
+    // Logo animation - quick entrance
     const logoAnimation = setTimeout(() => {
       Animated.parallel([
-        Animated.timing(logoOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
-        Animated.spring(logoScale, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
-        Animated.timing(logoRotate, { toValue: 0, duration: 800, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
+        Animated.timing(logoOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.spring(logoScale, { toValue: 1, friction: 6, tension: 50, useNativeDriver: true }),
+        Animated.timing(logoRotate, { toValue: 0, duration: 600, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
       ]).start();
-    }, 2800);
+    }, 400);
 
-    // Subtitle animation
+    // Subtitle animation - quick
     const subtitleAnimation = setTimeout(() => {
       Animated.parallel([
-        Animated.timing(subtitleOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(subtitleTranslateY, { toValue: 0, duration: 700, useNativeDriver: true }),
+        Animated.timing(subtitleOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(subtitleTranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
       ]).start();
-    }, 4600);
-
-    // Tagline animation
-    const taglineAnimation = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(taglineOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(taglineTranslateY, { toValue: 0, duration: 600, useNativeDriver: true }),
-      ]).start();
-    }, 5200);
+    }, 900);
 
     // Play transition sound and start wash animation
     const washAnimation = setTimeout(async () => {
-      // Play the clouds transition sound
       try {
         if (transitionSoundRef.current) {
           await transitionSoundRef.current.playAsync();
@@ -412,20 +421,19 @@ export default function SplashScreen() {
       }
 
       Animated.parallel([
-        Animated.timing(washOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
-        Animated.timing(logoScale, { toValue: 0.7, duration: 1000, useNativeDriver: true }),
+        Animated.timing(washOpacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(logoScale, { toValue: 0.7, duration: 800, useNativeDriver: true }),
       ]).start();
-    }, 6200);
+    }, 3000); // Shorter wait before transition
 
     const transition = setTimeout(() => {
       router.replace('/onboarding');
-    }, 7500);
+    }, 4200); // Total splash time ~4.2 seconds
 
     return () => {
       timers.forEach(clearTimeout);
       clearTimeout(logoAnimation);
       clearTimeout(subtitleAnimation);
-      clearTimeout(taglineAnimation);
       clearTimeout(washAnimation);
       clearTimeout(transition);
     };
@@ -445,7 +453,6 @@ export default function SplashScreen() {
     { x: width * 0.45, y: height * 0.85, delay: 1000, size: 5 },
     { x: width * 0.3, y: height * 0.25, delay: 400, size: 6 },
     { x: width * 0.7, y: height * 0.45, delay: 700, size: 5 },
-    // Additional sparkles
     { x: width * 0.55, y: height * 0.3, delay: 200, size: 4 },
     { x: width * 0.35, y: height * 0.5, delay: 800, size: 5 },
     { x: width * 0.65, y: height * 0.6, delay: 1100, size: 6 },
@@ -453,8 +460,16 @@ export default function SplashScreen() {
     { x: width * 0.75, y: height * 0.8, delay: 1400, size: 5 },
   ];
 
+  // Play title sound when title shows
+  useEffect(() => {
+    if (showTitle && titleSoundRef.current) {
+      titleSoundRef.current.playAsync();
+    }
+  }, [showTitle]);
+
   return (
     <View style={styles.container}>
+      <StatusBar style="light" translucent />
       <LinearGradient
         colors={[NAVY, '#24408f', BLUE]}
         start={{ x: 0, y: 0 }}
@@ -466,12 +481,12 @@ export default function SplashScreen() {
       <View style={styles.blob1} />
       <View style={styles.blob2} />
 
-      {/* Cloud layers — solid, fully visible */}
+      {/* Cloud layers — original positions */}
       <CloudBank
         bottom={height * 0.28}
         scale={0.8}
         duration={120000}
-        opacity={0.60}
+        opacity={1.0}
         color={CLOUD_FAR}
         reverse
         delay={0}
@@ -480,34 +495,34 @@ export default function SplashScreen() {
         bottom={height * 0.16}
         scale={1.25}
         duration={95000}
-        opacity={0.70}
+        opacity={1.0}
         color={CLOUD_FAR}
-        delay={400}
+        delay={80}
       />
       <CloudBank
         bottom={height * 0.08}
         scale={1.05}
         duration={62000}
-        opacity={0.78}
+        opacity={1.0}
         color={CLOUD_MID}
         reverse
-        delay={1000}
+        delay={160}
       />
       <CloudBank
         bottom={-height * 0.02}
         scale={0.9}
         duration={40000}
-        opacity={0.85}
+        opacity={1.0}
         color={CLOUD_NEAR}
-        delay={1600}
+        delay={240}
       />
       <CloudBank
         bottom={height * 0.22}
         scale={0.7}
         duration={80000}
-        opacity={0.65}
+        opacity={1.0}
         color={CLOUD_MID}
-        delay={600}
+        delay={120}
       />
 
       {/* Sparkles */}
@@ -521,79 +536,64 @@ export default function SplashScreen() {
         />
       ))}
 
-      {/* Logo */}
-      {showLogo && (
-        <Animated.View
-          style={{
-            transform: [
-              { scale: logoScale },
-              { rotate: logoRotate.interpolate({ inputRange: [-0.35, 0], outputRange: ['-20deg', '0deg'] }) },
-            ],
-            opacity: logoOpacity,
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-          }}
-        >
-          <Image
-            source={require('../assets/images/img/senyas_logo.png')}
-            style={styles.logo}
-            contentFit="contain"
-          />
-        </Animated.View>
-      )}
+      {/* Centered Brand Hero Container - adjusted slightly higher */}
+      <View style={styles.heroCenterContainer}>
+        {/* Logo */}
+        {showLogo && (
+          <Animated.View
+            style={{
+              transform: [
+                { scale: logoScale },
+                { rotate: logoRotate.interpolate({ inputRange: [-0.35, 0], outputRange: ['-20deg', '0deg'] }) },
+              ],
+              opacity: logoOpacity,
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+              marginBottom: 12,
+            }}
+          >
+            <Image
+              source={require('../assets/images/img/senyas_logo.png')}
+              style={styles.logo}
+              contentFit="contain"
+            />
+          </Animated.View>
+        )}
 
-      {/* App Name - Letter by letter with proper Ñ */}
-      {showTitle && (
-        <View style={styles.titleContainer}>
-          <AnimatedText
-            text="SEÑAS"
-            style={styles.title}
-            delay={0}
-            duration={150}
-          />
-        </View>
-      )}
-
-      {/* Subtitle */}
-      {showSubtitle && (
-        <Animated.View
-          style={{
-            opacity: subtitleOpacity,
-            transform: [{ translateY: subtitleTranslateY }],
-            alignItems: 'center',
-            marginTop: 8,
-            zIndex: 10,
-          }}
-        >
-          <Text style={styles.subtitle}>Filipino Sign Language</Text>
-        </Animated.View>
-      )}
-
-      {/* Tagline */}
-      {showTagline && (
-        <Animated.View
-          style={{
-            opacity: taglineOpacity,
-            transform: [{ translateY: taglineTranslateY }],
-            alignItems: 'center',
-            marginTop: 16,
-            zIndex: 10,
-          }}
-        >
-          <Text style={styles.tagline}>Learn · Practice · Connect</Text>
-          <View style={styles.dots}>
-            {[0, 1, 2].map((i) => (
-              <View key={i} style={styles.dot} />
-            ))}
+        {/* App Name - Letter by letter with proper Ñ */}
+        {showTitle && (
+          <View style={styles.titleWrapper}>
+            <AnimatedText
+              text="SEÑAS"
+              style={styles.title}
+              delay={0}
+              stagger={55}
+            />
           </View>
-        </Animated.View>
-      )}
+        )}
 
-      {/* Hand-off wash into the app */}
+        {/* Subtitle - split cleanly across two lines */}
+        {showSubtitle && (
+          <Animated.View
+            style={[
+              styles.subtitleWrapper,
+              {
+                opacity: subtitleOpacity,
+                transform: [{ translateY: subtitleTranslateY }],
+              }
+            ]}
+          >
+            <Text style={styles.subtitleMain}>Filipino Sign Language</Text>
+            <Text style={styles.subtitleTag}>Learning Platform</Text>
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Hand-off wash into the app — matches onboarding's first-slide navy */}
       <Animated.View
         pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: PAPER, opacity: washOpacity, zIndex: 20 }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: NAVY, opacity: washOpacity, zIndex: 20 }]}
       />
     </View>
   );
@@ -630,35 +630,55 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(245,166,35,0.10)',
   },
-  logo: { width: 130, height: 130 },
-  titleContainer: {
-    marginTop: 24,
+  heroCenterContainer: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -170, // Moved up by 10px (was -120)
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 20,
+    width: '100%',
+  },
+  logo: { width: 140, height: 140 },
+  titleWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
   title: {
-    fontSize: 42,
+    fontSize: 44,
     fontWeight: '900',
-    letterSpacing: 6,
+    letterSpacing: 7,
     color: '#fff',
-    lineHeight: 48,
-    textShadowColor: 'rgba(0,0,0,0.3)',
+    lineHeight: 50,
+    textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 24,
+    textShadowRadius: 20,
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
-  subtitle: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 13,
-    fontWeight: '500',
-    letterSpacing: 2,
-    marginTop: 4,
-    textTransform: 'uppercase',
+  subtitleWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    paddingHorizontal: 20,
   },
-  tagline: { color: 'rgba(255,255,255,0.65)', fontSize: 14, fontWeight: '500', lineHeight: 22 },
-  dots: { flexDirection: 'row', gap: 8, marginTop: 18 },
-  dot: { width: 7, height: 7, borderRadius: 999, backgroundColor: AMBER, opacity: 0.9 },
+  subtitleMain: {
+    color: '#ffffff',
+    fontSize: 13.5,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  subtitleTag: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11.5,
+    fontWeight: '600',
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
 });
