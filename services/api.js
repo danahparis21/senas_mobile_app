@@ -6,11 +6,154 @@ const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/ap
 
 console.log('🌐 API URL:', API_URL);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Smart fetch layer  (cache + dedup + 429 retry)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** In-memory GET cache: key → { data, expiresAt } */
+const _cache = {};
+
+/** Cache TTLs per URL pattern (ms). 0 = no cache. */
+const CACHE_TTL = {
+    '/student/adaptive-lessons': 60_000,   // 60 s
+    '/student/mastery':          60_000,   // 60 s
+    '/student/lessons':          30_000,   // 30 s
+    '/student/learning-path':    30_000,   // 30 s
+    '/student/achievements':     120_000,  // 2 min
+    '/student/streak':           60_000,   // 60 s
+    '/student/gesture-progress': 60_000,   // 60 s
+    '/student/notifications':    30_000,   // 30 s
+    '/student/promotion':        30_000,   // 30 s
+    '/student/profile':          120_000,  // 2 min
+};
+
+function getCacheTtl(url) {
+    for (const [pattern, ttl] of Object.entries(CACHE_TTL)) {
+        if (url.includes(pattern)) return ttl;
+    }
+    return 0;
+}
+
+/** In-flight request deduplication: key → Promise */
+const _inflight = {};
+
+/**
+ * Wrapped fetch:
+ *  - GET requests are cached in memory and de-duplicated
+ *  - 429 responses are retried up to 3 times with exponential back-off
+ *  - Safely clones/reconstructs Response objects to avoid "Already read" stream errors
+ */
+async function apiFetch(url, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    const isGet = method === 'GET';
+    const cacheKey = url;
+
+    // ── Cache hit ──────────────────────────────────────────────────
+    if (isGet) {
+        const hit = _cache[cacheKey];
+        if (hit && Date.now() < hit.expiresAt) {
+            return new Response(JSON.stringify(hit.data), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+    }
+
+    // ── De-duplicate concurrent identical requests ─────────────────
+    if (isGet && _inflight[cacheKey]) {
+        const result = await _inflight[cacheKey];
+        return new Response(result.body, {
+            status: result.status,
+            statusText: result.statusText,
+            headers: result.headers
+        });
+    }
+
+    const ttl = isGet ? getCacheTtl(url) : 0;
+
+    const doFetch = async (attempt = 0) => {
+        const resp = await fetch(url, options);
+
+        // 429 – Too Many Attempts: back off and retry
+        if (resp.status === 429 && attempt < 3) {
+            const retryAfter = parseInt(resp.headers.get('Retry-After') || '0', 10);
+            const delay = retryAfter > 0
+                ? retryAfter * 1000
+                : Math.min(1000 * Math.pow(2, attempt), 16_000); // 1s, 2s, 4s cap 16s
+            console.warn(`⏳ Rate limited (429). Retrying in ${delay}ms (attempt ${attempt + 1}/3)...`);
+            await new Promise(r => setTimeout(r, delay));
+            return doFetch(attempt + 1);
+        }
+
+        // Consume stream to text so multiple callers can read it independently
+        const bodyText = await resp.text();
+
+        let parsedData = null;
+        if (resp.ok) {
+            try {
+                parsedData = JSON.parse(bodyText);
+            } catch (e) {}
+        }
+
+        // Cache successful GET responses
+        if (isGet && resp.ok && ttl > 0 && parsedData) {
+            _cache[cacheKey] = { data: parsedData, expiresAt: Date.now() + ttl };
+        }
+
+        return {
+            body: bodyText,
+            status: resp.status,
+            statusText: resp.statusText,
+            headers: resp.headers
+        };
+    };
+
+    if (isGet) {
+        const promise = doFetch().finally(() => { delete _inflight[cacheKey]; });
+        _inflight[cacheKey] = promise;
+        
+        const result = await promise;
+        return new Response(result.body, {
+            status: result.status,
+            statusText: result.statusText,
+            headers: result.headers
+        });
+    }
+
+    // For POST/PUT/DELETE, bypass cache/deduplication but keep 429 retrying
+    const doNormalFetch = async (attempt = 0) => {
+        const resp = await fetch(url, options);
+        if (resp.status === 429 && attempt < 3) {
+            const retryAfter = parseInt(resp.headers.get('Retry-After') || '0', 10);
+            const delay = retryAfter > 0
+                ? retryAfter * 1000
+                : Math.min(1000 * Math.pow(2, attempt), 16_000);
+            await new Promise(r => setTimeout(r, delay));
+            return doNormalFetch(attempt + 1);
+        }
+        return resp;
+    };
+
+    return doNormalFetch();
+}
+
+/** Call this after mutating data to invalidate stale GET cache entries. */
+export function invalidateCache(urlPattern) {
+    for (const key of Object.keys(_cache)) {
+        if (key.includes(urlPattern)) {
+            delete _cache[key];
+        }
+    }
+}
+
 export const api = {
     login: async (lrn, pin) => {
         try {
             console.log(`📤 Attempting login to: ${API_URL}/student/login`);
-            console.log(`📋 LRN: ${lrn}, PIN: ${pin}`);
+
+            // Clear any cached data from a previous user session
+            for (const key of Object.keys(_cache)) { delete _cache[key]; }
+            for (const key of Object.keys(_inflight)) { delete _inflight[key]; }
 
             const response = await fetch(`${API_URL}/student/login`, {
                 method: 'POST',
@@ -25,8 +168,6 @@ export const api = {
             console.log('✅ Login response:', data);
 
             if (!response.ok) {
-                // ✅ REMOVED the scary console.error here
-                // console.error('❌ Login error:', data.message || 'Login failed');
                 throw new Error(data.message || 'Login failed');
             }
 
@@ -34,7 +175,6 @@ export const api = {
                 await AsyncStorage.setItem('userToken', data.token);
                 await AsyncStorage.setItem('userData', JSON.stringify(data.user));
 
-                // ✅ Store profile picture separately for quick access
                 if (data.user?.student?.profile_picture) {
                     await AsyncStorage.setItem('userAvatar', data.user.student.profile_picture);
                 }
@@ -50,7 +190,7 @@ export const api = {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
-            const response = await fetch(`${API_URL}/student/profile`, {
+            const response = await apiFetch(`${API_URL}/student/profile`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -85,9 +225,15 @@ export const api = {
                 });
             }
 
+            // ✅ SECURITY: Clear all cached data so the next user never sees
+            // this user's personal data (lessons, mastery, achievements, etc.)
+            for (const key of Object.keys(_cache)) { delete _cache[key]; }
+            for (const key of Object.keys(_inflight)) { delete _inflight[key]; }
+
             await AsyncStorage.removeItem('userToken');
             await AsyncStorage.removeItem('userData');
-            console.log('👋 Logged out successfully');
+            await AsyncStorage.removeItem('userAvatar');
+            console.log('👋 Logged out and cache cleared.');
         } catch (error) {
             console.error('❌ Logout error:', error);
         }
@@ -149,7 +295,7 @@ export const api = {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
-            const response = await fetch(`${API_URL}/student/learning-path`, {
+            const response = await apiFetch(`${API_URL}/student/learning-path`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -181,7 +327,7 @@ export const api = {
 
             console.log('📚 Fetching student lessons...');
 
-            const response = await fetch(`${API_URL}/student/lessons`, {
+            const response = await apiFetch(`${API_URL}/student/lessons`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -217,7 +363,7 @@ export const api = {
 
             console.log('🎯 Fetching My Learning Path lessons...');
 
-            const response = await fetch(`${API_URL}/student/learning-path/lessons`, {
+            const response = await apiFetch(`${API_URL}/student/learning-path/lessons`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -677,7 +823,7 @@ export const api = {
 
             console.log('📊 Fetching gesture progress...');
 
-            const response = await fetch(`${API_URL}/student/gesture-progress`, {
+            const response = await apiFetch(`${API_URL}/student/gesture-progress`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1059,7 +1205,7 @@ export const api = {
 
             console.log('🏆 Fetching achievements...');
 
-            const response = await fetch(`${API_URL}/student/achievements`, {
+            const response = await apiFetch(`${API_URL}/student/achievements`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1164,7 +1310,7 @@ export const api = {
                 throw new Error('No token found. Please login first.');
             }
 
-            const response = await fetch(`${API_URL}/student/streak`, {
+            const response = await apiFetch(`${API_URL}/student/streak`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1280,7 +1426,7 @@ export const api = {
 
             console.log('📬 Fetching notifications...');
 
-            const response = await fetch(`${API_URL}/student/notifications`, {
+            const response = await apiFetch(`${API_URL}/student/notifications`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1643,7 +1789,7 @@ export const api = {
 
             console.log('🧠 Fetching adaptive lessons...');
 
-            const response = await fetch(`${API_URL}/student/adaptive-lessons`, {
+            const response = await apiFetch(`${API_URL}/student/adaptive-lessons`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -1679,7 +1825,7 @@ export const api = {
 
             console.log('📊 Fetching mastery data...');
 
-            const response = await fetch(`${API_URL}/student/mastery`, {
+            const response = await apiFetch(`${API_URL}/student/mastery`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,

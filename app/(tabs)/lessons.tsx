@@ -1747,10 +1747,6 @@ export default function Lessons() {
 
                     <Pressable
                       onPress={() => {
-                        if (isLocked) {
-                          alert('🔒 This lesson is locked. Complete the previous lesson to unlock it!');
-                          return;
-                        }
                         setExpandedId(isSelected ? null : lesson.id);
                       }}
                       style={({ pressed }) => [
@@ -1797,10 +1793,6 @@ export default function Lessons() {
                       {/* Title card */}
                       <Pressable
                         onPress={() => {
-                          if (isLocked) {
-                            alert('🔒 This lesson is locked. Complete the previous lesson to unlock it!');
-                            return;
-                          }
                           setExpandedId(isSelected ? null : lesson.id);
                         }}
                         style={({ pressed }) => [

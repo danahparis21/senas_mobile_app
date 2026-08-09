@@ -378,11 +378,38 @@ const familiarityOptions = [
 ];
 
 const goalOptions = [
-  { label: 'Alphabet & Numbers', value: 'Alphabet_Numbers', Icon: Type },
-  { label: 'Greetings & Basic Phrases', value: 'Greetings', Icon: Waves },
-  { label: 'Classroom Words', value: 'Classroom_Words', Icon: BookOpen },
-  { label: 'Everything!', value: 'Everything', Icon: Sparkles },
+  {
+    label: 'Alphabets & Numbers',
+    value: 'Alphabet_Numbers',  // ✅ Exact match with enum
+    Icon: Type,
+  },
+  {
+    label: 'Fingerspelling',
+    value: 'Fingerspelling',  // ✅ New value
+    Icon: Hand,
+  },
+  {
+    label: 'Greetings & FSL Words',
+    value: 'Greetings_FSL_Words',  // ✅ New value
+    Icon: Waves,
+  },
+  {
+    label: 'Everything!',
+    value: 'Everything',  // ✅ Unchanged
+    Icon: Sparkles,
+  },
 ];
+
+// ✅ ADD THIS HELPER FUNCTION HERE (after goalOptions)
+const getGoalDisplayName = (goal: string): string => {
+  const map: Record<string, string> = {
+    'Alphabet_Numbers': 'Alphabets & Numbers',
+    'Fingerspelling': 'Fingerspelling',
+    'Greetings_FSL_Words': 'Greetings & FSL Words',
+    'Everything': 'Everything'
+  };
+  return map[goal] || goal.replace(/_/g, ' ');
+};
 
 const timeOptions = [
   { label: '5–10 minutes', value: '5_10_min', Icon: Timer },
@@ -390,6 +417,8 @@ const timeOptions = [
   { label: '30 minutes', value: '30_min', Icon: Hourglass },
   { label: '1 hour or more', value: '1_hour_plus', Icon: Flame },
 ];
+
+
 
 const THINKING_MESSAGES = [
   'Reading your answers',
@@ -495,6 +524,13 @@ export default function Assessment() {
     }
   }
 
+  useFocusEffect(
+    useCallback(() => {
+      // Refresh settings when screen comes into focus
+      // If you have a refreshSettings function from context, call it here
+    }, [])
+  );
+
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 450, useNativeDriver: true }).start();
   }, []);
@@ -579,6 +615,7 @@ export default function Assessment() {
                 practice_time: path.practice_time || '30_min',
               }));
 
+              // Find the index for the new goal values
               const goalIndex = goalOptions.findIndex(opt => opt.value === path.learning_goal);
               const timeIndex = timeOptions.findIndex(opt => opt.value === path.practice_time);
 
@@ -589,6 +626,7 @@ export default function Assessment() {
           } catch (error) {
             console.log('No learning path found to edit');
           }
+
 
           // Skip to the appropriate step
           if (studentLevel) {
@@ -789,10 +827,14 @@ export default function Assessment() {
   }
 
   // ─── Result screen ──────────────────────────────────────────────────────
+  // ─── Result screen ──────────────────────────────────────────────────────
   if (showCompletion) {
     const level = studentLevel || answers.fsl_level || 'Beginner';
     const tone = levelColors[level] || palette.sky;
-    const goal = (answers.learning_goal || 'Everything').replace(/_/g, ' ');
+
+    // ✅ Use the top-level helper function
+    const goal = getGoalDisplayName(answers.learning_goal || 'Everything');
+
     const time = (answers.practice_time || '30_min')
       .replace('_min', ' min')
       .replace('_plus', '+')

@@ -395,6 +395,75 @@ function CarouselDots({ currentIndex, total }: { currentIndex: number; total: nu
     </View>
   );
 }
+function ModeTile({
+  title,
+  tagLabel,
+  description,
+  gradientColors,
+  iconSource,
+  onPress,
+  disabled,
+}: {
+  title: string;
+  tagLabel: string;
+  description: string;
+  gradientColors: readonly [string, string];
+  iconSource: any;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const pressScale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(pressScale, { toValue: 0.95, friction: 7, useNativeDriver: true }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(pressScale, { toValue: 1, friction: 5, tension: 60, useNativeDriver: true }).start();
+  };
+
+  return (
+    <Animated.View style={[styles.modeTileWrapper, { transform: [{ scale: pressScale }] }]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled}
+        style={({ pressed }) => [{ opacity: disabled && !pressed ? 0.6 : 1 }]}
+      >
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.modeTileGradient}
+        >
+          <View style={styles.modeTileTag}>
+            <Text style={styles.modeTileTagText}>{tagLabel}</Text>
+          </View>
+
+          <View style={styles.modeTileSpacer} />
+
+          <Text style={styles.modeTileTitle}>{title}</Text>
+          <Text style={styles.modeTileDesc} numberOfLines={2}>
+            {description}
+          </Text>
+
+          <View style={styles.modeTileStartRow}>
+            <Text style={styles.modeTileStartText}>Start</Text>
+            <View style={styles.modeTileStartIcon}>
+              <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* Icon badge overflows out of the top of the tile */}
+        <View style={styles.modeTileIconBadge}>
+          <Image source={iconSource} style={styles.modeTileIconImage} contentFit="contain" />
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 function ChallengeModal({
   visible,
   onClose,
@@ -449,89 +518,44 @@ function ChallengeModal({
           ]}
         >
           {/* Header */}
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>Choose Challenge</Text>
-              <Text style={styles.modalSubtitle}>
-                Pick your practice style and start learning
-              </Text>
+          <View style={styles.modalHeaderRow}>
+            <View style={styles.modalHeaderIconCircle}>
+              <Ionicons name="game-controller" size={19} color="#0F3172" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalTitle}>Choose Your Challenge</Text>
+              <Text style={styles.modalSubtitle}>Pick a mode and start learning</Text>
             </View>
             <TouchableOpacity
               onPress={onClose}
               style={styles.modalCloseButton}
               hitSlop={8}
             >
-              <Ionicons name="close-outline" size={22} color="#6B7280" />
+              <Ionicons name="close" size={18} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
-          {/* ─── MASTER MODE ─────────────────────────────────────────────── */}
-          <TouchableOpacity
-            style={[styles.modeOption, styles.masterMode]}
-            onPress={() => onSelectMode('master')}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <View style={styles.modeImageWrapper}>
-              <Image
-                source={require('../../assets/images/img/trophy.png')}
-                style={styles.modeImage}
-                contentFit="contain"
-              />
-            </View>
-
-            <View style={styles.modeContent}>
-              <View style={styles.modeHeader}>
-                <Text style={styles.modeTitle}>Master Mode</Text>
-                <View style={[styles.modeBadge, styles.recommendedBadge]}>
-                  <Text style={styles.modeBadgeText}>Recommended</Text>
-                </View>
-              </View>
-              <Text style={styles.modeDescription} numberOfLines={2}>
-                Focus on signs you need to improve. Master each sign one by one.
-              </Text>
-            </View>
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color="#D1D5DB"
-              style={styles.modeArrow}
+          {/* ─── MODE TILES ─────────────────────────────────────────────── */}
+          <View style={styles.modeTilesRow}>
+            <ModeTile
+              title="Master Mode"
+              tagLabel="Recommended"
+              description="Focus on signs you need to improve"
+              gradientColors={['#FFCB47', '#FF9F1C'] as const}
+              iconSource={require('../../assets/images/img/trophy.png')}
+              onPress={() => onSelectMode('master')}
+              disabled={isLoading}
             />
-          </TouchableOpacity>
-
-          {/* ─── INFINITE MODE ───────────────────────────────────────────── */}
-          <TouchableOpacity
-            style={[styles.modeOption, styles.infiniteMode]}
-            onPress={() => onSelectMode('infinite')}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <View style={styles.modeImageWrapper}>
-              <Image
-                source={require('../../assets/images/img/practice.png')}
-                style={styles.modeImage}
-                contentFit="contain"
-              />
-            </View>
-
-            <View style={styles.modeContent}>
-              <View style={styles.modeHeader}>
-                <Text style={styles.modeTitle}>Infinite Mode</Text>
-                <View style={[styles.modeBadge, styles.practiceBadge]}>
-                  <Text style={styles.modeBadgeText}>Practice</Text>
-                </View>
-              </View>
-              <Text style={styles.modeDescription} numberOfLines={2}>
-                Practice random signs continuously. No pressure, just practice!
-              </Text>
-            </View>
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color="#D1D5DB"
-              style={styles.modeArrow}
+            <ModeTile
+              title="Infinite Mode"
+              tagLabel="Practice"
+              description="Practice random signs, no pressure"
+              gradientColors={['#4ECDC4', '#0D9488'] as const}
+              iconSource={require('../../assets/images/img/practice.png')}
+              onPress={() => onSelectMode('infinite')}
+              disabled={isLoading}
             />
-          </TouchableOpacity>
+          </View>
 
           {isLoading && (
             <View style={styles.modalLoadingContainer}>
@@ -540,8 +564,8 @@ function ChallengeModal({
             </View>
           )}
 
-          <TouchableOpacity onPress={onClose} style={styles.modalCancelButton}>
-            <Text style={styles.modalCancelText}>Cancel</Text>
+          <TouchableOpacity onPress={onClose} style={styles.modalCancelButton} activeOpacity={0.7}>
+            <Text style={styles.modalCancelText}>Maybe Later</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -1360,146 +1384,149 @@ const styles = StyleSheet.create({
   // ─── MODAL STYLES ──────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 49, 114, 0.35)',
+    backgroundColor: 'rgba(15, 49, 114, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   modalContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 28,
     width: '100%',
-    maxWidth: 360,
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 12,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 20,
+    maxWidth: 380,
     paddingTop: 20,
-    paddingBottom: 14,
+    paddingBottom: 16,
+    shadowColor: '#0F3172',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.25,
+    shadowRadius: 30,
+    elevation: 16,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginBottom: 18,
+  },
+  modalHeaderIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: '#FFF3D6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: '#0F3172',
-    lineHeight: 26,
+    lineHeight: 22,
   },
   modalSubtitle: {
     fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginTop: 2,
-    lineHeight: 16,
+    color: '#8A94A6',
+    fontWeight: '600',
+    marginTop: 1,
   },
   modalCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -2,
   },
 
-  // ─── MODE OPTIONS ──────────────────────────────────────────────────────
-  modeOption: {
+  // ─── MODE TILES ────────────────────────────────────────────────────────
+  modeTilesRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    backgroundColor: '#FFFFFF',
-    position: 'relative',
-    minHeight: 72,
+    gap: 14,
+    paddingHorizontal: 20,
+    marginTop: 14,
   },
-  masterMode: {
-    borderColor: '#FFE0E0',
-    backgroundColor: '#FFFBFB',
-  },
-  infiniteMode: {
-    borderColor: '#D4F5F0',
-    backgroundColor: '#F8FFFE',
-  },
-
-  // Image that overflows the container
-  modeImageWrapper: {
-    width: 56,
-    height: 70,
-    marginRight: 12,
-    marginLeft: -8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-    flexShrink: 0,
-    position: 'relative',
-  },
-  modeImage: {
-    width: '130%',
-    height: '130%',
-    position: 'absolute',
-    left: -8,
-    top: -4,
-  },
-
-  modeContent: {
+  modeTileWrapper: {
     flex: 1,
-    paddingRight: 4,
   },
-  modeHeader: {
+  modeTileGradient: {
+    borderRadius: 22,
+    paddingTop: 30,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+    minHeight: 168,
+    justifyContent: 'flex-end',
+    shadowColor: '#0F3172',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  modeTileSpacer: {
+    flex: 1,
+  },
+  modeTileTag: {
+    position: 'absolute',
+    top: 46,
+    right: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  modeTileTagText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  modeTileTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  modeTileDesc: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.85)',
+    lineHeight: 14,
+    marginBottom: 12,
+  },
+  modeTileStartRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 2,
-    flexWrap: 'wrap',
   },
-  modeTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F3172',
-  },
-  modeBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 1.5,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  recommendedBadge: {
-    backgroundColor: '#FFF8E7',
-    borderColor: '#FFD700',
-  },
-  practiceBadge: {
-    backgroundColor: '#E8FBF8',
-    borderColor: '#4ECDC4',
-  },
-  modeBadgeText: {
-    fontSize: 7.5,
-    fontWeight: '700',
-    color: '#0F3172',
-    letterSpacing: 0.2,
-  },
-  modeDescription: {
+  modeTileStartText: {
     fontSize: 11.5,
-    color: '#6B7280',
-    lineHeight: 15,
-    paddingRight: 2,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
-  modeArrow: {
-    marginLeft: 2,
-    opacity: 0.3,
+  modeTileStartIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Icon badge that pops out of the top of the tile
+  modeTileIconBadge: {
+    position: 'absolute',
+    top: -26,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  modeTileIconImage: {
+    width: 64,
+    height: 64,
   },
 
   modalLoadingContainer: {
-    paddingVertical: 8,
+    paddingTop: 16,
+    paddingBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1511,30 +1538,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalCancelButton: {
-    paddingVertical: 12,
+    marginTop: 14,
+    marginHorizontal: 20,
+    paddingVertical: 13,
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    marginTop: 4,
+    borderRadius: 16,
+    backgroundColor: '#F5F6F8',
   },
   modalCancelText: {
     fontSize: 13,
-    color: '#9CA3AF',
-    fontWeight: '600',
+    color: '#6B7280',
+    fontWeight: '700',
   },
-  modeIconContainer: {
-    marginRight: 14,
-  },
-  modeIconGradient: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Add these to your styles object
-
-
   // Quick Access - Challenge Button
   challengeButton: {
     borderWidth: 2,
