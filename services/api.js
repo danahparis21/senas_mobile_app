@@ -811,9 +811,10 @@ export const api = {
         }
     },
 
+
     /**
-    * Get student's gesture module progress and XP for the dashboard
-    */
+     * Get student's gesture module progress and XP for the dashboard
+     */
     getGestureProgress: async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
@@ -823,12 +824,58 @@ export const api = {
 
             console.log('📊 Fetching gesture progress...');
 
-            const response = await apiFetch(`${API_URL}/student/gesture-progress`, {
+            // 🔥 FIX: Use regular fetch instead of apiFetch to bypass cache
+            // This ensures we always get fresh data when returning to the screen
+            const response = await fetch(`${API_URL}/student/gesture-progress`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch gesture progress');
+            }
+
+            // Also invalidate the cache for this endpoint so future apiFetch calls get fresh data
+            invalidateCache('/student/gesture-progress');
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching gesture progress:', error);
+            throw error;
+        }
+    },
+
+    // Also add a dedicated method to force refresh gesture progress
+    forceRefreshGestureProgress: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('🔄 Force refreshing gesture progress (bypassing cache)...');
+
+            // Invalidate the cache first
+            invalidateCache('/student/gesture-progress');
+
+            const response = await fetch(`${API_URL}/student/gesture-progress?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
                 },
             });
 
@@ -840,7 +887,7 @@ export const api = {
 
             return data;
         } catch (error) {
-            console.error('❌ Error fetching gesture progress:', error);
+            console.error('❌ Error force refreshing gesture progress:', error);
             throw error;
         }
     },

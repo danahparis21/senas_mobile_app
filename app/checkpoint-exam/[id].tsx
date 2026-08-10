@@ -329,11 +329,17 @@ export default function CheckpointExamScreen() {
   const [exam, setExam] = useState<ExamData | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, any>>({});
+  // 🔒 Mirrors userAnswers synchronously — handleSubmitExam/performSubmission read
+  // from this ref instead of the `userAnswers` closure to avoid stale-state bugs
+  // when submission is triggered from a setTimeout right after answering
+  // (e.g. auto-advance after a drag-drop/gesture question).
+  const userAnswersRef = useRef<Record<number, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resultData, setResultData] = useState<ResultData | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [confettiFired, setConfettiFired] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false); // 🔒 locks outer ScrollView while a drag-drop box is being dragged
 
   // ─── Timer State ────────────────────────────────────────────────────────
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null); // in seconds
@@ -511,16 +517,28 @@ export default function CheckpointExamScreen() {
   const currentAnswer = currentQuestion ? userAnswers[currentQuestion.question_id] : null;
 
   const handleSelectOption = (questionId: number, optionText: string) => {
-    setUserAnswers(prev => ({ ...prev, [questionId]: { question_id: questionId, selected_option_text: optionText } }));
+    setUserAnswers(prev => {
+      const next = { ...prev, [questionId]: { question_id: questionId, selected_option_text: optionText } };
+      userAnswersRef.current = next;
+      return next;
+    });
   };
 
   const handleGestureSuccess = (questionId: number, success: boolean) => {
-    setUserAnswers(prev => ({ ...prev, [questionId]: { question_id: questionId, gesture_success: success } }));
+    setUserAnswers(prev => {
+      const next = { ...prev, [questionId]: { question_id: questionId, gesture_success: success } };
+      userAnswersRef.current = next;
+      return next;
+    });
     setTimeout(() => handleNext(), 400);
   };
 
   const handleDragDropSuccess = (questionId: number, success: boolean) => {
-    setUserAnswers(prev => ({ ...prev, [questionId]: { question_id: questionId, drag_drop_success: success } }));
+    setUserAnswers(prev => {
+      const next = { ...prev, [questionId]: { question_id: questionId, drag_drop_success: success } };
+      userAnswersRef.current = next;
+      return next;
+    });
     setTimeout(() => handleNext(), 400);
   };
 
@@ -545,7 +563,7 @@ export default function CheckpointExamScreen() {
       return;
     }
 
-    const answeredCount = Object.keys(userAnswers).length;
+    const answeredCount = Object.keys(userAnswersRef.current).length;
     if (answeredCount < totalQuestions) {
       Alert.alert(
         'Unanswered Questions',
@@ -572,7 +590,7 @@ export default function CheckpointExamScreen() {
       }
 
       const formattedAnswers = exam.questions.map(q => {
-        const ans = userAnswers[q.question_id] || {};
+        const ans = userAnswersRef.current[q.question_id] || {};
         return {
           question_id: q.question_id,
           selected_option_text: ans.selected_option_text ?? null,
@@ -726,9 +744,16 @@ export default function CheckpointExamScreen() {
         onComplete={(success: boolean) => handleDragDropSuccess(currentQuestion.question_id, success)}
         onBack={handlePrev}
         isExamMode={true}
+        onDragActiveChange={setIsDragActive}
       />
     );
   }, [currentQuestion, currentIndex, totalQuestions]);
+
+  // 🔒 Safety net: if a drag gets interrupted (e.g. navigating away mid-drag),
+  // make sure the outer ScrollView never stays locked.
+  useEffect(() => {
+    setIsDragActive(false);
+  }, [currentIndex]);
 
 
 
@@ -1164,7 +1189,10 @@ export default function CheckpointExamScreen() {
       {submitted ? (
         renderResults()
       ) : (
-        <ScrollView contentContainerStyle={s.moduleScroll}>
+        <ScrollView
+          contentContainerStyle={s.moduleScroll}
+          scrollEnabled={!isDragActive}
+        >
           <View style={s.topBar}>
             <Text style={s.logoText}>SEÑAS</Text>
             <View style={s.topBarRight}>

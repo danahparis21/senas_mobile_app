@@ -16,7 +16,7 @@ import {
   Modal,
   PanResponder,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { api } from '../../services/api';
@@ -315,6 +315,10 @@ interface Lesson {
   best_score?: number;
   attempts?: number;
   stars?: number;
+  lock_reason?: 'module_locked' | 'previous_lesson_required' | 'unknown' | null;
+  lock_reason_data?: {
+    previous_lesson_title?: string;
+  } | null;
 }
 
 interface WeakSkill {
@@ -1049,6 +1053,20 @@ export default function Lessons() {
     loadAdaptiveLessons(); // Changed from loadLearningPathData
     loadMasteryData();
   }, []);
+
+  // ── REFRESH ON FOCUS ─────────────────────────────────────────────────────
+  // Re-fetch lesson data every time this screen comes back into focus
+  // (e.g. after the student finishes a lesson and presses Back).
+  // This makes the Learning Path unlock the next lesson immediately —
+  // matching the responsiveness users already see on the module lesson map.
+  useFocusEffect(
+    useCallback(() => {
+      if (!loadingModules && !loadingLearningPath) {
+        loadModulesData();
+        loadAdaptiveLessons();
+      }
+    }, [])
+  );
 
   // Once modules are in, honor a ?tab=modules&moduleId=X deep link (if any)
   // by jumping straight to that module. Re-applies whenever the params
@@ -1836,9 +1854,14 @@ export default function Lessons() {
                         {isLocked && (
                           <View style={styles.lockedLabelContainer}>
                             <LockIcon size={10} color="#94A3B8" />
-                            <Text style={styles.lockedLabelText}>Locked</Text>
+                            <Text style={styles.lockedLabelText}>
+                              {lesson.lock_reason === 'previous_lesson_required' && lesson.lock_reason_data?.previous_lesson_title
+                                ? `Complete "${lesson.lock_reason_data.previous_lesson_title}" first`
+                                : 'Locked'}
+                            </Text>
                           </View>
                         )}
+
                       </Pressable>
                     </View>
                   </View>

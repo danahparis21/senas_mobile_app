@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { Audio } from 'expo-av';
 import { useCameraPermissions } from 'expo-camera';
-import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+import { useSettings } from '../../contexts/SettingsContext';
 import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -51,8 +51,8 @@ interface GestureQuestion {
     gesture_data: {
         module_id: string;
         gesture_ids: string[];
-        is_fingerspelling?: boolean;  // 🆕 Add this
-        words?: string[];              // 🆕 Add this
+        is_fingerspelling?: boolean;
+        words?: string[];
     };
     question_number: number;
 }
@@ -82,6 +82,7 @@ export default function GesturePractice({
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(false);
+    const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
 
     // ─── CAMERA PERMISSIONS ──────────────────────────────────────────────────
     const [permission, requestPermission] = useCameraPermissions();
@@ -107,12 +108,12 @@ export default function GesturePractice({
     // FIXED: Dynamic font sizing for gesture-dot labels - BIGGER for short words
     const getDotFontSize = (word: string) => {
         const len = (word ?? '').length;
-        if (len <= 2) return 22;  // "Yes", "No" - BIG
-        if (len <= 4) return 20;  // "Hello", "Wrong", "Know" - BIG
-        if (len <= 6) return 18;  // "Correct" - MEDIUM
+        if (len <= 2) return 22;
+        if (len <= 4) return 20;
+        if (len <= 6) return 18;
         if (len <= 8) return 16;
-        if (len <= 12) return 14; // "Understand", "Thank You"
-        return 12;                // Very long phrases
+        if (len <= 12) return 14;
+        return 12;
     };
 
     // Live detection state
@@ -121,10 +122,20 @@ export default function GesturePractice({
 
     const lastLoggedValueRef = useRef<string>('');
     const detectionCooldownRef = useRef<number>(0);
-    const DETECTION_COOLDOWN_MS = 2500;
+
+    // ─── DYNAMIC COOLDOWN BASED ON MODULE ──────────────────────────────────
+    // Numbers module: faster detection (1.2s), others: slower (2.5s)
+    const getDetectionCooldown = (moduleId: string): number => {
+        const moduleIdNum = parseInt(moduleId);
+        // Numbers module (id: 3) gets faster cooldown
+        if (moduleIdNum === 3) return 1200; // 1.2 seconds
+        return 2500; // 2.5 seconds for others
+    };
+
     const MIN_CONFIDENCE = 0.6;
 
     const [isSkipped, setIsSkipped] = useState(false);
+
     // ─── Get gesture data ────────────────────────────────────────────────────
     const gestureData = question.gesture_data;
     const moduleId = gestureData?.module_id || '1';
@@ -265,7 +276,6 @@ export default function GesturePractice({
 
     // ─── Play gesture sound (only if enabled) ──
     async function playGestureSound() {
-        // ✅ Check if sound is enabled
         if (!settings.soundEnabled) {
             console.log('🔇 Sound disabled, skipping gesture sound');
             return;
@@ -318,7 +328,6 @@ export default function GesturePractice({
         }, 1200);
     };
 
-
     // ─── Skip handler ──────────────────────────────────────────────────────────
     const handleSkip = () => {
         if (hasCompleted || isProcessing) return;
@@ -327,27 +336,29 @@ export default function GesturePractice({
         onComplete(false, []);
         showCutePopup('⏭️ Skipped', 'Moving to next question');
     };
+
     // ─── Handle WebView messages ─────────────────────────────────────────────
     const handleMessage = async (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === 'model_status') {
-                if (data.status === 'loaded') {
-                    setIsConnected(true);
-                    setLoading(false);
-                }
-                return;
-            }
 
-            if (data.type === 'model_ready' || data.status === 'all_loaded') {
+            // Handle model status messages
+            if (data.type === 'model_status' || data.type === 'model_ready' || data.status === 'all_loaded') {
                 setIsConnected(true);
                 setLoading(false);
+                // Keep loading overlay for 5 seconds minimum after model is ready
+                setTimeout(() => {
+                    setShowLoadingOverlay(false);
+                }, 5000);
                 return;
             }
 
             if (data.test) {
                 setIsConnected(true);
                 setLoading(false);
+                setTimeout(() => {
+                    setShowLoadingOverlay(false);
+                }, 5000);
                 return;
             }
 
@@ -419,6 +430,7 @@ export default function GesturePractice({
 
             setIsConnected(true);
             if (loading) setLoading(false);
+            if (showLoadingOverlay) setShowLoadingOverlay(false);
 
             const detectedForDisplay = detectedValue || matchValue;
             setLiveLetter(detectedForDisplay);
@@ -502,13 +514,15 @@ export default function GesturePractice({
             // ─────────────────────────────────────────────────────────────
             // REGULAR GESTURE DETECTION LOGIC
             // ─────────────────────────────────────────────────────────────
-            if (now - detectionCooldownRef.current < DETECTION_COOLDOWN_MS) {
+            const cooldownMs = getDetectionCooldown(moduleId);
+
+            if (now - detectionCooldownRef.current < cooldownMs) {
                 return;
             }
 
             if (detectedValue !== lastLoggedValueRef.current || confidence > 0.85) {
                 lastLoggedValueRef.current = detectedValue;
-                console.log(`🔍 Detected: "${detectedValue}" → "${matchValue}", Target: "${currentTarget}", Conf: ${Math.round(confidence * 100)}%`);
+                console.log(`🔍 Detected: "${detectedValue}" → "${matchValue}", Target: "${currentTarget}", Conf: ${Math.round(confidence * 100)}%, Cooldown: ${cooldownMs}ms`);
             }
 
             if (matchValue === currentTarget) {
@@ -637,6 +651,7 @@ export default function GesturePractice({
     }, []);
 
     // ─── CAMERA PERMISSION CHECK ────────────────────────────────────────────
+    // Only check permission once - if already granted, skip the prompt
     if (!permission) {
         return (
             <SafeAreaView style={styles.container}>
@@ -678,6 +693,9 @@ export default function GesturePractice({
     const senyaTranslate = senyaBounceAnim.interpolate({
         inputRange: [0, 1], outputRange: [0, -10],
     });
+
+    // Check if this is a numbers module (id: 3)
+    const isNumbersModule = parseInt(moduleId) === 3;
 
     return (
         <SafeAreaView style={styles.container}>
@@ -730,8 +748,14 @@ export default function GesturePractice({
                         headers: { 'ngrok-skip-browser-warning': 'true' },
                     }}
                     style={styles.webview}
-                    onLoadStart={() => setLoading(true)}
-                    onLoadEnd={() => setLoading(false)}
+                    onLoadStart={() => {
+                        setLoading(true);
+                        setShowLoadingOverlay(true);
+                    }}
+                    onLoadEnd={() => {
+                        setLoading(false);
+                        // Keep loading overlay visible until model is ready
+                    }}
                     onMessage={handleMessage}
                     injectedJavaScript={injectedJavaScript}
                     mediaPlaybackRequiresUserAction={false}
@@ -747,6 +771,9 @@ export default function GesturePractice({
                             ? 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36'
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
+                    // ─── PREVENT REPEATED PERMISSION PROMPTS ────────────
+                    // Grant camera permission once and persist across WebView reloads
+                    mediaCapturePermissionGrantType="grant"
                 />
                 {/* ─── HUD: TOP-LEFT — target letter overlay ───────────── */}
                 <View style={styles.targetOverlay} pointerEvents="none">
@@ -893,18 +920,29 @@ export default function GesturePractice({
                             })
                         )}
                     </View>
+                    {/* ─── NUMBERS MODULE INDICATOR ──────────────────────── */}
+                    {isNumbersModule && (
+                        <View style={styles.moduleIndicator}>
+                            <Ionicons name="speedometer" size={12} color="#10B981" />
+                            <Text style={styles.moduleIndicatorText}>Fast detection</Text>
+                        </View>
+                    )}
                 </View>
 
-                {/* Loading overlay */}
-                {loading && !isConnected && (
+                {/* ─── LOADING OVERLAY (minimum 5 seconds) ──────────────── */}
+                {showLoadingOverlay && (
                     <View style={styles.loadingOverlay}>
                         <ActivityIndicator size="large" color="#FFD700" />
                         <Text style={styles.loadingOverlayText}>Starting camera…</Text>
-                        <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
+                        <Text style={styles.loadingSubtext}>Loading SENAS model…</Text>
+                        <View style={styles.loadingProgressBar}>
+                            <View style={[styles.loadingProgressFill, { width: '60%' }]} />
+                        </View>
+                        <Text style={styles.loadingSubtextSmall}>Please wait a moment</Text>
                     </View>
                 )}
 
-                {!isConnected && !loading && (
+                {!isConnected && !loading && !showLoadingOverlay && (
                     <Pressable style={styles.browserButton} onPress={openInBrowser}>
                         <Ionicons name="open-outline" size={20} color="#fff" />
                         <Text style={styles.browserButtonText}>Open in Browser</Text>
@@ -929,6 +967,11 @@ export default function GesturePractice({
                     }]} />
                 </View>
                 <Text style={styles.detectionBarPercent}>{liveConfidence}%</Text>
+                {isNumbersModule && (
+                    <View style={styles.fastBadge}>
+                        <Ionicons name="flash" size={12} color="#10B981" />
+                    </View>
+                )}
             </View>
 
             {/* ─── SUCCESS POPUP ──────────────────────────── */}
@@ -1103,9 +1146,9 @@ const styles = StyleSheet.create({
     targetLetterCard: {
         minWidth: 60,
         maxWidth: SCREEN_WIDTH * 0.45,
-        paddingHorizontal: 14, // Reduced from 18
-        paddingVertical: 6, // Reduced from 8
-        minHeight: 60, // Reduced from 70
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        minHeight: 60,
         borderRadius: 22,
         backgroundColor: 'rgba(255,255,255,0.22)',
         borderWidth: 1.5,
@@ -1217,10 +1260,10 @@ const styles = StyleSheet.create({
         flexWrap: 'wrap',
     },
     gestureDot: {
-        minWidth: 34, // Changed back from 40
-        minHeight: 34, // Changed back from 40
-        paddingHorizontal: 8, // Changed back from 12
-        paddingVertical: 4, // Changed back from 6
+        minWidth: 34,
+        minHeight: 34,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
         borderRadius: 10,
         backgroundColor: 'rgba(255,255,255,0.18)',
         borderWidth: 1.5,
@@ -1263,12 +1306,11 @@ const styles = StyleSheet.create({
         bottom: 35,
         alignItems: 'flex-end',
     },
-    // FIXED: Removed maxWidth constraints, let bubble grow naturally
     senyaBubbleWrapper: {
         alignItems: 'flex-end',
-        marginBottom: -40, // Add some spacing
+        marginBottom: -40,
         marginRight: 60,
-        alignSelf: 'flex-end', // Keep it on the right
+        alignSelf: 'flex-end',
     },
     senyaBubble: {
         backgroundColor: 'rgba(255,255,255,0.92)',
@@ -1283,10 +1325,9 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.18,
         shadowRadius: 10,
         elevation: 6,
-        // Add these to allow expansion:
-        flexShrink: 0, // Don't shrink
-        alignSelf: 'flex-start', // Width based on content
-        maxWidth: SCREEN_WIDTH * 0.55, // Max width, but content will expand to fit
+        flexShrink: 0,
+        alignSelf: 'flex-start',
+        maxWidth: SCREEN_WIDTH * 0.55,
     },
     senyaBubbleText: {
         fontSize: 10,
@@ -1310,14 +1351,31 @@ const styles = StyleSheet.create({
 
     loadingOverlay: {
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(10,22,40,0.95)',
+        backgroundColor: 'rgba(10,22,40,0.92)',
         alignItems: 'center', justifyContent: 'center',
+        paddingHorizontal: 40,
     },
     loadingOverlayText: {
         color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 14,
     },
     loadingSubtext: {
         color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 6,
+    },
+    loadingSubtextSmall: {
+        color: 'rgba(255,255,255,0.4)', fontSize: 10, marginTop: 6,
+    },
+    loadingProgressBar: {
+        width: 200,
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 2,
+        marginTop: 16,
+        overflow: 'hidden',
+    },
+    loadingProgressFill: {
+        height: '100%',
+        backgroundColor: '#FFD700',
+        borderRadius: 2,
     },
     browserButton: {
         position: 'absolute', bottom: 30, alignSelf: 'center',
@@ -1408,5 +1466,27 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.3)',
         fontSize: 20,
         fontWeight: '300',
+    },
+    moduleIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 4,
+        gap: 4,
+    },
+    moduleIndicatorText: {
+        fontSize: 9,
+        fontWeight: '600',
+        color: 'rgba(16,185,129,0.8)',
+        letterSpacing: 0.5,
+    },
+    fastBadge: {
+        marginLeft: 2,
+        backgroundColor: 'rgba(16,185,129,0.15)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.2)',
     },
 });

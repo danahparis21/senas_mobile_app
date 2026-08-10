@@ -311,6 +311,18 @@ export default function ChallengeScreen() {
     // the last stage.
     const [cumulativeXp, setCumulativeXp] = useState(0);
 
+    // ─── MASTER MODE AUDIT STATE ─────────────────────────────────────────────────
+    // Two-phase pre-flight approach: audit all 4 stages in parallel BEFORE loading
+    // any WebView. This eliminates the glitchy flash loop caused by the old
+    // [moduleType] effect calling fetchWeakSigns for every silently-skipped stage.
+    const [masterAuditLoading, setMasterAuditLoading] = useState(mode === 'master');
+    const [masterAuditDone, setMasterAuditDone] = useState(false);
+    const [masterStagePlan, setMasterStagePlan] = useState<{ stage: string; weakSigns: string[] }[]>([]);
+    const [masterSkippedStages, setMasterSkippedStages] = useState<string[]>([]);
+    const [masterCurrentPlanIndex, setMasterCurrentPlanIndex] = useState(0);
+    const [showStageOverviewModal, setShowStageOverviewModal] = useState(false);
+    const [allStagesMastered, setAllStagesMastered] = useState(false);
+
 
     const shouldProcessMessages = useRef(true);
     const isTimeUpProcessingRef = useRef(false);
@@ -499,18 +511,169 @@ export default function ChallengeScreen() {
         setModuleType(nextStage);
     };
 
-    // Fetch unlocked modules when the screen mounts or when mode is 'infinite'
+    // ─── PHASE 1: MASTER MODE AUDIT ─────────────────────────────────────────────
+    // Fetches weak signs for ALL 4 stages in parallel before loading any WebView.
+    // Builds masterStagePlan (stages to play) and masterSkippedStages.
+    // If plan is empty → allStagesMastered = true (no WebView, no glitch).
+    const runMasterAudit = async () => {
+        console.log('🔍 runMasterAudit: Starting pre-flight check for all stages...');
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            const moduleNameMap: Record<string, string> = {
+                'alphabet': 'alphabet_part1',
+                'numbers': 'level1_numbers',
+                'greetings': 'level2_greetings',
+                'survival': 'level3_survival',
+            };
+
+            // Fetch all 4 stages in parallel
+            const results = await Promise.allSettled(
+                STAGE_ORDER.map(async (stage) => {
+                    if (!token) {
+                        // No auth → treat all as weak (fallback)
+                        return { stage, weakSigns: [...(MODULE_GESTURES[stage] || [])] };
+                    }
+                    try {
+                        const response = await api.getWeakSigns(moduleNameMap[stage]);
+                        if (response && response.success && response.weak_signs) {
+                            const weakSignNames = response.weak_signs.map((s: any) => s.name);
+                            return { stage, weakSigns: weakSignNames };
+                        }
+                        // API returned no usable data → fallback to all signs
+                        return { stage, weakSigns: [...(MODULE_GESTURES[stage] || [])] };
+                    } catch {
+                        return { stage, weakSigns: [...(MODULE_GESTURES[stage] || [])] };
+                    }
+                })
+            );
+
+            const plan: { stage: string; weakSigns: string[] }[] = [];
+            const skipped: string[] = [];
+
+            for (const result of results) {
+                if (result.status === 'fulfilled') {
+                    const { stage, weakSigns } = result.value;
+                    if (weakSigns.length > 0) {
+                        plan.push({ stage, weakSigns });
+                        console.log(`✅ ${STAGE_LABELS[stage]}: ${weakSigns.length} weak signs → Will practice`);
+                    } else {
+                        skipped.push(stage);
+                        console.log(`⏭ ${STAGE_LABELS[stage]}: All mastered → Skipping`);
+                    }
+                }
+            }
+
+            setMasterStagePlan(plan);
+            setMasterSkippedStages(skipped);
+            setMasterAuditDone(true);
+
+            if (plan.length === 0) {
+                console.log('🏆 ALL STAGES MASTERED — showing congratulations screen');
+                setAllStagesMastered(true);
+                setMasterAuditLoading(false);
+            } else {
+                // Show the overview modal on top of the loading screen.
+                // masterAuditLoading stays true so the WebView never renders yet.
+                setShowStageOverviewModal(true);
+            }
+        } catch (error) {
+            console.error('❌ runMasterAudit error:', error);
+            // Fallback: play all 4 stages with all signs
+            const fallbackPlan = STAGE_ORDER.map(stage => ({
+                stage,
+                weakSigns: [...(MODULE_GESTURES[stage] || [])],
+            }));
+            setMasterStagePlan(fallbackPlan);
+            setMasterAuditDone(true);
+            setShowStageOverviewModal(true);
+        }
+    };
+
+    // ─── PHASE 2: START FROM PLAN ────────────────────────────────────────────────
+    // Called when the student taps "Start Challenge" in the Stage Overview Modal.
+    // Only then does the WebView render for the first time.
+    const startMasterFromPlan = () => {
+        const firstEntry = masterStagePlan[0];
+        if (!firstEntry) return;
+
+        setShowStageOverviewModal(false);
+        setMasterCurrentPlanIndex(0);
+
+        // Set up first stage data directly from the audit plan (no extra API call)
+        setModuleType(firstEntry.stage);
+        setWeakSigns(firstEntry.weakSigns);
+        setAllSigns(MODULE_GESTURES[firstEntry.stage] || []);
+        setRemainingSigns([...firstEntry.weakSigns]);
+
+        // Dismiss loading screen → triggers main render with WebView for the first time
+        setMasterAuditLoading(false);
+
+        // Small delay so the WebView begins initializing before the countdown fires
+        setTimeout(() => {
+            startRound(firstEntry.weakSigns);
+        }, 300);
+    };
+
+    // ─── ADVANCE TO NEXT STAGE (plan-based, no API call) ─────────────────────────
+    // Replaces the old advanceToNextStage → fetchWeakSigns chain for master mode.
+    // Uses pre-fetched weak signs from the audit plan, so no WebView flash.
+    const advanceToNextStageFromPlan = (nextEntry: { stage: string; weakSigns: string[] }) => {
+        console.log(`🔄 Plan-based advance: ${STAGE_LABELS[nextEntry.stage]} (${nextEntry.weakSigns.length} weak signs)`);
+
+        stopTimer();
+        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+        isTimeUpProcessingRef.current = false;
+        isProcessingRef.current = false;
+        shouldProcessMessages.current = true;
+
+        setShowResults(false);
+        setIsComplete(false);
+        setIsConnected(false);
+        setLoading(true);
+
+        setMasteredSigns(new Set());
+        setCompletedSigns(new Set());
+        setCurrentRoundSigns([]);
+        setCurrentIndex(0);
+        setSessionHistory([]);
+        setRoundNumber(1);
+        setResultsData(null);
+        setStarRating(1);
+        setXpEarned(0);
+        setLiveLetter('—');
+        setLiveConfidence(0);
+
+        setSenyaMessage(`🎉 ${STAGE_LABELS[moduleType]} mastered! Starting ${STAGE_LABELS[nextEntry.stage]}...`);
+
+        // Apply next stage data from the pre-fetched plan
+        setWeakSigns(nextEntry.weakSigns);
+        setAllSigns(MODULE_GESTURES[nextEntry.stage] || []);
+        setRemainingSigns([...nextEntry.weakSigns]);
+
+        // Switch WebView URL (intentional — student is actively advancing)
+        setModuleType(nextEntry.stage);
+
+        // Countdown gives the new WebView time to initialize
+        startRound(nextEntry.weakSigns);
+    };
+
+    // ─── MOUNT EFFECT ────────────────────────────────────────────────────────────
+    // Master mode: one-time audit on mount (no [moduleType] dependency — that was
+    // the root cause of the flash loop).
+    // Infinite mode: fetch unlocked modules once, then startInfiniteMode() handles
+    // stage cycling internally.
+    // Non-master / non-infinite: single fetchWeakSigns call (moduleType is fixed).
     useEffect(() => {
-        // Only fetch weak signs if NOT in infinite mode
-        if (mode !== 'infinite') {
-            console.log('🔍 ChallengeScreen mounted, fetching weak signs for module:', moduleType);
-            fetchWeakSigns();
-        } else {
-            // 🔥 For infinite mode, fetch unlocked modules first
+        if (mode === 'master') {
+            runMasterAudit();
+        } else if (mode === 'infinite') {
             console.log('♾️ Infinite mode - fetching unlocked modules...');
             fetchUnlockedModules();
+        } else {
+            console.log('🔍 ChallengeScreen mounted, fetching weak signs for module:', moduleType);
+            fetchWeakSigns();
         }
-    }, [moduleType]);
+    }, []);
 
 
     // ─── START INFINITE MODE ON MOUNT ──────────────────────────────────────────
@@ -546,6 +709,17 @@ export default function ChallengeScreen() {
             setTimeout(() => Animated.spring(starAnim3, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 800);
         }
     }, [showResults]);
+
+    // Animate stars + play sound when all stages are already mastered
+    useEffect(() => {
+        if (!allStagesMastered) return;
+        setStarRating(3);
+        starAnim1.setValue(0); starAnim2.setValue(0); starAnim3.setValue(0);
+        setTimeout(() => Animated.spring(starAnim1, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 400);
+        setTimeout(() => Animated.spring(starAnim2, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 650);
+        setTimeout(() => Animated.spring(starAnim3, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 900);
+        playCompleteSound();
+    }, [allStagesMastered]);
 
     // ─── CALCULATE XP ──────────────────────────────────────────────────────────
     const calculateXP = (masteredCount: number, totalCount: number): { xp: number; starRating: number } => {
@@ -1126,11 +1300,16 @@ export default function ChallengeScreen() {
             const newCumulativeXp = cumulativeXp + xpEarned;
             setCumulativeXp(newCumulativeXp);
 
-            const nextStage = STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1];
+            // ─── PLAN-BASED ADVANCE (replaces STAGE_ORDER iteration) ─────────────
+            // Look up the next entry in the pre-fetched audit plan. Only stages
+            // with weak signs are in the plan, so no WebView flash for skipped ones.
+            const nextPlanIdx = masterCurrentPlanIndex + 1;
+            const nextPlanEntry = masterStagePlan[nextPlanIdx];
 
-            if (nextStage) {
-                // Not the last stage yet — move straight into the next one.
-                advanceToNextStage(nextStage);
+            if (nextPlanEntry) {
+                // There is another stage in the plan — advance to it.
+                setMasterCurrentPlanIndex(nextPlanIdx);
+                advanceToNextStageFromPlan(nextPlanEntry);
                 return;
             }
 
@@ -1949,13 +2128,177 @@ export default function ChallengeScreen() {
         );
     }
 
+    // ─── MASTER AUDIT LOADING SCREEN ──────────────────────────────────────────
+    // Renders while the pre-flight audit is running (and while the Stage Overview
+    // modal is open). The WebView never loads during this phase.
+    if (masterAuditLoading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.center}>
+                    <ActivityIndicator size="large" color="#0f3172" />
+                    <Text style={styles.checkingText}>Analyzing your progress…</Text>
+                    <Text style={styles.subtitle}>Checking all 4 stages</Text>
+                </View>
+
+                {/* Stage Overview Modal — shown on top of the loading screen */}
+                <Modal
+                    visible={showStageOverviewModal}
+                    transparent
+                    animationType="slide"
+                    onRequestClose={() => {}}
+                >
+                    <View style={styles.auditModalOverlay}>
+                        <View style={styles.auditModalCard}>
+                            {/* Header */}
+                            <View style={styles.auditModalHeader}>
+                                <Text style={styles.auditModalTitle}>🏆 Challenge Preview</Text>
+                                <Text style={styles.auditModalSubtitle}>
+                                    Here's what we'll practice today
+                                </Text>
+                            </View>
+
+                            {/* Stage list */}
+                            <ScrollView
+                                style={styles.auditStageList}
+                                showsVerticalScrollIndicator={false}
+                            >
+                                {STAGE_ORDER.map((stage, idx) => {
+                                    const planEntry = masterStagePlan.find(p => p.stage === stage);
+                                    const isActive = !!planEntry;
+                                    const weakCount = planEntry?.weakSigns.length ?? 0;
+                                    return (
+                                        <View
+                                            key={stage}
+                                            style={[
+                                                styles.auditStageRow,
+                                                isActive && styles.auditStageRowActive,
+                                            ]}
+                                        >
+                                            <Text style={styles.auditStageStatusIcon}>
+                                                {isActive ? '✅' : '⏭'}
+                                            </Text>
+                                            <View style={styles.auditStageInfo}>
+                                                <Text
+                                                    style={[
+                                                        styles.auditStageName,
+                                                        !isActive && styles.auditStageNameSkipped,
+                                                    ]}
+                                                >
+                                                    Stage {idx + 1} — {STAGE_LABELS[stage]}
+                                                </Text>
+                                                <Text
+                                                    style={[
+                                                        styles.auditStageDetail,
+                                                        !isActive && styles.auditStageDetailSkipped,
+                                                    ]}
+                                                >
+                                                    {isActive
+                                                        ? `${weakCount} weak sign${weakCount !== 1 ? 's' : ''} to practice`
+                                                        : 'All mastered — Skipped'}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
+
+                            <TouchableOpacity
+                                style={styles.auditStartButton}
+                                onPress={startMasterFromPlan}
+                                activeOpacity={0.85}
+                            >
+                                <Ionicons name="play-circle" size={20} color="#fff" />
+                                <Text style={styles.auditStartButtonText}>Start Challenge</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.auditBackButton}
+                                onPress={() => router.back()}
+                            >
+                                <Text style={styles.auditBackButtonText}>Go Back</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+            </SafeAreaView>
+        );
+    }
+
+    // ─── ALL STAGES MASTERED SCREEN ───────────────────────────────────────────
+    // Rendered when the pre-flight audit finds 0 stages with weak signs.
+    // Replaces the glitchy 1-star result that appeared before this fix.
+    if (allStagesMastered) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.allMasteredContainer}>
+                    <View style={styles.allMasteredCard}>
+                        <TouchableOpacity
+                            style={styles.modalClose}
+                            onPress={() => router.back()}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons name="close" size={20} color="#0f3172" />
+                        </TouchableOpacity>
+
+                        <Text style={{ fontSize: 60, marginBottom: 8 }}>🏆</Text>
+                        <Text style={styles.allMasteredTitle}>You're a Master!</Text>
+                        <Text style={styles.allMasteredSubtitle}>
+                            You've mastered all signs across every stage.{`\n`}Incredible work!
+                        </Text>
+
+                        {/* Animated 3-star rating */}
+                        <View style={styles.starsRow}>
+                            {([starAnim1, starAnim2, starAnim3] as Animated.Value[]).map((anim, i) => (
+                                <Animated.View
+                                    key={i}
+                                    style={[
+                                        styles.starWrapper,
+                                        i === 1 && styles.starWrapperCenter,
+                                        { transform: [{ scale: anim }], opacity: anim },
+                                    ]}
+                                >
+                                    <Ionicons
+                                        name="star"
+                                        size={i === 1 ? 40 : 32}
+                                        color="#FFC93C"
+                                    />
+                                </Animated.View>
+                            ))}
+                        </View>
+
+                        <View style={styles.starLabelPill}>
+                            <Ionicons
+                                name="flash"
+                                size={14}
+                                color="#0f3172"
+                                style={{ marginRight: 6 }}
+                            />
+                            <Text style={styles.starLabel}>Complete Mastery!</Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[styles.continueButton, { marginTop: 16, width: '100%' }]}
+                            activeOpacity={0.85}
+                            onPress={() => router.back()}
+                        >
+                            <Text style={styles.continueButtonText}>🎉 Back to Home</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     // ─── RENDER ──────────────────────────────────────────────────────────
     const gestureUrl = MODULE_URLS[moduleType] || GESTURE_URL_ALPHABET;
     // Is this stage fully mastered, and is there another stage after it?
     const isStageFullyMastered = (masteredSigns.size >= allSigns.length && allSigns.length > 0) ||
         (mode === 'master' && isComplete && allSigns.length === 0);
 
-    const nextStageForModal = mode === 'master' ? STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1] : undefined;
+    // Use the plan to determine next stage label (avoids old STAGE_ORDER lookup)
+    const nextStageForModal = mode === 'master'
+        ? masterStagePlan[masterCurrentPlanIndex + 1]?.stage
+        : undefined;
     const progress = currentRoundSigns.length > 0
         ? (currentIndex / currentRoundSigns.length)
         : 0;
@@ -2501,15 +2844,18 @@ export default function ChallengeScreen() {
                         {/* ─── CONTINUE BUTTON ─────────────────────────────────── */}
                         {(() => {
                             const isStageComplete = resultsData && resultsData.remainingSigns.length === 0;
-                            const nextStage = mode === 'master' ? STAGE_ORDER[STAGE_ORDER.indexOf(moduleType) + 1] : undefined;
+                            // Use plan-based next stage lookup instead of STAGE_ORDER
+                            const nextPlanStage = mode === 'master'
+                                ? masterStagePlan[masterCurrentPlanIndex + 1]?.stage
+                                : undefined;
 
                             let buttonText = 'Continue';
                             let showArrow = true;
 
-                            if (isStageComplete && nextStage) {
-                                buttonText = `Next: ${STAGE_LABELS[nextStage]} →`;
-                                showArrow = false; // Arrow is already in the text
-                            } else if (isStageComplete && !nextStage) {
+                            if (isStageComplete && nextPlanStage) {
+                                buttonText = `Next: ${STAGE_LABELS[nextPlanStage]} →`;
+                                showArrow = false;
+                            } else if (isStageComplete && !nextPlanStage) {
                                 buttonText = '🎉 All Done!';
                                 showArrow = false;
                             } else if (resultsData) {
@@ -3489,6 +3835,156 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 12,
         fontWeight: '700',
+    },
+
+    // ─── MASTER AUDIT MODAL STYLES ────────────────────────────────────────────
+    auditModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(10,22,40,0.72)',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 16,
+        paddingBottom: 32,
+    },
+    auditModalCard: {
+        backgroundColor: '#fff',
+        borderRadius: 28,
+        paddingTop: 24,
+        paddingBottom: 20,
+        paddingHorizontal: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.22,
+        shadowRadius: 28,
+        elevation: 18,
+    },
+    auditModalHeader: {
+        alignItems: 'center',
+        marginBottom: 18,
+    },
+    auditModalTitle: {
+        fontSize: 22,
+        fontWeight: '900',
+        color: '#0f3172',
+        textAlign: 'center',
+    },
+    auditModalSubtitle: {
+        fontSize: 13,
+        color: '#4b7bbb',
+        fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 4,
+    },
+    auditStageList: {
+        maxHeight: 260,
+        marginBottom: 16,
+    },
+    auditStageRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 14,
+        marginBottom: 8,
+        backgroundColor: '#f7faff',
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.07)',
+    },
+    auditStageRowActive: {
+        backgroundColor: 'rgba(24,72,200,0.06)',
+        borderColor: 'rgba(24,72,200,0.18)',
+    },
+    auditStageStatusIcon: {
+        fontSize: 22,
+        marginRight: 12,
+    },
+    auditStageInfo: {
+        flex: 1,
+    },
+    auditStageName: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    auditStageNameSkipped: {
+        color: '#9CA3AF',
+    },
+    auditStageDetail: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: '#4b7bbb',
+        marginTop: 2,
+    },
+    auditStageDetailSkipped: {
+        color: '#9CA3AF',
+    },
+    auditStartButton: {
+        backgroundColor: '#0f3172',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        borderRadius: 999,
+        gap: 8,
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.28,
+        shadowRadius: 12,
+        elevation: 8,
+        marginBottom: 10,
+    },
+    auditStartButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    auditBackButton: {
+        alignItems: 'center',
+        paddingVertical: 8,
+    },
+    auditBackButtonText: {
+        color: '#9CA3AF',
+        fontSize: 13,
+        fontWeight: '600',
+        textDecorationLine: 'underline',
+    },
+
+    // ─── ALL STAGES MASTERED SCREEN STYLES ───────────────────────────────────
+    allMasteredContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+        backgroundColor: '#eaf5fd',
+    },
+    allMasteredCard: {
+        backgroundColor: '#fff',
+        borderRadius: 32,
+        paddingTop: 36,
+        paddingBottom: 28,
+        paddingHorizontal: 24,
+        width: '100%',
+        maxWidth: 360,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 14 },
+        shadowOpacity: 0.14,
+        shadowRadius: 28,
+        elevation: 14,
+    },
+    allMasteredTitle: {
+        fontSize: 26,
+        fontWeight: '900',
+        color: '#0f3172',
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    allMasteredSubtitle: {
+        fontSize: 14,
+        color: '#4b7bbb',
+        fontWeight: '500',
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: 20,
     },
 
 });
