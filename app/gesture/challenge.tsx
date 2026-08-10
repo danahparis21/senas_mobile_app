@@ -1315,7 +1315,8 @@ export default function ChallengeScreen() {
             // Convert session history to API format
             const performance = allSigns.map(sign => {
                 const history = sessionHistory.filter(h => h.sign === sign);
-                const totalAttempts = history.reduce((sum, h) => sum + h.attempts, 0);
+                // Each entry in history is ONE attempt (success or failure)
+                const totalAttempts = history.length;  // ← This is the REAL attempt count
                 const successCount = history.filter(h => h.success).length;
 
                 return {
@@ -1326,6 +1327,7 @@ export default function ChallengeScreen() {
                     consecutive_wrong: 0,
                 };
             });
+
 
             // ✅ Skip saving if no performance data (all signs mastered already)
             const totalAttempts = performance.reduce((sum, p) => sum + p.attempts, 0);
@@ -1682,12 +1684,15 @@ export default function ChallengeScreen() {
                 // Show the bonus popup ONLY (no duplicate success popup)
                 showBonusEffect(bonusType, bonusDisplayMessage);
 
-                // Update session history with bonus attempts
+                // Update session history — attempts is always 1 (one successful try).
+                // totalBonus is XP display only; storing it as attempts count was
+                // corrupting the backend accuracy calculation (e.g. 130 "attempts" for
+                // a lightning hit made the backend think 129 of those were wrong).
                 setSessionHistory(prev => [...prev, {
                     sign: currentTarget,
                     success: true,
                     timeTaken: timeTaken,
-                    attempts: totalBonus,
+                    attempts: 1,
                 }]);
 
                 // Move to next sign after delay

@@ -472,14 +472,16 @@ export default function WebViewGreetingsScreen() {
                 successCount: 0
             };
 
-            if (data.attempts === 0) return null;
+            // Skip if no attempts
+            if (data.attempts === 0 && data.successCount === 0 && data.wrongAttempts === 0) {
+                return null;
+            }
 
-            // ✅ FIX: Use the actual data from gestureAttempts
             const gesturePerformance = [{
                 letter: gesture,
                 attempts: data.attempts || 0,
                 wrong_attempts: data.wrongAttempts || 0,
-                success_count: data.successCount || 0, // ✅ Use successCount
+                success_count: data.successCount || 0,
                 consecutive_wrong: 0,
             }];
 
@@ -505,7 +507,6 @@ export default function WebViewGreetingsScreen() {
             return null;
         }
     };
-
     const saveAllPerformance = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');

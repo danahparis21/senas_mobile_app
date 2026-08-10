@@ -681,22 +681,30 @@ export default function Dashboard() {
   // treat anything earned above the baseline as today's XP. On a new day
   // (or first-ever launch) the baseline resets to the current total, so
   // the goal correctly starts at 0/DAILY_GOAL_TARGET.
-  const updateTodayXp = async (totalXp: number): Promise<void> => {
+  const updateTodayXp = async (totalXp: number, serverTodayXp?: number): Promise<void> => {
     try {
       const todayKey = getTodayDateKey();
       const storedDate = await AsyncStorage.getItem('xpDayDate');
       const storedBaselineRaw = await AsyncStorage.getItem('xpDayBaseline');
       const storedBaseline = storedBaselineRaw !== null ? parseInt(storedBaselineRaw, 10) : null;
 
-      // If it's a new day or no baseline exists, reset
-      if (storedDate !== todayKey || storedBaseline === null) {
+      if (typeof serverTodayXp === 'number' && !isNaN(serverTodayXp)) {
+        // Authoritative today XP from server
+        setTodayXp(serverTodayXp);
+        // Align stored date & baseline so offline fallback stays consistent
         await AsyncStorage.setItem('xpDayDate', todayKey);
-        await AsyncStorage.setItem('xpDayBaseline', String(totalXp));
-        setTodayXp(0);
+        await AsyncStorage.setItem('xpDayBaseline', String(Math.max(totalXp - serverTodayXp, 0)));
       } else {
-        // Calculate today's XP as current total - baseline
-        const todayXpEarned = Math.max(totalXp - storedBaseline, 0);
-        setTodayXp(todayXpEarned);
+        // Fallback client-side baseline calculation
+        if (storedDate !== todayKey || storedBaseline === null) {
+          await AsyncStorage.setItem('xpDayDate', todayKey);
+          await AsyncStorage.setItem('xpDayBaseline', String(totalXp));
+          setTodayXp(0);
+        } else {
+          // Calculate today's XP as current total - baseline
+          const todayXpEarned = Math.max(totalXp - storedBaseline, 0);
+          setTodayXp(todayXpEarned);
+        }
       }
     } catch (error) {
       console.error('Error updating today XP:', error);
@@ -706,26 +714,53 @@ export default function Dashboard() {
   const fetchStudentData = async (): Promise<void> => {
     try {
       setLoading(true);
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
-        const user = JSON.parse(userData);
-        const student = user.student;
-        const fullName = `${student?.first_name || ''} ${student?.last_name || ''}`.trim();
-        setStudentName(fullName || 'Student');
-        setStudentLevel(student?.fsl_mastery_level || 'Beginner');
+      let studentDataObj: any = null;
 
-        if (student?.total_xp !== undefined && student?.total_xp !== null) {
-          setXp(student.total_xp);
-          await updateTodayXp(student.total_xp); // ✅ Make sure this is awaited and runs
+      // 1. Attempt to fetch live profile data from backend
+      try {
+        const profileRes = await api.getProfile();
+        if (profileRes && (profileRes.student || profileRes.user?.student)) {
+          const liveStudent = profileRes.student || profileRes.user?.student;
+          studentDataObj = liveStudent;
+
+          // Sync with local AsyncStorage userData
+          const cachedUserDataRaw = await AsyncStorage.getItem('userData');
+          if (cachedUserDataRaw) {
+            const cachedUser = JSON.parse(cachedUserDataRaw);
+            cachedUser.student = { ...cachedUser.student, ...liveStudent };
+            await AsyncStorage.setItem('userData', JSON.stringify(cachedUser));
+          }
         }
-        if (student?.streak_days !== undefined && student?.streak_days !== null) {
-          setStreak(student.streak_days);
+      } catch (profileErr) {
+        console.log('ℹ️ Dashboard - Could not fetch live profile, using cached user data', profileErr);
+      }
+
+      // 2. Fallback to cached userData if live fetch didn't supply student data
+      if (!studentDataObj) {
+        const userData = await AsyncStorage.getItem('userData');
+        if (userData) {
+          const user = JSON.parse(userData);
+          studentDataObj = user.student;
         }
-        if (student?.level !== undefined && student?.level !== null) {
-          setLevel(student.level);
+      }
+
+      if (studentDataObj) {
+        const fullName = `${studentDataObj?.first_name || ''} ${studentDataObj?.last_name || ''}`.trim();
+        setStudentName(fullName || 'Student');
+        setStudentLevel(studentDataObj?.fsl_mastery_level || 'Beginner');
+
+        if (studentDataObj?.total_xp !== undefined && studentDataObj?.total_xp !== null) {
+          setXp(studentDataObj.total_xp);
+          await updateTodayXp(studentDataObj.total_xp, studentDataObj.today_xp);
         }
-        if (student?.level_name) {
-          setLevelName(student.level_name);
+        if (studentDataObj?.streak_days !== undefined && studentDataObj?.streak_days !== null) {
+          setStreak(studentDataObj.streak_days);
+        }
+        if (studentDataObj?.level !== undefined && studentDataObj?.level !== null) {
+          setLevel(studentDataObj.level);
+        }
+        if (studentDataObj?.level_name) {
+          setLevelName(studentDataObj.level_name);
         }
       }
     } catch (error) {
@@ -868,7 +903,7 @@ export default function Dashboard() {
         if (response.student) {
           if (response.student.total_xp !== undefined && response.student.total_xp !== null) {
             setXp(response.student.total_xp);
-            updateTodayXp(response.student.total_xp);
+            await updateTodayXp(response.student.total_xp, response.student.today_xp);
           }
           if (response.student.streak_days !== undefined && response.student.streak_days !== null) {
             setStreak(response.student.streak_days);

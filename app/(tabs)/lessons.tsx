@@ -674,58 +674,77 @@ export default function Lessons() {
 
   const getLevelLabel = (level: string): string => {
     const labels: Record<string, string> = {
-      'beginner': '🌟 Beginner',
-      'intermediate': '📈 Intermediate',
-      'advanced': '🏆 Advanced'
+      'beginner': 'Beginner',
+      'intermediate': 'Intermediate',
+      'advanced': 'Advanced'
     };
     return labels[level?.toLowerCase()] || level || 'Unknown';
   };
 
+  // Icon per level (no emojis)
+  const LevelIcon = ({ level, size = 14, color }: { level: string; size?: number; color: string }) => {
+    const key = (level || '').toLowerCase();
+    if (key === 'advanced') return <StarIcon size={size} color={color} />;
+    if (key === 'intermediate') return <FlameIcon size={size} color={color} />;
+    return <BookIcon size={size} color={color} />;
+  };
+
   // Render a standalone locked module screen (replaces the lesson map)
   const renderLockedModuleScreen = (module: Module) => {
-    const levelColors: Record<string, { bg: string; text: string; border: string }> = {
-      beginner: { bg: '#F0FDF4', text: '#16A34A', border: '#86EFAC' },
-      intermediate: { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA' },
-      advanced: { bg: '#FDF4FF', text: '#9333EA', border: '#E9D5FF' },
+    const levelColors: Record<string, { text: string; border: string; bg: string }> = {
+      beginner: { text: '#16A34A', border: '#86EFAC', bg: 'rgba(240,253,244,0.7)' },
+      intermediate: { text: '#EA580C', border: '#FED7AA', bg: 'rgba(255,247,237,0.7)' },
+      advanced: { text: '#9333EA', border: '#E9D5FF', bg: 'rgba(253,244,255,0.7)' },
     };
     const reqLevel = (module.requires_level || 'beginner').toLowerCase();
     const stuLevel = (module.student_level || 'beginner').toLowerCase();
     const colors = levelColors[reqLevel] || levelColors.beginner;
 
     return (
-      <View style={styles.lockedModuleScreen}>
-        {/* Big Lock Icon */}
+      <ScrollView
+        style={styles.lockedModuleScroll}
+        contentContainerStyle={styles.lockedModuleScreen}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
+        }
+      >
+        {/* 1. Lock mark */}
         <View style={styles.lockedModuleLockCircle}>
-          <LockIcon size={44} color="#94A3B8" />
+          <LockIcon size={40} color="#64748B" />
         </View>
 
-        {/* Headline */}
-        <Text style={styles.lockedModuleHeadline}>Module Locked</Text>
-        <Text style={styles.lockedModuleSubheadline}>{module.title}</Text>
+        {/* 2. Eyebrow + Title (primary hierarchy) */}
+        <Text style={styles.lockedEyebrow}>MODULE LOCKED</Text>
+        <Text style={styles.lockedModuleHeadline} numberOfLines={3}>
+          {module.title}
+        </Text>
 
-        {/* Required level badge */}
-        <View style={[styles.lockedLevelBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-          <Text style={[styles.lockedLevelBadgeText, { color: colors.text }]}>
-            Requires {getLevelLabel(reqLevel)} Level
-          </Text>
-        </View>
-
-        {/* Separator */}
-        <View style={styles.lockedModuleDivider} />
-
-        {/* Current level row */}
-        <View style={styles.lockedModuleLevelRow}>
-          <Text style={styles.lockedModuleLevelLabel}>Your current level</Text>
-          <View style={styles.lockedModuleLevelPill}>
-            <Text style={styles.lockedModuleLevelPillText}>{getLevelLabel(stuLevel)}</Text>
+        {/* 3. Requirement (secondary) */}
+        <View style={styles.lockedMetaBlock}>
+          <Text style={styles.lockedMetaLabel}>REQUIRED LEVEL</Text>
+          <View style={[styles.lockedPill, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+            <LevelIcon level={reqLevel} color={colors.text} />
+            <Text style={[styles.lockedPillText, { color: colors.text }]}>{getLevelLabel(reqLevel)}</Text>
           </View>
         </View>
 
-        {/* Tip */}
+        <View style={styles.lockedModuleDivider} />
+
+        {/* 4. Current status (tertiary) */}
+        <View style={styles.lockedMetaBlock}>
+          <Text style={styles.lockedMetaLabel}>YOUR CURRENT LEVEL</Text>
+          <View style={[styles.lockedPill, styles.lockedPillNeutral]}>
+            <LevelIcon level={stuLevel} color="#2563EB" />
+            <Text style={[styles.lockedPillText, { color: '#2563EB' }]}>{getLevelLabel(stuLevel)}</Text>
+          </View>
+        </View>
+
+        {/* 5. Guidance (supporting) */}
         <Text style={styles.lockedModuleTip}>
-          Keep completing lessons and reach {getLevelLabel(reqLevel)} to unlock this module.
+          Keep completing lessons to reach {getLevelLabel(reqLevel)} level and unlock this module.
         </Text>
-      </View>
+      </ScrollView>
     );
   };
 
@@ -2895,93 +2914,92 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-  // ── Locked module full-page screen ────────────────────────────────────
-  lockedModuleScreen: {
+  // ── Locked module full-page screen (transparent, scrollable) ─────
+  lockedModuleScroll: {
     flex: 1,
+    backgroundColor: 'transparent',
+  },
+  lockedModuleScreen: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    paddingVertical: 48,
-    minHeight: 480,
+    paddingTop: 40,
+    paddingBottom: 64,
+    backgroundColor: 'transparent',
   },
   lockedModuleLockCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 3,
-    borderColor: '#CBD5E1',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 2,
+    borderColor: 'rgba(100,116,139,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: '#94A3B8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 4,
+    marginBottom: 18,
+  },
+  lockedEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    color: '#64748B',
+    marginBottom: 6,
+    textTransform: 'uppercase',
   },
   lockedModuleHeadline: {
-    fontSize: 22,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '900',
     color: '#0f3172',
-    marginBottom: 4,
-    letterSpacing: 0.2,
-  },
-  lockedModuleSubheadline: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#64748B',
     textAlign: 'center',
-    marginBottom: 20,
+    letterSpacing: 0.2,
+    marginBottom: 26,
+    maxWidth: 300,
   },
-  lockedLevelBadge: {
-    borderWidth: 1.5,
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    marginBottom: 24,
+  lockedMetaBlock: {
+    alignItems: 'center',
+    gap: 8,
   },
-  lockedLevelBadgeText: {
-    fontSize: 13,
+  lockedMetaLabel: {
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.3,
+    letterSpacing: 1.2,
+    color: '#7C8DA6',
+    textTransform: 'uppercase',
   },
-  lockedModuleDivider: {
-    width: '70%',
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginBottom: 20,
-  },
-  lockedModuleLevelRow: {
+  lockedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
+    gap: 6,
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
-  lockedModuleLevelLabel: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  lockedModuleLevelPill: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderWidth: 1,
+  lockedPillNeutral: {
     borderColor: '#BFDBFE',
+    backgroundColor: 'rgba(239,246,255,0.7)',
   },
-  lockedModuleLevelPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#2563EB',
+  lockedPillText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  lockedModuleDivider: {
+    width: 56,
+    height: 1,
+    backgroundColor: 'rgba(100,116,139,0.25)',
+    marginVertical: 22,
   },
   lockedModuleTip: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#64748B',
     textAlign: 'center',
-    lineHeight: 18,
-    maxWidth: 280,
+    lineHeight: 19,
+    maxWidth: 260,
+    marginTop: 26,
+    fontWeight: '500',
   },
   // ── Locked lesson node label ────────────────────────────────────────────
   lockedLabelContainer: {
