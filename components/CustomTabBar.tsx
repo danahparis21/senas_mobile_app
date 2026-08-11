@@ -15,6 +15,8 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Colors } from '../constants/Colors';
+import { Ionicons } from '@expo/vector-icons';
+
 
 // ── PALETTE ──────────────────────────────────────────────────────────
 const G = {
@@ -164,17 +166,21 @@ function UserIcon({ active }: { active: boolean }) {
 }
 
 function HandGlyph({ pressed = false }: { pressed?: boolean }) {
+    const color = pressed ? '#FFFFFF' : C.ink;
+
     return (
-        <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <Path
-                d="M9 3V14M12 5V14M15 7V14M18 10V14C18 17.314 15.314 20 12 20C8.686 20 6 17.314 6 14V3"
-                stroke={pressed ? '#FFFFFF' : C.ink}
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
+        <View style={{
+            width: 28,
+            height: 28,
+            alignItems: 'center',
+            justifyContent: 'center'
+        }}>
+            <Ionicons
+                name="hand-left"
+                size={28}
+                color={color}
             />
-        </Svg>
+        </View>
     );
 }
 

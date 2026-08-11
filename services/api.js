@@ -941,6 +941,17 @@ export const api = {
                 throw new Error('No token found. Please login first.');
             }
 
+            if (!starRating || starRating <= 0) {
+                console.log(`ℹ️ 0 stars for ${moduleName}, skipping backend module XP award`);
+                return {
+                    success: true,
+                    message: '0 stars - No XP awarded',
+                    xp_earned: 0,
+                    total_xp: 0,
+                    level: 1,
+                };
+            }
+
             console.log(`⭐ Awarding XP for ${moduleName} with ${starRating} star(s)...`);
 
             const response = await fetch(`${API_URL}/student/award-module-xp`, {
@@ -1024,6 +1035,18 @@ export const api = {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) {
                 throw new Error('No token found. Please login first.');
+            }
+
+            // ✅ If no XP earned (0 score), skip backend API call to prevent "Invalid data" error from backend validation
+            if (!xpEarned || xpEarned <= 0) {
+                console.log(`ℹ️ 0 XP earned for ${moduleName}, skipping backend challenge XP award`);
+                return {
+                    success: true,
+                    message: 'No XP earned (0 score)',
+                    xp_earned: 0,
+                    total_xp: 0,
+                    level: 1,
+                };
             }
 
             console.log(`⭐ Awarding Challenge XP for ${moduleName} with ${starRating} star(s)...`);
@@ -1430,6 +1453,17 @@ export const api = {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) {
                 throw new Error('No token found. Please login first.');
+            }
+
+            if (!xpEarned || xpEarned <= 0) {
+                console.log(`ℹ️ 0 XP earned for ${moduleName}, skipping backend custom XP award`);
+                return {
+                    success: true,
+                    message: 'No XP earned (0 score)',
+                    xp_earned: 0,
+                    total_xp: 0,
+                    level: 1,
+                };
             }
 
             console.log(`📝 Awarding Custom XP for ${moduleName}: ${xpEarned} XP`);

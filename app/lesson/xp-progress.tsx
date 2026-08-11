@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
 import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+import { hasStreakBeenShownToday } from '../../utils/streakTracker';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -166,24 +167,27 @@ export default function XPProgressScreen() {
         ).start();
     }, []);
 
-    const handleGoHome = () => {
+    const handleGoHome = async () => {
         const showStreak = params.showStreak === 'true';
         const streakDays = parseInt(params.streakDays || '0');
 
         if (showStreak) {
-            router.replace({
-                pathname: '/lesson/streak',
-                params: {
-                    streakDays: String(streakDays),
-                    xpEarned: String(xpEarned),
-                    totalXp: String(totalXp),
-                    level: String(level),
-                    levelName: levelName,
-                },
-            });
-        } else {
-            router.replace('/(tabs)/dashboard');
+            const alreadyShown = await hasStreakBeenShownToday();
+            if (!alreadyShown) {
+                router.replace({
+                    pathname: '/lesson/streak',
+                    params: {
+                        streakDays: String(streakDays),
+                        xpEarned: String(xpEarned),
+                        totalXp: String(totalXp),
+                        level: String(level),
+                        levelName: levelName,
+                    },
+                });
+                return;
+            }
         }
+        router.replace('/(tabs)/dashboard');
     };
 
     const floatTranslate = floatAnim.interpolate({

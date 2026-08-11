@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { Audio } from 'expo-av';
 import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
+import { hasStreakBeenShownToday, markStreakShownToday } from '../../utils/streakTracker';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -49,10 +50,29 @@ export default function StreakScreen() {
 
     const streakDays = parseInt(params.streakDays || '0');
 
+    // ─── Daily Limit Check ─────────────────────────────────────────────────
+    const [isChecking, setIsChecking] = React.useState(true);
+
+    useEffect(() => {
+        async function checkStreakLimit() {
+            const alreadyShown = await hasStreakBeenShownToday();
+            if (alreadyShown) {
+                console.log('🔥 Streak screen already shown today for this account. Redirecting to dashboard.');
+                router.replace('/(tabs)/dashboard');
+                return;
+            }
+            await markStreakShownToday();
+            setIsChecking(false);
+        }
+        checkStreakLimit();
+    }, []);
+
     // ─── Sound Effect ──────────────────────────────────────────────────────
     const [sound, setSound] = React.useState<Audio.Sound | null>(null);
 
     useEffect(() => {
+        if (isChecking) return;
+
         // Play streak sound when component mounts (only if enabled)
         async function playSound() {
             // ✅ Check if sound is enabled
@@ -83,7 +103,7 @@ export default function StreakScreen() {
                 sound.unloadAsync();
             }
         };
-    }, [settings.soundEnabled]);
+    }, [settings.soundEnabled, isChecking]);
 
     // Animation values
     const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -93,6 +113,8 @@ export default function StreakScreen() {
     const floatAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
+        if (isChecking) return;
+
         Animated.parallel([
             Animated.spring(scaleAnim, {
                 toValue: 1,
@@ -145,7 +167,7 @@ export default function StreakScreen() {
                 }),
             ])
         ).start();
-    }, []);
+    }, [isChecking]);
 
     const handleGoHome = () => {
         router.push('/(tabs)/dashboard');
@@ -219,6 +241,14 @@ export default function StreakScreen() {
         if (daysAgo < 0) return false;
         return daysAgo < streakDays;
     };
+
+    if (isChecking) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>

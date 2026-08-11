@@ -1007,11 +1007,11 @@ export default function Dashboard() {
                     {isPerfect ? '🌟 ' : ''}{displayScore}%
                   </Text>
                 </View>
-              ) : (
+              ) : item.assigned_at ? (
                 <Text style={styles.tlDateText}>
-                  {item.assigned_at ? new Date(item.assigned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Not assigned'}
+                  {new Date(item.assigned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </Text>
-              )}
+              ) : null}
             </View>
 
             <Text style={styles.tlTitle} numberOfLines={2}>
@@ -1668,13 +1668,13 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     zIndex: 1
   },
-  heroText: { flex: 1, paddingRight: 6 },
-  greetingText: { color: C.ink, fontSize: 26, fontWeight: '800', lineHeight: 32 },
-  nameText: { color: C.blueDeep, fontSize: 28, fontWeight: '900', lineHeight: 36, marginBottom: 8 },
+  heroText: { flex: 1, paddingRight: 2 },
+  greetingText: { color: C.ink, fontSize: 24, fontWeight: '800', lineHeight: 30 },
+  nameText: { color: C.blueDeep, fontSize: 24, fontWeight: '900', lineHeight: 30, marginBottom: 8 },
   heroSub: { color: C.inkSoft, fontSize: 13.5, fontWeight: '600', lineHeight: 20 },
   senyaHero: {
-    width: 170,  // ✅ Increased from 148
-    height: 190, // ✅ Increased from 168
+    width: 170,
+    height: 190,
     marginRight: -5
   },
   section: { paddingHorizontal: 16, marginBottom: 14, zIndex: 1 },

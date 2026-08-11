@@ -1,6 +1,7 @@
-// components/GestureTutorialModal.tsx
-// Senya's "How to Practice Gestures" tutorial.
-// Shows as a transparent overlay with Senya guiding each step.
+// components/TutorialModal.tsx
+// Generic, reusable version of Senya's tutorial modal.
+// Pass in your own `slides` array to build a new tutorial that shares
+// the exact same look, feel, and animations as GestureTutorialModal.
 import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
@@ -20,105 +21,44 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-export const TUTORIAL_SEEN_KEY = 'gesture_tutorial_seen_v1';
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-/** Returns true the first time a student opens the gesture tab. */
-export async function shouldShowGestureTutorial() {
+/** Generic "has this tutorial been seen" helpers — pass any storage key. */
+export async function shouldShowTutorial(storageKey: string) {
     try {
-        const seen = await AsyncStorage.getItem(TUTORIAL_SEEN_KEY);
+        const seen = await AsyncStorage.getItem(storageKey);
         return seen !== 'true';
     } catch {
         return false;
     }
 }
 
-export async function markGestureTutorialSeen() {
+export async function markTutorialSeen(storageKey: string) {
     try {
-        await AsyncStorage.setItem(TUTORIAL_SEEN_KEY, 'true');
+        await AsyncStorage.setItem(storageKey, 'true');
     } catch {
         // non-blocking
     }
 }
 
-type Slide = {
+export type TutorialSlide = {
     id: string;
     title: string;
     body: string;
-    image: any;
+    /** Provide EITHER an image... */
+    image?: any;
     imageStyle?: 'contain' | 'cover' | 'fill';
     imageContainerStyle?: any;
+    imageHeight?: number;
+    /** ...OR an icon-based illustration (used when no screenshot exists yet) */
+    icon?: string;
+    iconColor?: string;
+    iconBadge?: string;
     gradient: readonly [string, string];
     responseText: string;
-    icon?: string;
-    imageHeight?: number;
 };
 
-const SLIDES: Slide[] = [
-    {
-        id: 'welcome',
-        title: "Hi, I'm Senya! 👋",
-        body: "This is your practice space. Sign with your own hands and I'll tell you right away if you got it. Ready to level up your signing?",
-        image: require('../assets/images/img/senya_teaching.png'),
-        imageStyle: 'contain',
-        gradient: ['#4B7BBB', '#6FA8E6'] as const,
-        responseText: "Yay! Let's get started! 🌟",
-        icon: 'hand-left',
-    },
-    {
-        id: 'camera',
-        title: 'Show your hands to the camera 📸',
-        body: "Keep your hand inside the frame so the camera can detect it. Sit an arm's length away and let your whole hand be visible.",
-        image: require('../assets/images/img/letter-detected.jpg'),
-        imageStyle: 'contain',
-        gradient: ['#4ECDC4', '#45B7AA'] as const,
-        responseText: "Great! Good lighting makes a big difference! 💡",
-        icon: 'camera',
-        imageHeight: 220,
-    },
-    {
-        id: 'boxes',
-        title: 'Follow the sign boxes ',
-        body: "A list of boxes appears on screen. Each box tells you what to sign. If the box says A, make the sign for the letter A and hold it until it's detected.",
-        image: require('../assets/images/img/letter-array.jpg'),
-        imageStyle: 'contain',
-        gradient: ['#FF6B6B', '#FF8E8E'] as const,
-        responseText: "You're getting the hang of it! 🎯",
-        icon: 'list',
-    },
-    {
-        id: 'hint',
-        title: 'Stuck? Tap the light bulb 💡',
-        body: "Any time you forget a sign, tap the hint bulb. I'll show you exactly how the sign looks so you can copy it. Use it as often as you like with no penalty!",
-        image: require('../assets/images/img/senya-hint.jpg'),
-        imageStyle: 'contain',
-        gradient: ['#F59E0B', '#FBBF24'] as const,
-        responseText: "Smart! Hints are your best friend! 🤝",
-        icon: 'bulb',
-    },
-    {
-        id: 'rewards',
-        title: 'Earn points and badges ',
-        body: "Every correct sign gives you points. Keep your streak alive to build energy and collect badges as you master each module.",
-        image: require('../assets/images/img/badges.png'),
-        imageStyle: 'contain',
-        gradient: ['#8B5CF6', '#A78BFA'] as const,
-        responseText: "You're going to earn so many badges! ⭐",
-        icon: 'trophy',
-    },
-    {
-        id: 'ready',
-        title: "Now enjoy your practice! ",
-        body: "Take your time, breathe, and have fun. Every sign you make brings you closer to fluent conversations.",
-        image: require('../assets/images/img/greet.png'),
-        imageStyle: 'contain',
-        gradient: ['#10B981', '#34D399'] as const,
-        responseText: "Let's practice together! 💪",
-        icon: 'happy',
-    },
-];
-
-const SENYA_REACTIONS = ['👀', '😊', '🌟', '💡', '🎯', '🎉'];
+const SENYA_REACTIONS = ['👀', '😊', '🌟', '💡', '🎯', '🎉', '⚡', '♾️'];
 
 // ─── CONFETTI BURST COMPONENT ──────────────────────────────────────────────
 function ConfettiBurst({ trigger, anchor }: { trigger: number; anchor: { x: number; y: number } | null }) {
@@ -196,12 +136,37 @@ function ConfettiBurst({ trigger, anchor }: { trigger: number; anchor: { x: numb
     );
 }
 
-export default function GestureTutorialModal({
+// ─── ICON ILLUSTRATION (used when a slide has no screenshot) ──────────────
+function IconIllustration({ icon, color, badge, height }: { icon: string; color: string; badge?: string; height: number }) {
+    return (
+        <View style={[styles.illustrationPanel, { height, backgroundColor: `${color}14` }]}>
+            <View style={[styles.illustrationCircle, { backgroundColor: `${color}22` }]}>
+                <Ionicons name={icon as any} size={52} color={color} />
+            </View>
+            {badge ? (
+                <View style={[styles.illustrationBadge, { backgroundColor: color }]}>
+                    <Text style={styles.illustrationBadgeText}>{badge}</Text>
+                </View>
+            ) : null}
+        </View>
+    );
+}
+
+export default function TutorialModal({
     visible,
     onClose,
+    slides,
+    seenStorageKey,
+    avatarSource = require('../assets/images/img/senya_teaching.png'),
+    avatarName = 'Senya',
 }: {
     visible: boolean;
     onClose: () => void;
+    slides: TutorialSlide[];
+    /** Optional AsyncStorage key — if provided, tutorial is marked "seen" on finish */
+    seenStorageKey?: string;
+    avatarSource?: any;
+    avatarName?: string;
 }) {
     const [index, setIndex] = useState(0);
     const [showResponse, setShowResponse] = useState(false);
@@ -227,7 +192,6 @@ export default function GestureTutorialModal({
     }, [visible]);
 
     const handleNextPress = () => {
-        // Measure the next button position for confetti
         if (nextButtonRef.current) {
             nextButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
                 setBurstAnchor({
@@ -238,7 +202,7 @@ export default function GestureTutorialModal({
             });
         }
 
-        if (index === SLIDES.length - 1) {
+        if (index === slides.length - 1) {
             finish();
             return;
         }
@@ -268,12 +232,16 @@ export default function GestureTutorialModal({
     };
 
     const finish = async () => {
-        await markGestureTutorialSeen();
+        if (seenStorageKey) {
+            await markTutorialSeen(seenStorageKey);
+        }
         onClose();
     };
 
-    const isLast = index === SLIDES.length - 1;
-    const currentSlide = SLIDES[index];
+    if (!slides || slides.length === 0) return null;
+
+    const isLast = index === slides.length - 1;
+    const currentSlide = slides[index];
 
     const slideScale = slideAnim.interpolate({
         inputRange: [0, 1],
@@ -308,7 +276,7 @@ export default function GestureTutorialModal({
 
                     {/* Progress dots */}
                     <View style={styles.dotsContainer}>
-                        {SLIDES.map((_, i) => (
+                        {slides.map((_, i) => (
                             <View
                                 key={i}
                                 style={[
@@ -347,17 +315,17 @@ export default function GestureTutorialModal({
                                 <View style={styles.senyaContainer}>
                                     <View style={styles.senyaAvatar}>
                                         <Image
-                                            source={require('../assets/images/img/senya_teaching.png')}
+                                            source={avatarSource}
                                             style={styles.senyaImage}
                                             contentFit="contain"
                                         />
                                     </View>
                                     <View style={styles.reactionBadge}>
                                         <Text style={styles.reactionText}>
-                                            {SENYA_REACTIONS[index]}
+                                            {SENYA_REACTIONS[index % SENYA_REACTIONS.length]}
                                         </Text>
                                     </View>
-                                    <Text style={styles.senyaName}>Senya</Text>
+                                    <Text style={styles.senyaName}>{avatarName}</Text>
                                 </View>
 
                                 {/* Content area */}
@@ -365,14 +333,29 @@ export default function GestureTutorialModal({
                                     {/* Title */}
                                     <Text style={styles.title}>{currentSlide.title}</Text>
 
-                                    {/* Image with dynamic height */}
-                                    <View style={[styles.imageWrapper, { height: imageHeight }, currentSlide.imageContainerStyle]}>
-                                        <Image
-                                            source={currentSlide.image}
-                                            style={styles.image}
-                                            contentFit={currentSlide.imageStyle || 'contain'}
+                                    {/* Image or icon illustration */}
+                                    {currentSlide.image ? (
+                                        <View style={[styles.imageWrapper, { height: imageHeight }, currentSlide.imageContainerStyle]}>
+                                            <Image
+                                                source={currentSlide.image}
+                                                style={styles.image}
+                                                contentFit={currentSlide.imageStyle || 'contain'}
+                                            />
+                                            {/* Optional subtle gradient overlay at bottom for depth */}
+                                            <LinearGradient
+                                                colors={['transparent', 'rgba(15,49,114,0.03)']}
+                                                style={styles.imageOverlay}
+                                                pointerEvents="none"
+                                            />
+                                        </View>
+                                    ) : currentSlide.icon ? (
+                                        <IconIllustration
+                                            icon={currentSlide.icon}
+                                            color={currentSlide.iconColor || '#2563EB'}
+                                            badge={currentSlide.iconBadge}
+                                            height={imageHeight}
                                         />
-                                    </View>
+                                    ) : null}
 
                                     {/* Body text */}
                                     <Text style={styles.body}>{currentSlide.body}</Text>
@@ -435,7 +418,7 @@ export default function GestureTutorialModal({
                                                     style={styles.nextGradient}
                                                 >
                                                     <Text style={styles.nextButtonText}>
-                                                        {isLast ? '🎉 Let\'s Go!' : 'Next →'}
+                                                        {isLast ? "🎉 Let's Go!" : 'Next →'}
                                                     </Text>
                                                 </LinearGradient>
                                             </TouchableOpacity>
@@ -444,7 +427,7 @@ export default function GestureTutorialModal({
 
                                     {/* Step indicator */}
                                     <Text style={styles.stepIndicator}>
-                                        {index + 1} / {SLIDES.length}
+                                        {index + 1} / {slides.length}
                                     </Text>
                                 </View>
                             </LinearGradient>
@@ -595,12 +578,46 @@ const styles = StyleSheet.create({
         width: '100%',
         marginBottom: 12,
         overflow: 'hidden',
-        backgroundColor: 'transparent',
-        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.6)',
+        shadowColor: '#0F3172',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 2,
     },
     image: {
         width: '100%',
         height: '100%',
+        borderRadius: 16,
+    },
+    illustrationPanel: {
+        width: '100%',
+        marginBottom: 12,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    illustrationCircle: {
+        width: 92,
+        height: 92,
+        borderRadius: 46,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    illustrationBadge: {
+        marginTop: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 999,
+    },
+    illustrationBadgeText: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        letterSpacing: 0.4,
     },
     body: {
         fontSize: 14,
@@ -699,4 +716,13 @@ const styles = StyleSheet.create({
     burstSquare: {
         borderRadius: 2,
     },
+    imageOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 40,
+        borderRadius: 16,
+    },
+
 });

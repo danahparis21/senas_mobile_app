@@ -1459,8 +1459,17 @@ export default function ChallengeScreen() {
             };
             const moduleName = moduleNameMap[moduleType] || moduleType;
 
-            // If xpEarned is 0, still award 0 XP but mark the module as completed
+            // If xpEarned is 0, skip backend call and return 0 XP object
             const xpToAward = xpEarned || 0;
+
+            if (xpToAward <= 0) {
+                console.log(`ℹ️ 0 XP to award for ${moduleName}, skipping backend call`);
+                return {
+                    success: true,
+                    xp_earned: 0,
+                    message: '0 XP earned',
+                };
+            }
 
             console.log(`⭐ Awarding Challenge XP for ${moduleName} with ${starRating} star(s)...`);
             console.log(`📊 XP to award: ${xpToAward}`);
@@ -1851,13 +1860,13 @@ export default function ChallengeScreen() {
                 console.log(`🎯 ${matchValue} - Time: ${timeTaken.toFixed(1)}s, Bonus: +${timeBonus}, Total: ${totalBonus} XP`);
 
                 // ─── SHOW BONUS POPUP ──────────────────────────────────────────────────────
-                let bonusDisplayMessage = `+${totalBonus} XP!`;
+                let bonusDisplayMessage = `+${totalBonus} Bonus!`;
                 if (bonusType === 'lightning') {
-                    bonusDisplayMessage = `⚡ LIGHTNING FAST! +${totalBonus} XP!`;
+                    bonusDisplayMessage = `⚡ LIGHTNING FAST! +${totalBonus} Bonus!`;
                 } else if (bonusType === 'fire') {
-                    bonusDisplayMessage = `🔥 ON FIRE! +${totalBonus} XP!`;
+                    bonusDisplayMessage = `🔥 ON FIRE! +${totalBonus} Bonus!`;
                 } else if (bonusType === 'great') {
-                    bonusDisplayMessage = `💪 GREAT JOB! +${totalBonus} XP!`;
+                    bonusDisplayMessage = `💪 GREAT JOB! +${totalBonus} Bonus!`;
                 }
 
                 // Show the bonus popup ONLY (no duplicate success popup)
@@ -2145,7 +2154,7 @@ export default function ChallengeScreen() {
                     visible={showStageOverviewModal}
                     transparent
                     animationType="slide"
-                    onRequestClose={() => {}}
+                    onRequestClose={() => { }}
                 >
                     <View style={styles.auditModalOverlay}>
                         <View style={styles.auditModalCard}>

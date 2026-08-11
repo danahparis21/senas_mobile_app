@@ -608,7 +608,14 @@ export default function Login() {
                 </View>
 
                 <Text style={styles.footerText}>
-                  By signing in, you agree to our <Text style={styles.linkText}>Terms</Text> and <Text style={styles.linkText}>Privacy Policy</Text>
+                  By signing in, you agree to our{' '}
+                  <Text style={styles.linkText} onPress={() => router.push('/terms-privacy?tab=terms')}>
+                    Terms
+                  </Text>{' '}
+                  and{' '}
+                  <Text style={styles.linkText} onPress={() => router.push('/terms-privacy?tab=privacy')}>
+                    Privacy Policy
+                  </Text>
                 </Text>
               </View>
             </ScrollView>

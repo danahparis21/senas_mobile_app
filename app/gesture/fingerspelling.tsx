@@ -331,7 +331,18 @@ export default function FingerspellingScreen() {
     const getRandomWords = (count: number = 5): string[] => {
         let wordsToUse: string[] = [];
 
-        const nameParts = studentName.toUpperCase().split(/\s+/).filter(part => part.length > 0);
+        // Filter out any parts that contain numbers (like "John123" or "Sarah2024")
+        // Also filter out parts that are purely numbers
+        const nameParts = studentName
+            .toUpperCase()
+            .split(/\s+/)
+            .filter(part => {
+                // Only keep parts that:
+                // 1. Have at least one letter
+                // 2. Contain ONLY letters (no numbers at all)
+                return part.length > 0 && /^[A-Z]+$/.test(part);
+            });
+
         const shuffled = [...DEFAULT_WORDS].sort(() => Math.random() - 0.5);
 
         if (nameParts.length > 0) {
@@ -437,6 +448,14 @@ export default function FingerspellingScreen() {
             Alert.alert('Please enter at least one word using letters only');
             return;
         }
+
+        // Additional check: ensure no numbers slipped through (shouldn't happen with the regex above)
+        const hasNumbers = words.some(word => /\d/.test(word));
+        if (hasNumbers) {
+            Alert.alert('Letters Only', 'Please use only letters (A-Z) for fingerspelling practice.');
+            return;
+        }
+
         setWordsToSpell(words);
         setWordMode('input');
         initializeWords(words);
@@ -1128,7 +1147,7 @@ export default function FingerspellingScreen() {
                         </View>
                         <Text style={styles.modalTitle}>Fingerspelling Practice</Text>
                         <Text style={styles.modalSubtitle}>
-                            {studentName ? `Practice spelling ${studentName} and other words!` : 'Choose how you want to practice'}
+                            {studentName ? `Practice spelling your name and other words!` : 'Choose how you want to practice'}
                         </Text>
 
                         <TouchableOpacity
@@ -1142,7 +1161,7 @@ export default function FingerspellingScreen() {
                             <View style={styles.modalOptionText}>
                                 <Text style={styles.modalOptionTitle}>Random Words</Text>
                                 <Text style={styles.modalOptionDesc}>
-                                    {studentName ? `Includes ${studentName}` : 'Practice with 5 random words'}
+                                    {studentName ? `Practice with 5 words (letters only)` : 'Practice with 5 random words'}
                                 </Text>
                             </View>
                             <Ionicons name="arrow-forward" size={20} color="#fff" style={styles.modalOptionArrow} />

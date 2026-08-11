@@ -1730,10 +1730,13 @@ export default function Lessons() {
                     style={styles.mascotImage}
                     contentFit="contain"
                   />
-                  <View style={[styles.mascotBubble, isDragging && styles.mascotBubbleDragging]}>
-                    <Text style={styles.mascotBubbleText}>
-                      {isDragging ? '👆 Drag me anywhere!' : getMascotMessage(pct, completedNodesCount, totalNodes)}
-                    </Text>
+                  <View style={styles.mascotBubbleWrap}>
+                    <View style={[styles.mascotBubbleTail, isDragging && styles.mascotBubbleTailDragging]} />
+                    <View style={[styles.mascotBubble, isDragging && styles.mascotBubbleDragging]}>
+                      <Text style={styles.mascotBubbleText} numberOfLines={3}>
+                        {isDragging ? '👆 Drag me!' : getMascotMessage(pct, completedNodesCount, totalNodes)}
+                      </Text>
+                    </View>
                   </View>
                 </Animated.View>
               )}
@@ -2584,27 +2587,49 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
   },
+  mascotBubbleWrap: {
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  // Small triangle tail pointing up toward Senya
+  mascotBubbleTail: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#2563EB',
+    marginBottom: -1,
+    zIndex: 2,
+  },
+  mascotBubbleTailDragging: {
+    borderBottomColor: '#8B5CF6',
+  },
   mascotBubble: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 18, // Increased from 16
-    paddingVertical: 8, // Increased from 6
-    paddingHorizontal: 16, // Increased from 14
-    borderWidth: 2.5, // Slightly thicker
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderWidth: 1.5,
     borderColor: '#2563EB',
-    marginTop: 6, // Increased from 4
     shadowColor: '#0f3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-    maxWidth: 150, // Increased from 130
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+    maxWidth: 118,
   },
   mascotBubbleText: {
-    fontSize: 13, // Increased from 11
-    fontWeight: '900',
+    fontSize: 10,
+    fontWeight: '800',
     color: '#2563EB',
     textAlign: 'center',
-    lineHeight: 18, // Added for better readability
+    lineHeight: 13,
   },
 
   overlayContainer: {
@@ -2847,12 +2872,12 @@ const styles = StyleSheet.create({
   mascotBubbleDragging: {
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderColor: '#8B5CF6',
-    borderWidth: 3,
+    borderWidth: 1.5,
     shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
 
   errorBackdrop: {

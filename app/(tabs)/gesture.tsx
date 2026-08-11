@@ -168,10 +168,10 @@ const generateSenyaMessage = (modules: any[]): string => {
 
     if (completedCount === 1) {
       const messages = [
-        `🎉 You completed ${completedModules[0].title}! You're on fire! Keep going! 🔥`,
-        `🌟 Great job on ${completedModules[0].title}! You're a natural signer! 👏`,
-        `💪 ${completedModules[0].title} done! One step closer to becoming fluent! 🌟`,
-        `🤗 Wonderful work on ${completedModules[0].title}! Ready for the next challenge? 🎯`,
+        ` You completed ${completedModules[0].title}! You're on fire! Keep going!`,
+        ` Great job on ${completedModules[0].title}! You're a natural signer!`,
+        ` ${completedModules[0].title} done! One step closer to becoming fluent! `,
+        ` Wonderful work on ${completedModules[0].title}! Ready for the next challenge? `,
       ];
       return messages[Math.floor(Math.random() * messages.length)];
     }

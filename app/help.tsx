@@ -18,8 +18,13 @@ import {
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Line, Polyline, Rect, G } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
+import GestureTutorialModal from '@/components/GestureTutorialModal';
+import MasterModeTutorialModal from '@/components/MasterModeTutorialModal';
+import InfiniteModeTutorialModal from '@/components/InfiniteModeTutorialModal'
+import FingerspellingTutorialModal from '@/components/FingerspellingTutorialModal';
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
 
@@ -73,6 +78,23 @@ function DividerIcon() {
     );
 }
 
+function TutorialsIcon() {
+    return (
+        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <Circle cx="12" cy="12" r="10" stroke="#2563EB" strokeWidth="2" />
+            <Path d="M10 8.5l6 3.5-6 3.5v-7z" fill="#2563EB" />
+        </Svg>
+    );
+}
+
+function ChevronForwardIcon() {
+    return (
+        <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <Path d="M9 6l6 6-6 6" stroke="rgba(15,49,114,0.35)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+    );
+}
+
 // ── FAQ Item Component ────────────────────────────────────────────────
 function FAQItem({ question, answer }: { question: string; answer: string }) {
     const [expanded, setExpanded] = useState(false);
@@ -96,10 +118,41 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
     );
 }
 
+// ── Tutorial Row Component ────────────────────────────────────────────
+type TutorialKey = 'gesture' | 'master' | 'infinite' | 'fingerspelling';
+
+function TutorialRow({
+    icon,
+    color,
+    label,
+    description,
+    onPress,
+}: {
+    icon: string;
+    color: string;
+    label: string;
+    description: string;
+    onPress: () => void;
+}) {
+    return (
+        <Pressable style={styles.tutorialRow} onPress={onPress}>
+            <View style={[styles.tutorialIconBox, { backgroundColor: `${color}18` }]}>
+                <Ionicons name={icon as any} size={20} color={color} />
+            </View>
+            <View style={styles.tutorialTextBlock}>
+                <Text style={styles.tutorialLabel}>{label}</Text>
+                <Text style={styles.tutorialDescription}>{description}</Text>
+            </View>
+            <ChevronForwardIcon />
+        </Pressable>
+    );
+}
+
 export default function HelpSupport() {
     const router = useRouter();
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
+    const [activeTutorial, setActiveTutorial] = useState<TutorialKey | null>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const textInputRef = useRef<TextInput>(null);
 
@@ -206,6 +259,52 @@ export default function HelpSupport() {
 
                         {/* Content */}
                         <View style={styles.content}>
+                            {/* Tutorials Section */}
+                            <View style={styles.tutorialsSection}>
+                                <View style={styles.sectionHeader}>
+                                    <View style={styles.iconBox}>
+                                        <TutorialsIcon />
+                                    </View>
+                                    <Text style={styles.sectionTitle}>App Tutorials</Text>
+                                </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Need a refresher? Replay any guide, anytime.
+                                </Text>
+
+                                <View style={styles.tutorialList}>
+                                    <TutorialRow
+                                        icon="hand-left"
+                                        color="#2563EB"
+                                        label="Gesture Practice"
+                                        description="How to practice signs with your camera"
+                                        onPress={() => setActiveTutorial('gesture')}
+                                    />
+                                    <TutorialRow
+                                        icon="locate"
+                                        color="#8B5CF6"
+                                        label="Master Mode"
+                                        description="Sharpen your weakest signs"
+                                        onPress={() => setActiveTutorial('master')}
+                                    />
+                                    <TutorialRow
+                                        icon="infinite"
+                                        color="#0EA5E9"
+                                        label="Infinite Mode"
+                                        description="Practice non-stop, at your own pace"
+                                        onPress={() => setActiveTutorial('infinite')}
+                                    />
+                                    <TutorialRow
+                                        icon="text"
+                                        color="#F59E0B"
+                                        label="Fingerspelling"
+                                        description="Spell out words letter by letter"
+                                        onPress={() => setActiveTutorial('fingerspelling')}
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.divider} />
+
                             {/* FAQ Section */}
                             <View style={styles.faqSection}>
                                 <View style={styles.sectionHeader}>
@@ -280,6 +379,24 @@ export default function HelpSupport() {
                     </ScrollView>
                 </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
+
+            {/* Tutorial Modals */}
+            <GestureTutorialModal
+                visible={activeTutorial === 'gesture'}
+                onClose={() => setActiveTutorial(null)}
+            />
+            <MasterModeTutorialModal
+                visible={activeTutorial === 'master'}
+                onClose={() => setActiveTutorial(null)}
+            />
+            <InfiniteModeTutorialModal
+                visible={activeTutorial === 'infinite'}
+                onClose={() => setActiveTutorial(null)}
+            />
+            <FingerspellingTutorialModal
+                visible={activeTutorial === 'fingerspelling'}
+                onClose={() => setActiveTutorial(null)}
+            />
         </SafeAreaView>
     );
 }
@@ -326,6 +443,49 @@ const styles = StyleSheet.create({
     content: {
         paddingHorizontal: 20,
         paddingTop: 20,
+    },
+    tutorialsSection: {
+        marginBottom: 8,
+    },
+    tutorialList: {
+        gap: 8,
+    },
+    tutorialRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.06)',
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        gap: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.02,
+        shadowRadius: 4,
+        elevation: 1,
+    },
+    tutorialIconBox: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    tutorialTextBlock: {
+        flex: 1,
+    },
+    tutorialLabel: {
+        fontSize: 14.5,
+        fontWeight: '700',
+        color: '#0f3172',
+        marginBottom: 2,
+    },
+    tutorialDescription: {
+        fontSize: 12.5,
+        color: '#6B7280',
+        fontWeight: '500',
     },
     faqSection: {
         marginBottom: 8,
