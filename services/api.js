@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { triggerGlobalAlert } from '../utils/errorHandler';
 
 // Get API URL from app.json extra
-const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
+const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://señas.tech/api';
 
 console.log('🌐 API URL:', API_URL);
 
@@ -72,11 +73,22 @@ async function apiFetch(url, options = {}) {
     const ttl = isGet ? getCacheTtl(url) : 0;
 
     const doFetch = async (attempt = 0) => {
-        const resp = await fetch(url, options);
+        let resp;
+        try {
+            resp = await fetch(url, options);
+        } catch (err) {
+            triggerGlobalAlert('No Internet Connection', 'Unable to reach the server. Please check your connection.', 'offline');
+            return {
+                body: JSON.stringify({ success: false, message: 'Network request failed' }),
+                status: 0,
+                statusText: 'Network Error',
+                headers: new Headers()
+            };
+        }
 
         // 429 – Too Many Attempts: back off and retry
         if (resp.status === 429 && attempt < 3) {
-            const retryAfter = parseInt(resp.headers.get('Retry-After') || '0', 10);
+            const retryAfter = parseInt(resp.headers?.get?.('Retry-After') || '0', 10);
             const delay = retryAfter > 0
                 ? retryAfter * 1000
                 : Math.min(1000 * Math.pow(2, attempt), 16_000); // 1s, 2s, 4s cap 16s
@@ -122,9 +134,19 @@ async function apiFetch(url, options = {}) {
 
     // For POST/PUT/DELETE, bypass cache/deduplication but keep 429 retrying
     const doNormalFetch = async (attempt = 0) => {
-        const resp = await fetch(url, options);
+        let resp;
+        try {
+            resp = await fetch(url, options);
+        } catch (err) {
+            triggerGlobalAlert('No Internet Connection', 'Unable to reach the server. Please check your connection.', 'offline');
+            return new Response(JSON.stringify({ success: false, message: 'Network request failed' }), {
+                status: 0,
+                statusText: 'Network Error'
+            });
+        }
+
         if (resp.status === 429 && attempt < 3) {
-            const retryAfter = parseInt(resp.headers.get('Retry-After') || '0', 10);
+            const retryAfter = parseInt(resp.headers?.get?.('Retry-After') || '0', 10);
             const delay = retryAfter > 0
                 ? retryAfter * 1000
                 : Math.min(1000 * Math.pow(2, attempt), 16_000);

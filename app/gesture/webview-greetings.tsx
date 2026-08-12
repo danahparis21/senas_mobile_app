@@ -828,7 +828,7 @@ export default function WebViewGreetingsScreen() {
     };
 
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const GREETINGS_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
+    const GREETINGS_URL = 'https://señas.tech/gesture_greetings.html';
 
     const injectedJavaScript = `
     (function() {

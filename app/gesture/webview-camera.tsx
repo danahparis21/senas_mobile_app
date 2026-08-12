@@ -948,7 +948,7 @@ export default function WebViewCameraScreen() {
         }
     }, [isModuleComplete]);
 
-    const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
+    const GESTURE_URL = 'https://señas.tech/gesture.html';
 
     // Inject CSS to hide detection box and other UI elements from the HTML
     const injectedJavaScript = `

@@ -1031,8 +1031,7 @@ export default function FingerspellingScreen() {
         }
     };
 
-    const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
-
+    const GESTURE_URL = 'https://señas.tech/gesture.html';
     const injectedJavaScript = `
         (function() {
             var box = document.getElementById('detection-box');

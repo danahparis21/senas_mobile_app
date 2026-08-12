@@ -875,8 +875,7 @@ export default function WebViewSurvivalScreen() {
     };
 
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const SURVIVAL_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level2.html';
-
+    const SURVIVAL_URL = 'https://señas.tech/gesture_level2.html';
     const injectedJavaScript = `
     (function() {
         const hideUI = function() {

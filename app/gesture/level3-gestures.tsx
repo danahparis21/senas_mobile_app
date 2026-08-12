@@ -776,7 +776,7 @@ export default function Level3GesturesScreen() {
     };
 
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const LEVEL3_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level3.html';
+    const LEVEL3_URL = 'https://señas.tech/gesture_level3.html';
 
     const injectedJavaScript = `
     (function() {

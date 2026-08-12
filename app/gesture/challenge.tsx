@@ -32,11 +32,10 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const FONT_FAMILY = Platform.select({ ios: 'Avenir Next', android: 'sans-serif', default: 'System' });
 
 // ─── GESTURE URLS ──────────────────────────────────────────────────────────
-const GESTURE_URL_ALPHABET = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
-const GESTURE_URL_NUMBERS = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level3.html';
-const GESTURE_URL_GREETINGS = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
-const GESTURE_URL_SURVIVAL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level2.html';
-
+const GESTURE_URL_ALPHABET = 'https://señas.tech/gesture.html';
+const GESTURE_URL_NUMBERS = 'https://señas.tech/gesture_level3.html';
+const GESTURE_URL_GREETINGS = 'https://señas.tech/gesture_greetings.html';
+const GESTURE_URL_SURVIVAL = 'https://señas.tech/gesture_level2.html';
 
 // ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');

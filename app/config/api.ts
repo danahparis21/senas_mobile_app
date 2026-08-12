@@ -2,8 +2,8 @@
 import Constants from 'expo-constants';
 
 // Get the base API URL from app.json extra
-export const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/api';
-export const STORAGE_BASE_URL = Constants.expoConfig?.extra?.storageUrl || 'http://localhost:8000/storage';
+export const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'https://señas.tech/api';
+export const STORAGE_BASE_URL = Constants.expoConfig?.extra?.storageUrl || 'https://señas.tech/storage';
 
 // Helper to build full URLs
 export const buildMediaUrl = (path: string): string => {
