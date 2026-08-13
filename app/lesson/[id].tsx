@@ -1,9 +1,18 @@
 // app/lesson/[id].tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, SafeAreaView, Pressable,
-  ScrollView, Modal, ActivityIndicator, Animated, Dimensions
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Modal,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Polyline, Line, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
@@ -2031,7 +2040,28 @@ const s = StyleSheet.create({
   },
 
   // Glass card
-  glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 12, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
+  glassCard: {
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(255,255,255,0.72)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.85)',
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.09,
+        shadowRadius: 12,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(215, 235, 252, 0.8)',
+        elevation: 3,
+      },
+    }),
+  },
 
   // Module/Content
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -4,7 +4,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     Pressable,
     ActivityIndicator,
     Platform,
@@ -18,6 +17,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,6 +31,9 @@ import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
 import { buildMediaUrl } from '../config/api';
+import { StatusBar } from 'react-native';
+
+
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -116,6 +119,8 @@ export default function WebViewCameraScreen() {
     const [isStruggling, setIsStruggling] = useState(false);
     const [hintPulseAnim] = useState(new Animated.Value(1));
     const [hintShakeAnim] = useState(new Animated.Value(0));
+    const [hintUsage, setHintUsage] = useState<Record<string, number>>({});
+    const [moduleSessionId] = useState<string>(`session_${Date.now()}`);
 
     // Hint button pulse + shake animation
     const animateHintButton = () => {
@@ -335,19 +340,47 @@ export default function WebViewCameraScreen() {
         const index = ALPHABET_PART2.indexOf(currentLetter);
         setHintsCurrentIndex(index >= 0 ? index : 0);
         setShowHintsModal(true);
+
+        // ✅ TRACK HINT USAGE
+        if (currentLetter && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [currentLetter]: (prev[currentLetter] || 0) + 1
+            }));
+            console.log(`💡 Hint opened for letter: ${currentLetter}`);
+        }
     };
 
     const goToPreviousHint = () => {
         setHintsCurrentIndex(prev =>
             prev > 0 ? prev - 1 : ALPHABET_PART2.length - 1
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const letter = ALPHABET_PART2[hintsCurrentIndex > 0 ? hintsCurrentIndex - 1 : ALPHABET_PART2.length - 1];
+        if (letter && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [letter]: (prev[letter] || 0) + 1
+            }));
+        }
     };
 
     const goToNextHint = () => {
         setHintsCurrentIndex(prev =>
             prev < ALPHABET_PART2.length - 1 ? prev + 1 : 0
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const letter = ALPHABET_PART2[hintsCurrentIndex < ALPHABET_PART2.length - 1 ? hintsCurrentIndex + 1 : 0];
+        if (letter && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [letter]: (prev[letter] || 0) + 1
+            }));
+        }
     };
+
 
     const currentHintLetter = ALPHABET_PART2[hintsCurrentIndex];
     const currentHintMedia = SIGN_MEDIA[currentHintLetter];
@@ -454,10 +487,7 @@ export default function WebViewCameraScreen() {
     const saveSingleLetterPerformance = async (letter: string) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping save');
-                return null;
-            }
+            if (!token) return null;
 
             const data = letterAttempts[letter] || {
                 letter,
@@ -466,9 +496,7 @@ export default function WebViewCameraScreen() {
                 successCount: 0
             };
 
-            if (data.attempts === 0) {
-                return null;
-            }
+            if (data.attempts === 0) return null;
 
             const letterPerformance = [{
                 letter: letter,
@@ -478,21 +506,24 @@ export default function WebViewCameraScreen() {
                 consecutive_wrong: 0,
             }];
 
+            // ✅ Get hint count for this letter
+            const hintCount = hintUsage[letter] || 0;
+            const hintData = hintCount > 0 ? { [letter]: hintCount } : null;
+
             console.log(`📤 Saving performance for letter ${letter}...`);
 
             const result = await api.saveGesturePerformance(
                 'alphabet_part2',
                 letterPerformance,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hintData
             );
 
             if (result && result.success) {
-                console.log(`✅ Letter ${letter} saved!`);
+                console.log(`✅ Letter ${letter} saved! Hint count: ${hintCount}`);
                 return result;
-            } else {
-                console.error(`❌ Failed to save letter ${letter}:`, result);
-                return null;
             }
+            return null;
         } catch (error) {
             console.error(`❌ Error saving letter ${letter}:`, error);
             return null;
@@ -524,16 +555,20 @@ export default function WebViewCameraScreen() {
             const totalAttempts = letterPerformances.reduce((sum, l) => sum + l.attempts, 0);
             if (totalAttempts === 0) return null;
 
-            console.log(`📤 Saving final performance...`);
+            const hasHints = Object.keys(hintUsage).length > 0;
 
             const result = await api.saveGesturePerformance(
                 'alphabet_part2',
                 letterPerformances,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hasHints ? hintUsage : null
             );
 
             if (result && result.success) {
                 console.log('✅ Final performance saved!');
+                if (result.is_module_complete) {
+                    console.log('🎉 Module complete notification sent!');
+                }
                 return result;
             }
             return null;
@@ -801,18 +836,7 @@ export default function WebViewCameraScreen() {
         }
     };
 
-    // ─── EFFECTS FOR SAVING ───────────────────────────────────────────
 
-    // Save when module is complete
-    useEffect(() => {
-        if (isModuleComplete) {
-            saveAllPerformance().then(result => {
-                if (result) {
-                    console.log('📊 All performance data saved');
-                }
-            });
-        }
-    }, [isModuleComplete]);
 
     // ─── HANDLE CONTINUE ──────────────────────────────────────────────
     const handleContinue = async () => {
@@ -825,8 +849,7 @@ export default function WebViewCameraScreen() {
             await saveSingleLetterPerformance(letter);
         }
 
-        // Final save just in case
-        await saveAllPerformance();
+
 
         setShowResults(false);
 

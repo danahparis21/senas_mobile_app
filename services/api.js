@@ -676,9 +676,14 @@ export const api = {
 
 
     /**
- * Save student's gesture performance from practice sessions
- */
-    saveGesturePerformance: async (moduleName, letterPerformances, sessionId) => {
+     * Save student's gesture performance from practice sessions
+     * Now with optional hint usage tracking
+     * @param {string} moduleName - The module name (e.g., 'alphabet_part1')
+     * @param {Array} letterPerformances - Array of letter performance data
+     * @param {string} sessionId - Session identifier
+     * @param {Object|null} hintUsage - Optional hint usage data { letter: count }
+     */
+    saveGesturePerformance: async (moduleName, letterPerformances, sessionId, hintUsage = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
@@ -694,6 +699,12 @@ export const api = {
                 session_id: sessionId || `session_${Date.now()}`,
             };
 
+            // ✅ Add hint_usage only if it's a non-empty object
+            if (hintUsage && typeof hintUsage === 'object' && Object.keys(hintUsage).length > 0) {
+                payload.hint_usage = hintUsage;
+                console.log('💡 Hint usage included:', hintUsage);
+            }
+
             const response = await fetch(`${API_URL}/student/gesture-performance`, {
                 method: 'POST',
                 headers: {
@@ -705,7 +716,6 @@ export const api = {
             });
 
             const data = await response.json();
-            console.log('✅ Gesture performance saved:', data);
 
             if (!response.ok) {
                 throw new Error(data.message || data.error || 'Failed to save gesture performance');
@@ -717,7 +727,6 @@ export const api = {
             throw error;
         }
     },
-
     /**
      * Get student's gesture performance for a specific module
      */
@@ -2282,5 +2291,41 @@ export const api = {
             throw error;
         }
     },
+    /**
+ * 🏆 Complete challenge mode and notify teacher
+ * POST /api/student/challenge/complete
+ */
+    completeChallenge: async (data) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🏆 Saving challenge completion for mode: ${data.mode}...`);
+
+            const response = await fetch(`${API_URL}/student/challenge/complete`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(data), // This already includes all fields
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'Failed to save challenge completion');
+            }
+
+            return result;
+        } catch (error) {
+            console.error('❌ Error saving challenge completion:', error);
+            throw error;
+        }
+    },
+
 
 };

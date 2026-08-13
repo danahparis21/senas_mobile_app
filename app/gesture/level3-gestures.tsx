@@ -4,7 +4,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     Pressable,
     ActivityIndicator,
     Platform,
@@ -18,6 +17,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -141,6 +141,9 @@ export default function Level3GesturesScreen() {
     const [isStruggling, setIsStruggling] = useState(false);
     const [hintPulseAnim] = useState(new Animated.Value(1));
     const [hintShakeAnim] = useState(new Animated.Value(0));
+
+    const [hintUsage, setHintUsage] = useState<Record<string, number>>({});
+    const [moduleSessionId] = useState<string>(`session_${Date.now()}`);
 
     // Hint button animations
     const animateHintButton = () => {
@@ -342,18 +345,46 @@ export default function Level3GesturesScreen() {
         setHintsCurrentIndex(index >= 0 ? index : 0);
         setShowHintsModal(true);
         setIsStruggling(false);
+
+        // ✅ TRACK HINT USAGE
+        if (currentGesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [currentGesture]: (prev[currentGesture] || 0) + 1
+            }));
+            console.log(`💡 Hint opened for: ${currentGesture}`);
+        }
     };
+
 
     const goToPreviousHint = () => {
         setHintsCurrentIndex(prev =>
             prev > 0 ? prev - 1 : LEVEL3_GESTURES.length - 1
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const gesture = LEVEL3_GESTURES[hintsCurrentIndex > 0 ? hintsCurrentIndex - 1 : LEVEL3_GESTURES.length - 1];
+        if (gesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [gesture]: (prev[gesture] || 0) + 1
+            }));
+        }
     };
 
     const goToNextHint = () => {
         setHintsCurrentIndex(prev =>
             prev < LEVEL3_GESTURES.length - 1 ? prev + 1 : 0
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const gesture = LEVEL3_GESTURES[hintsCurrentIndex < LEVEL3_GESTURES.length - 1 ? hintsCurrentIndex + 1 : 0];
+        if (gesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [gesture]: (prev[gesture] || 0) + 1
+            }));
+        }
     };
 
     const currentHintGesture = LEVEL3_GESTURES[hintsCurrentIndex];
@@ -491,10 +522,7 @@ export default function Level3GesturesScreen() {
     const saveAllPerformance = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping save');
-                return null;
-            }
+            if (!token) return null;
 
             const gesturePerformances = LEVEL3_GESTURES.map(gesture => {
                 const data = gestureAttempts[gesture] || {
@@ -515,16 +543,20 @@ export default function Level3GesturesScreen() {
             const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
             if (totalAttempts === 0) return null;
 
-            console.log(`📤 Saving performance for ${MODULE_NAME}...`);
+            const hasHints = Object.keys(hintUsage).length > 0;
 
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
                 gesturePerformances,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hasHints ? hintUsage : null
             );
 
             if (result && result.success) {
                 console.log('✅ Performance saved!');
+                if (result.is_module_complete) {
+                    console.log('🎉 Module complete notification sent!');
+                }
                 return result;
             }
             return null;
@@ -548,6 +580,17 @@ export default function Level3GesturesScreen() {
 
             if (data.attempts === 0) return null;
 
+            // ✅ Get hint count for this gesture
+            const hintCount = hintUsage[gesture] || 0;
+            const hintData = hintCount > 0 ? { [gesture]: hintCount } : null;
+
+            console.log(`📊 Saving ${gesture}:`, {
+                attempts: data.attempts,
+                wrong: data.wrongAttempts,
+                success: data.successCount,
+                hints: hintCount
+            });
+
             const gesturePerformance = [{
                 letter: gesture,
                 attempts: data.attempts || 0,
@@ -559,11 +602,12 @@ export default function Level3GesturesScreen() {
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
                 gesturePerformance,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hintData
             );
 
             if (result && result.success) {
-                console.log(`✅ ${gesture} saved!`);
+                console.log(`✅ ${gesture} saved! Hint count: ${hintCount}`);
                 return result;
             }
             return null;
@@ -1007,7 +1051,7 @@ export default function Level3GesturesScreen() {
             await saveSingleGesturePerformance(gesture);
         }
 
-        await saveAllPerformance();
+
 
         setShowResults(false);
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Modal
+  View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Modal, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -305,7 +305,28 @@ const s = StyleSheet.create({
   progressTrack: { flexDirection: 'row', gap: 4, marginBottom: 14 },
   progressSeg: { flex: 1, height: 5, borderRadius: 99 },
 
-  glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 14, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
+  glassCard: {
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 14,
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(255,255,255,0.72)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.85)',
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.09,
+        shadowRadius: 12,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(215, 235, 252, 0.8)',
+        elevation: 3,
+      },
+    }),
+  },
 
   questionLabel: { fontSize: 15, fontWeight: '700', color: '#0f3172', marginBottom: 16, textAlign: 'center' },
   signDisplayBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 12 },

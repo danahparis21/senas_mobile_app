@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import { useSettings } from '../contexts/SettingsContext';
@@ -59,12 +60,36 @@ interface PromotionModalProps {
 
 const DEFAULT_GRADIENT: [string, string, string] = ['#0f3172', '#1a4f8a', '#2563eb'];
 
-const getAssetUriForPrint = (moduleRequire: any): string => {
+// Converts a bundled local image (LOGO_IMAGE, SENYA_TEACHING_IMAGE, etc.) into a
+// base64 data URI so it reliably shows up inside the HTML we hand to expo-print.
+//
+// Why: Image.resolveAssetSource().uri returns a platform-specific asset path
+// (e.g. "asset:/assets/senya_teaching.png" in an Android release build). The
+// WebView expo-print uses to render the PDF can't load that scheme, so the
+// image silently fails and shows as a broken-image icon - which is exactly
+// what we were seeing on Android. iOS happened to resolve to a path its
+// WKWebView could reach, which is why it looked fine there. A base64 data URI
+// works the same way on both platforms (and is what Expo's own docs recommend
+// for local images in printed HTML), so this fixes Android and makes iOS more
+// robust too.
+const getAssetBase64ForPrint = async (moduleRequire: any): Promise<string> => {
   try {
-    const resolved = Image.resolveAssetSource(moduleRequire);
-    return resolved?.uri || '';
+    const asset = Asset.fromModule(moduleRequire);
+    if (!asset.localUri) {
+      await asset.downloadAsync();
+    }
+    if (!asset.localUri) {
+      console.warn('Asset has no localUri after downloadAsync for print:', moduleRequire);
+      return '';
+    }
+    const base64 = await FileSystem.readAsStringAsync(asset.localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const ext = (asset.type || 'png').toLowerCase();
+    const mime = ext === 'jpg' ? 'jpeg' : ext;
+    return `data:image/${mime};base64,${base64}`;
   } catch (e) {
-    console.warn('Could not resolve asset source for print:', e);
+    console.warn('Could not load asset as base64 for print:', e);
     return '';
   }
 };
@@ -272,8 +297,8 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 
   const handleDownloadLetter = async () => {
     try {
-      const logoUri = getAssetUriForPrint(LOGO_IMAGE);
-      const senyaUri = getAssetUriForPrint(SENYA_TEACHING_IMAGE);
+      const logoUri = await getAssetBase64ForPrint(LOGO_IMAGE);
+      const senyaUri = await getAssetBase64ForPrint(SENYA_TEACHING_IMAGE);
 
       const certTitle = isGraduation ? 'CERTIFICATE OF COMPLETION' : 'CERTIFICATE OF ACHIEVEMENT';
       const certBodyText = isGraduation
@@ -301,8 +326,15 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 <head>
   <meta charset="utf-8">
   <style>
-    @page { size: A4 landscape; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: A4 landscape; margin: 0mm; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      color-adjust: exact;
+    }
     html, body {
       width: 100%;
       height: 100%;
@@ -851,7 +883,13 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 </html>
       `;
 
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        // margins is iOS-only (Android page margins come from the @page rule
+        // above). Without this, iOS falls back to its own default page
+        // margin, which can leave a gap around the border on export.
+        margins: { left: 0, top: 0, right: 0, bottom: 0 },
+      });
       const fileName = getSanitizedFileName(recipientName, 'Certificate', isGraduation);
       const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
       await FileSystem.copyAsync({ from: uri, to: destinationUri });
@@ -864,8 +902,8 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 
   const handleDownloadReportCard = async () => {
     try {
-      const logoUri = getAssetUriForPrint(LOGO_IMAGE);
-      const senyaBlueUri = getAssetUriForPrint(SENYA_BLUE_IMAGE);
+      const logoUri = await getAssetBase64ForPrint(LOGO_IMAGE);
+      const senyaBlueUri = await getAssetBase64ForPrint(SENYA_BLUE_IMAGE);
 
       // Compact gold seal (no ribbon tails) reused from the certificate's medal styling.
       const sealCx = 50, sealCy = 50;
@@ -882,8 +920,15 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 <head>
   <meta charset="utf-8">
   <style>
-    @page { size: A4 landscape; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: A4 landscape; margin: 0mm; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      color-adjust: exact;
+    }
     html, body {
       width: 100%;
       height: 100%;
@@ -1175,7 +1220,10 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
 </body>
 </html>
             `;
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        margins: { left: 0, top: 0, right: 0, bottom: 0 },
+      });
       const fileName = getSanitizedFileName(recipientName, 'Report', isGraduation);
       const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
       await FileSystem.copyAsync({ from: uri, to: destinationUri });

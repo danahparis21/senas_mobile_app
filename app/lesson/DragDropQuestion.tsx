@@ -1300,7 +1300,28 @@ const styles = StyleSheet.create({
     statusBadge: { backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
     statusText: { fontSize: 12, fontWeight: '700', color: '#10B981' },
 
-    glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 12, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
+    glassCard: {
+        borderRadius: 20,
+        padding: 18,
+        marginBottom: 12,
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.72)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.85)',
+                shadowColor: '#0f3172',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.09,
+                shadowRadius: 12,
+            },
+            android: {
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: 'rgba(215, 235, 252, 0.8)',
+                elevation: 3,
+            },
+        }),
+    },
     progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
     progressLabel: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
     progressDots: { flexDirection: 'row', gap: 4 },

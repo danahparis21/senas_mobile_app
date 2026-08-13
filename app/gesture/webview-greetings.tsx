@@ -4,7 +4,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     Pressable,
     ActivityIndicator,
     Platform,
@@ -18,6 +17,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -122,6 +122,9 @@ export default function WebViewGreetingsScreen() {
     const [isStruggling, setIsStruggling] = useState(false);
     const [hintPulseAnim] = useState(new Animated.Value(1));
     const [hintShakeAnim] = useState(new Animated.Value(0));
+    const [hintUsage, setHintUsage] = useState<Record<string, number>>({});
+    const [moduleSessionId] = useState<string>(`session_${Date.now()}`);
+
 
     // Hint button animations
     const animateHintButton = () => {
@@ -260,18 +263,46 @@ export default function WebViewGreetingsScreen() {
         setHintsCurrentIndex(index >= 0 ? index : 0);
         setShowHintsModal(true);
         setIsStruggling(false);
+
+        // ✅ TRACK HINT USAGE
+        if (currentGesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [currentGesture]: (prev[currentGesture] || 0) + 1
+            }));
+            console.log(`💡 Hint opened for: ${currentGesture}`);
+        }
     };
+
 
     const goToPreviousHint = () => {
         setHintsCurrentIndex(prev =>
             prev > 0 ? prev - 1 : GREETINGS_LIST.length - 1
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const gesture = GREETINGS_LIST[hintsCurrentIndex > 0 ? hintsCurrentIndex - 1 : GREETINGS_LIST.length - 1];
+        if (gesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [gesture]: (prev[gesture] || 0) + 1
+            }));
+        }
     };
 
     const goToNextHint = () => {
         setHintsCurrentIndex(prev =>
             prev < GREETINGS_LIST.length - 1 ? prev + 1 : 0
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const gesture = GREETINGS_LIST[hintsCurrentIndex < GREETINGS_LIST.length - 1 ? hintsCurrentIndex + 1 : 0];
+        if (gesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [gesture]: (prev[gesture] || 0) + 1
+            }));
+        }
     };
 
     const currentHintGesture = GREETINGS_LIST[hintsCurrentIndex];
@@ -472,7 +503,6 @@ export default function WebViewGreetingsScreen() {
                 successCount: 0
             };
 
-            // Skip if no attempts
             if (data.attempts === 0 && data.successCount === 0 && data.wrongAttempts === 0) {
                 return null;
             }
@@ -485,20 +515,26 @@ export default function WebViewGreetingsScreen() {
                 consecutive_wrong: 0,
             }];
 
+            // ✅ Get hint count for this gesture
+            const hintCount = hintUsage[gesture] || 0;
+            const hintData = hintCount > 0 ? { [gesture]: hintCount } : null;
+
             console.log(`📊 Saving ${gesture}:`, {
                 attempts: data.attempts,
                 wrong: data.wrongAttempts,
-                success: data.successCount
+                success: data.successCount,
+                hints: hintCount
             });
 
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
                 gesturePerformance,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hintData
             );
 
             if (result && result.success) {
-                console.log(`✅ ${gesture} saved!`);
+                console.log(`✅ ${gesture} saved! Hint count: ${hintCount}`);
                 return result;
             }
             return null;
@@ -531,14 +567,20 @@ export default function WebViewGreetingsScreen() {
             const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
             if (totalAttempts === 0) return null;
 
+            const hasHints = Object.keys(hintUsage).length > 0;
+
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
                 gesturePerformances,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hasHints ? hintUsage : null
             );
 
             if (result && result.success) {
                 console.log('✅ Performance saved!');
+                if (result.is_module_complete) {
+                    console.log('🎉 Module complete notification sent!');
+                }
                 return result;
             }
             return null;
@@ -547,7 +589,6 @@ export default function WebViewGreetingsScreen() {
             return null;
         }
     };
-
     useEffect(() => {
         attemptedGesturesRef.current = new Set();
         successfulGesturesRef.current = new Set();
@@ -788,7 +829,7 @@ export default function WebViewGreetingsScreen() {
             await saveSingleGesturePerformance(gesture);
         }
 
-        await saveAllPerformance();
+
 
         setShowResults(false);
 

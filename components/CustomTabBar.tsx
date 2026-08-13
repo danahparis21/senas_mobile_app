@@ -500,9 +500,9 @@ function GestureTab({ isFocused, onPress }: { isFocused: boolean; onPress: () =>
 // ── MAIN TAB BAR ────────────────────────────────────────────────────
 export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const insets = useSafeAreaInsets();
-    // Trim the safe-area padding so the bar doesn't sit on a slab of white space.
+    // Trim the safe-area padding on iOS, but keep full inset on Android for nav bar clearance.
     const bottomPadding = insets.bottom > 0
-        ? Math.max(insets.bottom - 12, MIN_BOTTOM_PADDING)
+        ? (Platform.OS === 'ios' ? Math.max(insets.bottom - 10, MIN_BOTTOM_PADDING) : insets.bottom)
         : MIN_BOTTOM_PADDING;
     const totalHeight = BAR_HEIGHT + bottomPadding;
     const barPath = getBarPath(SCREEN_WIDTH, totalHeight);

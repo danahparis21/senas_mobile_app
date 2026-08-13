@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { View, StyleSheet, StyleProp, ViewStyle, Platform } from 'react-native';
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -16,17 +16,24 @@ export function GlassCard({ children, style }: GlassCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
     borderRadius: 20,
-    // Note: backdropFilter is not fully supported in React Native natively without blurring libraries like expo-blur,
-    // so we simulate the look with background opacity and shadow.
-    shadowColor: 'rgba(15,49,114,1)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.09,
-    shadowRadius: 12,
-    elevation: 3,
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(255,255,255,0.72)',
+        borderColor: 'rgba(255,255,255,0.90)',
+        borderWidth: 1,
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.10,
+        shadowRadius: 16,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderColor: 'rgba(215, 235, 252, 0.8)',
+        borderWidth: 1,
+        elevation: 3,
+      },
+    }),
   },
 });

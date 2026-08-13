@@ -15,10 +15,12 @@ import {
   RefreshControl,
   Modal,
   PanResponder,
+  TouchableOpacity
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../../services/api';
 import {
   CheckIcon,
@@ -35,6 +37,7 @@ import { WeakSkillsSection } from '../../components/WeakSkillsSection';
 import { MasterySummary } from '../../components/MasterySummary';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const SAFE_SCREEN_HEIGHT = screenHeight || 800;
 
 // ── SUNNY SKY PALETTE ────────────────────────────────────────────────
 const GRADIENT = {
@@ -45,6 +48,7 @@ const GRADIENT = {
 };
 // Mascot asset path
 const MascotImage = require('../../assets/images/img/senyas_logo.png');
+
 
 // Helper to get default initial Senya position near active lesson node
 const getDefaultSenyaPos = (activePos: { x: number; y: number }, pathIdx: number) => {
@@ -61,7 +65,7 @@ const getDefaultSenyaPos = (activePos: { x: number; y: number }, pathIdx: number
     topPos = activePos.y - 180;
   }
   const minTop = 40;
-  const maxTop = screenHeight - 200;
+  const maxTop = SAFE_SCREEN_HEIGHT - 200;
   if (topPos < minTop) topPos = minTop;
   if (topPos > maxTop) topPos = maxTop;
 
@@ -351,6 +355,8 @@ interface Position {
 
 export default function Lessons() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const tabBarClearance = 68 + (insets.bottom > 0 ? (Platform.OS === 'ios' ? Math.max(insets.bottom - 10, 0) : insets.bottom) : 10);
   // Optional deep-link params: navigating here with ?tab=modules&moduleId=5
   // (e.g. from a "Continue Learning" module card on the dashboard) opens
   // straight to that module's lesson map instead of the default view.
@@ -369,6 +375,7 @@ export default function Lessons() {
   const [activeTab, setActiveTab] = useState<number>(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const activePosRef = useRef({ x: 0, y: 0 });
+
 
   // Profile status
   const [streak, setStreak] = useState<number>(12);
@@ -424,6 +431,9 @@ export default function Lessons() {
   senyaPosRef.current = senyaPosition;
   const startPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const activePathIdxRef = useRef<number>(0);
+
+  const isLockedModule = activeTab === 1 && modules[currentModuleIndex]?.is_locked === true;
+
 
   const panResponder = useRef(
     PanResponder.create({
@@ -693,6 +703,7 @@ export default function Lessons() {
     return <BookIcon size={size} color={color} />;
   };
 
+
   // Render a standalone locked module screen (replaces the lesson map)
   const renderLockedModuleScreen = (module: Module) => {
     const levelColors: Record<string, { text: string; border: string; bg: string }> = {
@@ -705,50 +716,59 @@ export default function Lessons() {
     const colors = levelColors[reqLevel] || levelColors.beginner;
 
     return (
-      <ScrollView
-        style={styles.lockedModuleScroll}
-        contentContainerStyle={styles.lockedModuleScreen}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
-        }
-      >
-        {/* 1. Lock mark */}
-        <View style={styles.lockedModuleLockCircle}>
-          <LockIcon size={40} color="#64748B" />
-        </View>
+      <View style={styles.lockedModuleContainer}>
+        <ScrollView
+          style={styles.lockedModuleScroll}
+          contentContainerStyle={styles.lockedModuleScreen}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Refresh button at top */}
+          <TouchableOpacity
+            style={styles.lockedRefreshBtn}
+            onPress={onRefresh}
+            activeOpacity={0.7}
+          >
+            <RefreshIcon size={16} color="#2563EB" />
+            <Text style={styles.lockedRefreshBtnText}>Refresh</Text>
+          </TouchableOpacity>
 
-        {/* 2. Eyebrow + Title (primary hierarchy) */}
-        <Text style={styles.lockedEyebrow}>MODULE LOCKED</Text>
-        <Text style={styles.lockedModuleHeadline} numberOfLines={3}>
-          {module.title}
-        </Text>
-
-        {/* 3. Requirement (secondary) */}
-        <View style={styles.lockedMetaBlock}>
-          <Text style={styles.lockedMetaLabel}>REQUIRED LEVEL</Text>
-          <View style={[styles.lockedPill, { borderColor: colors.border, backgroundColor: colors.bg }]}>
-            <LevelIcon level={reqLevel} color={colors.text} />
-            <Text style={[styles.lockedPillText, { color: colors.text }]}>{getLevelLabel(reqLevel)}</Text>
+          {/* 1. Lock mark */}
+          <View style={styles.lockedModuleLockCircle}>
+            <LockIcon size={40} color="#64748B" />
           </View>
-        </View>
 
-        <View style={styles.lockedModuleDivider} />
+          {/* 2. Eyebrow + Title (primary hierarchy) */}
+          <Text style={styles.lockedEyebrow}>MODULE LOCKED</Text>
+          <Text style={styles.lockedModuleHeadline} numberOfLines={3}>
+            {module.title}
+          </Text>
 
-        {/* 4. Current status (tertiary) */}
-        <View style={styles.lockedMetaBlock}>
-          <Text style={styles.lockedMetaLabel}>YOUR CURRENT LEVEL</Text>
-          <View style={[styles.lockedPill, styles.lockedPillNeutral]}>
-            <LevelIcon level={stuLevel} color="#2563EB" />
-            <Text style={[styles.lockedPillText, { color: '#2563EB' }]}>{getLevelLabel(stuLevel)}</Text>
+          {/* 3. Requirement (secondary) */}
+          <View style={styles.lockedMetaBlock}>
+            <Text style={styles.lockedMetaLabel}>REQUIRED LEVEL</Text>
+            <View style={[styles.lockedPill, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+              <LevelIcon level={reqLevel} color={colors.text} />
+              <Text style={[styles.lockedPillText, { color: colors.text }]}>{getLevelLabel(reqLevel)}</Text>
+            </View>
           </View>
-        </View>
 
-        {/* 5. Guidance (supporting) */}
-        <Text style={styles.lockedModuleTip}>
-          Keep completing lessons to reach {getLevelLabel(reqLevel)} level and unlock this module.
-        </Text>
-      </ScrollView>
+          <View style={styles.lockedModuleDivider} />
+
+          {/* 4. Current status (tertiary) */}
+          <View style={styles.lockedMetaBlock}>
+            <Text style={styles.lockedMetaLabel}>YOUR CURRENT LEVEL</Text>
+            <View style={[styles.lockedPill, styles.lockedPillNeutral]}>
+              <LevelIcon level={stuLevel} color="#2563EB" />
+              <Text style={[styles.lockedPillText, { color: '#2563EB' }]}>{getLevelLabel(stuLevel)}</Text>
+            </View>
+          </View>
+
+          {/* 5. Guidance (supporting) */}
+          <Text style={styles.lockedModuleTip}>
+            Keep completing lessons to reach {getLevelLabel(reqLevel)} level and unlock this module.
+          </Text>
+        </ScrollView>
+      </View>
     );
   };
 
@@ -1047,6 +1067,14 @@ export default function Lessons() {
       setLoadingLearningPath(false);
     }
   };
+  // ─── SAFETY: Reset senya position when module is locked ──────────────────
+  useEffect(() => {
+    const currentModule = modules[currentModuleIndex];
+    if (activeTab === 1 && currentModule?.is_locked) {
+      // Hide Senya when module is locked
+      setSenyaPosition(null);
+    }
+  }, [activeTab, currentModuleIndex, modules]);
 
   useEffect(() => {
     loadModulesData();
@@ -1119,6 +1147,10 @@ export default function Lessons() {
   // without re-running every time the array identity changes.
   currentLessonsRef.current = currentLessons;
 
+
+  const safeCurrentLessons = isLockedModule ? [] : currentLessons;
+  const safeTotalNodes = safeCurrentLessons.length;
+
   // Get module name for display
   const getModuleDisplayName = (): string => {
     if (activeTab === 0) {
@@ -1137,6 +1169,18 @@ export default function Lessons() {
     // ✅ Replace with this:
     return module.title;
   };
+
+  const safePoints = isLockedModule ? [] : safeCurrentLessons.map((_, i) => getNodePosition(i));
+  const safeActivePathIndex = isLockedModule ? 0 : (() => {
+    let lastActiveOrDone = 0;
+    for (let i = 0; i < safeCurrentLessons.length; i++) {
+      if (safeCurrentLessons[i].done || safeCurrentLessons[i].active) {
+        lastActiveOrDone = i;
+      }
+    }
+    return lastActiveOrDone;
+  })();
+
   const getModuleDescription = (): string => {
     if (activeTab === 0) {
       if (goalMastered) {
@@ -1249,14 +1293,14 @@ export default function Lessons() {
 
 
   const getProgressPercentage = () => {
-    if (totalNodes === 0) return 0;
-    const completedCount = currentLessons.filter(l => l.done).length;
-    return Math.round((completedCount / totalNodes) * 100);
+    if (safeTotalNodes === 0) return 0;
+    const completedCount = safeCurrentLessons.filter(l => l.done).length;
+    return Math.round((completedCount / safeTotalNodes) * 100);
   };
-
   const pct = getProgressPercentage();
-  const completedNodesCount = currentLessons.filter(l => l.done).length;
-  const selectedLesson = currentLessons.find(l => l.id === expandedId);
+  const completedNodesCount = safeCurrentLessons.filter(l => l.done).length;
+  const selectedLesson = safeCurrentLessons.find(l => l.id === expandedId);
+
   // Best score = highest of what the map already knows and what the
   // attempt history returns (exams only carry it in the attempts list).
   const bestAttemptScore = Math.max(
@@ -1300,9 +1344,7 @@ export default function Lessons() {
   const getMascotMessage = (progress: number, completed: number, total: number): string => {
     if (total === 0) return '🌟 Ready to learn!';
 
-    // Get the current lesson's info if available
-    const currentLesson = currentLessons[activePathIndex];
-    const lessonName = currentLesson?.title || '';
+    const currentLesson = safeCurrentLessons[safeActivePathIndex];
     const weakSkill = currentLesson?.weakest_skill;
 
     // If we have a weak skill, give specific advice
@@ -1598,14 +1640,14 @@ export default function Lessons() {
             </Pressable>
           </View>
 
-          {totalNodes > 0 && (
+          {safeTotalNodes > 0 && (
             <View style={styles.progressSection}>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${pct}%` }]} />
               </View>
               <View style={styles.progressTextRow}>
                 <Text style={styles.progressText}>
-                  {completedNodesCount} of {totalNodes} lessons done
+                  {completedNodesCount} of {safeTotalNodes} lessons done
                 </Text>
                 <Text style={styles.progressText}>{pct}% Completed</Text>
               </View>
@@ -1622,7 +1664,7 @@ export default function Lessons() {
                 {activeTab === 0 ? "Building your learning path..." : "Loading modules..."}
               </Text>
             </View>
-          ) : totalNodes === 0 ? (
+          ) : safeTotalNodes === 0 ? (
             // 🔒 Locked module takes priority over generic empty state
             activeTab === 1 && modules[currentModuleIndex]?.is_locked ? (
               renderLockedModuleScreen(modules[currentModuleIndex])
@@ -1649,7 +1691,7 @@ export default function Lessons() {
             )
           ) : (
             <ScrollView
-              contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
+              contentContainerStyle={{ height: safeTotalNodes * NODE_ROW_HEIGHT + 70 }}
               showsVerticalScrollIndicator={false}
               scrollEnabled={!isDragging}
               refreshControl={
@@ -1663,10 +1705,10 @@ export default function Lessons() {
                 />
               }
             >
-              {/* SVG Path Connections - only show if module is not locked */}
+              {/* SVG Path Connections */}
               {!modules[currentModuleIndex]?.is_locked && (
                 <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                  <Svg width={screenWidth} height={totalNodes * NODE_ROW_HEIGHT}>
+                  <Svg width={screenWidth} height={safeTotalNodes * NODE_ROW_HEIGHT}>
                     {/* Background Track */}
                     {backgroundPathD !== '' && (
                       <Path
@@ -1712,11 +1754,11 @@ export default function Lessons() {
                     {
                       left: (() => {
                         if (senyaPosition) return senyaPosition.x;
-                        return getDefaultSenyaPos(activePosRef.current, activePathIndex).x;
+                        return getDefaultSenyaPos(activePosRef.current, safeActivePathIndex).x;
                       })(),
                       top: (() => {
                         if (senyaPosition) return senyaPosition.y;
-                        return getDefaultSenyaPos(activePosRef.current, activePathIndex).y;
+                        return getDefaultSenyaPos(activePosRef.current, safeActivePathIndex).y;
                       })(),
                       transform: [{ translateY: isDragging ? 0 : bobY }],
                       opacity: isDragging ? 0.9 : 1,
@@ -1734,7 +1776,7 @@ export default function Lessons() {
                     <View style={[styles.mascotBubbleTail, isDragging && styles.mascotBubbleTailDragging]} />
                     <View style={[styles.mascotBubble, isDragging && styles.mascotBubbleDragging]}>
                       <Text style={styles.mascotBubbleText} numberOfLines={3}>
-                        {isDragging ? '👆 Drag me!' : getMascotMessage(pct, completedNodesCount, totalNodes)}
+                        {isDragging ? '👆 Drag me!' : getMascotMessage(pct, completedNodesCount, safeTotalNodes)}
                       </Text>
                     </View>
                   </View>
@@ -1743,9 +1785,9 @@ export default function Lessons() {
 
               {/* Module Lock Overlay - handled above in totalNodes===0 branch */}
 
-              {/* LESSONS - ONLY RENDER IF MODULE IS NOT LOCKED */}
-              {!modules[currentModuleIndex]?.is_locked && currentLessons.map((lesson, index) => {
-                const pos = points[index];
+              {/* LESSONS - use safeCurrentLessons and safePoints */}
+              {!modules[currentModuleIndex]?.is_locked && safeCurrentLessons.map((lesson, index) => {
+                const pos = safePoints[index];
                 const isSelected = expandedId === lesson.id;
 
                 let nodeBg = lesson.color;
@@ -1879,7 +1921,7 @@ export default function Lessons() {
           <View style={styles.overlayContainer}>
             <Pressable style={styles.backdrop} onPress={() => setExpandedId(null)} />
 
-            <View style={styles.bottomCard}>
+            <View style={[styles.bottomCard, { marginBottom: tabBarClearance }]}>
               <View style={styles.cardHeader}>
                 <View style={[styles.cardIconContainer, { backgroundColor: selectedLesson.iconBg }]}>
                   {getCategoryIcon(selectedLesson.category, selectedLesson.color, 24)}
@@ -3040,6 +3082,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(100,116,139,0.25)',
     marginVertical: 22,
   },
+
   lockedModuleTip: {
     fontSize: 12,
     color: '#64748B',
@@ -3066,6 +3109,29 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     letterSpacing: 0.3,
   },
-
+  // ── NEW: Locked Module Container styles ──────────────────────────────
+  lockedModuleContainer: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  lockedRefreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.25)',
+    marginBottom: 12,
+    alignSelf: 'center',
+  },
+  lockedRefreshBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
 
 });

@@ -13,6 +13,7 @@ import {
     Platform,
     Modal,
     ScrollView,
+    StatusBar,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
 import WebView from 'react-native-webview';
@@ -27,6 +28,9 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Android's built-in SafeAreaView is a no-op, so pad the top manually.
+const ANDROID_TOP_INSET = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
 
 // ─── SINGLE APP-WIDE FONT ───────────────────────────────────────────────────
 const FONT_FAMILY = Platform.select({ ios: 'Avenir Next', android: 'sans-serif', default: 'System' });
@@ -1240,6 +1244,9 @@ export default function ChallengeScreen() {
         setShowResults(false);
 
         if (mode === 'infinite') {
+            // 🔥 Save performance data BEFORE awarding XP (triggers notifications)
+            await saveChallengeResults();
+
             // Award XP and go to XP progress screen
             const result = await awardModuleXp(starRating);
 
@@ -1288,20 +1295,20 @@ export default function ChallengeScreen() {
             }
             return;
         }
+
         // Master mode logic
         const remaining = remainingSigns;
         if (remaining.length === 0) {
-            // This stage is fully mastered
-            const result = await awardModuleXp(starRating);
+            // This stage is fully mastered - 🔥 Save performance data FIRST
             await saveChallengeResults();
+
+            const result = await awardModuleXp(starRating);
 
             // Use cumulativeXp which tracks XP across all stages
             const newCumulativeXp = cumulativeXp + xpEarned;
             setCumulativeXp(newCumulativeXp);
 
-            // ─── PLAN-BASED ADVANCE (replaces STAGE_ORDER iteration) ─────────────
-            // Look up the next entry in the pre-fetched audit plan. Only stages
-            // with weak signs are in the plan, so no WebView flash for skipped ones.
+            // ─── PLAN-BASED ADVANCE ─────────────────────────────
             const nextPlanIdx = masterCurrentPlanIndex + 1;
             const nextPlanEntry = masterStagePlan[nextPlanIdx];
 
@@ -1313,24 +1320,20 @@ export default function ChallengeScreen() {
             }
 
             // Last stage complete — show XP progress with cumulative XP
-            // Get the current user's level and total XP from the last result
             const level = result?.level || 1;
             const totalXp = result?.total_xp || 0;
-            // Use cumulativeXp for the session XP (all stages combined)
             const sessionXp = newCumulativeXp || xpEarned || 0;
             const previousXp = totalXp - sessionXp;
             const levelName = getLevelName(level);
             const nextLevelXp = getNextLevelXp(level);
+            await saveChallengeCompletion();
 
-            // Fetch streak
             let streakDays = 0;
             try {
                 const streakData = await api.getStreak();
                 streakDays = streakData.streak_days || 0;
-                console.log('📊 Fetched streak from API:', streakDays);
             } catch (error) {
                 console.error('Error fetching streak:', error);
-                streakDays = 0;
             }
 
             router.push({
@@ -1352,7 +1355,61 @@ export default function ChallengeScreen() {
         }
     };
 
+    // ─── SAVE CHALLENGE COMPLETION TO NOTIFY TEACHER ──────────────────────────
+    const saveChallengeCompletion = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return;
+
+            const moduleNameMap: Record<string, string> = {
+                'alphabet': 'alphabet_part1',
+                'numbers': 'level1_numbers',
+                'greetings': 'level2_greetings',
+                'survival': 'level3_survival',
+            };
+            const moduleName = moduleNameMap[moduleType] || moduleType;
+
+            // Calculate stats from session
+            const mastered = Array.from(masteredSigns);
+            const practiced = Array.from(new Set(sessionHistory.map(h => h.sign)));
+
+            // Calculate total attempts (each session entry is one attempt)
+            const totalAttempts = sessionHistory.length;
+
+            // Calculate time spent (approximate from session history)
+            const totalTime = sessionHistory.reduce((sum, s) => sum + (s.timeTaken || 0), 0);
+
+            // Use starRating from state (already calculated)
+            const stars = starRating;
+
+            // XP earned from the challenge (already calculated)
+            const xp = xpEarned;
+
+            console.log(`📤 Saving challenge completion for teacher notification...`);
+            console.log(`📊 Mode: ${mode}, Module: ${moduleName}, XP: ${xp}, Stars: ${stars}`);
+
+            const result = await api.completeChallenge({
+                module_name: moduleName,
+                mode: mode,
+                signs_mastered: mastered,
+                signs_practiced: practiced,
+                total_attempts: totalAttempts,
+                star_rating: stars,
+                xp_earned: xp,
+                time_spent_seconds: Math.round(totalTime),
+            });
+
+            if (result && result.success) {
+                console.log('✅ Challenge completion saved, teacher notified!');
+            }
+        } catch (error) {
+            console.error('❌ Error saving challenge completion:', error);
+        }
+    };
+
+
     // ─── HANDLE FINISH INFINITE MODE ──────────────────────────────────────────
+
     const handleFinishInfinite = async () => {
         // HARD STOP everything
         console.log('🛑 Finishing Infinite Mode - HARD STOP');
@@ -1412,8 +1469,14 @@ export default function ChallengeScreen() {
         setShowFinishButton(false);
         setShowResults(true); // Show results modal immediately
         setIsProcessing(false);
-    };
 
+        // 🔥 IMPORTANT: Save performance data after finishing infinite mode
+        // This ensures teacher notifications are triggered
+        await saveChallengeResults();
+
+        // 🔥 NEW: Save challenge completion to notify teacher
+        await saveChallengeCompletion(); // <-- ADD THIS LINE
+    };
     // ─── GET LEVEL NAME ──────────────────────────────────────────────────────────
     const getLevelName = (level: number): string => {
         const levelNames: Record<number, string> = {
@@ -1486,6 +1549,7 @@ export default function ChallengeScreen() {
         }
     };
     // ─── SAVE CHALLENGE RESULTS ─────────────────────────────────────────
+    // ─── SAVE CHALLENGE RESULTS ─────────────────────────────────────────
     const saveChallengeResults = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
@@ -1502,8 +1566,7 @@ export default function ChallengeScreen() {
             // Convert session history to API format
             const performance = allSigns.map(sign => {
                 const history = sessionHistory.filter(h => h.sign === sign);
-                // Each entry in history is ONE attempt (success or failure)
-                const totalAttempts = history.length;  // ← This is the REAL attempt count
+                const totalAttempts = history.length;
                 const successCount = history.filter(h => h.success).length;
 
                 return {
@@ -1515,8 +1578,7 @@ export default function ChallengeScreen() {
                 };
             });
 
-
-            // ✅ Skip saving if no performance data (all signs mastered already)
+            // ✅ Skip saving if no performance data
             const totalAttempts = performance.reduce((sum, p) => sum + p.attempts, 0);
             if (totalAttempts === 0) {
                 console.log(`ℹ️ No new performance data for ${moduleName}, skipping save`);
@@ -1526,6 +1588,7 @@ export default function ChallengeScreen() {
             console.log(`📤 Saving challenge results for module: ${moduleName}`);
             console.log('📊 Performance data:', JSON.stringify(performance, null, 2));
 
+            // 🔥 This calls the backend which triggers teacher notifications
             const result = await api.saveGesturePerformance(
                 moduleName,
                 performance,
@@ -1534,8 +1597,15 @@ export default function ChallengeScreen() {
 
             if (result && result.success) {
                 console.log('✅ Challenge results saved successfully!');
+
+                // 🔥 Teacher notification is already triggered by the backend
+                // via notifyTeacherAboutModuleCompletion in StudentAuthController.php
+
+                // The backend checks if ALL letters have data and sends notification
+                console.log('📨 Teacher notification will be sent if module is complete');
             }
 
+            // Award module XP (if not already awarded)
             const starRating = remainingSigns.length === 0 ? 3 :
                 remainingSigns.length <= 3 ? 2 : 1;
             await api.awardModuleXp(moduleName, starRating);
@@ -2896,6 +2966,7 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#eaf5fd',
+        paddingTop: ANDROID_TOP_INSET,
     },
     center: {
         flex: 1,
@@ -3034,7 +3105,8 @@ const styles = StyleSheet.create({
     },
 
     webviewContainer: {
-        height: SCREEN_HEIGHT * 0.65,
+        flex: 1,
+        minHeight: SCREEN_HEIGHT * 0.55,
         marginHorizontal: 12,
         marginBottom: 12,
         borderRadius: 24,

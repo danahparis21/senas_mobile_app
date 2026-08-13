@@ -4,7 +4,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     Pressable,
     ActivityIndicator,
     Platform,
@@ -18,6 +17,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -258,6 +258,8 @@ export default function WebViewSurvivalScreen() {
 
     const soundCooldownRef = useRef<number>(0);
     const SOUND_COOLDOWN_MS = 800;
+    const [hintUsage, setHintUsage] = useState<Record<string, number>>({});
+    const [moduleSessionId] = useState<string>(`session_${Date.now()}`);
 
     // ── Module Name ──────────────────────────────────────────────────────────
     const MODULE_NAME = 'level3_survival';
@@ -273,18 +275,44 @@ export default function WebViewSurvivalScreen() {
         setHintsCurrentIndex(index >= 0 ? index : 0);
         setShowHintsModal(true);
         setIsStruggling(false);
-    };
 
+        // ✅ TRACK HINT USAGE
+        if (currentGesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [currentGesture]: (prev[currentGesture] || 0) + 1
+            }));
+            console.log(`💡 Hint opened for: ${currentGesture}`);
+        }
+    };
     const goToPreviousHint = () => {
         setHintsCurrentIndex(prev =>
             prev > 0 ? prev - 1 : SURVIVAL_GESTURES.length - 1
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const gesture = SURVIVAL_GESTURES[hintsCurrentIndex > 0 ? hintsCurrentIndex - 1 : SURVIVAL_GESTURES.length - 1];
+        if (gesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [gesture]: (prev[gesture] || 0) + 1
+            }));
+        }
     };
 
     const goToNextHint = () => {
         setHintsCurrentIndex(prev =>
             prev < SURVIVAL_GESTURES.length - 1 ? prev + 1 : 0
         );
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATION
+        const gesture = SURVIVAL_GESTURES[hintsCurrentIndex < SURVIVAL_GESTURES.length - 1 ? hintsCurrentIndex + 1 : 0];
+        if (gesture && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [gesture]: (prev[gesture] || 0) + 1
+            }));
+        }
     };
 
     const currentHintGesture = SURVIVAL_GESTURES[hintsCurrentIndex];
@@ -477,7 +505,7 @@ export default function WebViewSurvivalScreen() {
     };
 
     // ─── SAVE PERFORMANCE ──────────────────────────────────────────────────────
-    const saveSingleGesturePerformance = async (gesture: string) => {
+    const saveSingleGesturePerformance = async (gesture: string, explicitHintCount?: number) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return null;
@@ -491,11 +519,15 @@ export default function WebViewSurvivalScreen() {
 
             if (data.attempts === 0) return null;
 
-            // Log the data being sent
+            // ✅ Use explicit hint count if provided, otherwise check hintUsage
+            const hintCount = explicitHintCount !== undefined ? explicitHintCount : (hintUsage[gesture] || 0);
+            const hintData = hintCount > 0 ? { [gesture]: hintCount } : null;
+
             console.log(`📊 Saving ${gesture}:`, {
                 attempts: data.attempts,
                 wrong: data.wrongAttempts,
-                success: data.successCount
+                success: data.successCount,
+                hints: hintCount
             });
 
             const gesturePerformance = [{
@@ -509,11 +541,12 @@ export default function WebViewSurvivalScreen() {
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
                 gesturePerformance,
-                `session_${Date.now()}`
+                moduleSessionId,
+                hintData
             );
 
             if (result && result.success) {
-                console.log(`✅ ${gesture} saved!`);
+                console.log(`✅ ${gesture} saved! Hint count: ${hintCount}`);
                 return result;
             }
             return null;
@@ -522,7 +555,6 @@ export default function WebViewSurvivalScreen() {
             return null;
         }
     };
-
     const saveAllPerformance = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
@@ -547,14 +579,20 @@ export default function WebViewSurvivalScreen() {
             const totalAttempts = gesturePerformances.reduce((sum, g) => sum + g.attempts, 0);
             if (totalAttempts === 0) return null;
 
+            const hasHints = Object.keys(hintUsage).length > 0;
+
             const result = await api.saveGesturePerformance(
                 MODULE_NAME,
                 gesturePerformances,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use consistent session ID
+                hasHints ? hintUsage : null
             );
 
             if (result && result.success) {
                 console.log('✅ Performance saved!');
+                if (result.is_module_complete) {
+                    console.log('🎉 Module complete notification sent!');
+                }
                 return result;
             }
             return null;
@@ -563,6 +601,7 @@ export default function WebViewSurvivalScreen() {
             return null;
         }
     };
+
 
     // ─── HANDLE DETECTION ────────────────────────────────────────────────
     const handleDetection = async (data: any) => {
@@ -593,8 +632,9 @@ export default function WebViewSurvivalScreen() {
             const now = Date.now();
             const target = getCurrentTarget();
 
-            // Don't count attempts for already completed gestures
+            // ✅ FIX: Check if this gesture is already completed
             if (completedGestures.has(gesture)) {
+                // If it's already completed, ignore it (but maybe log it)
                 return;
             }
 
@@ -625,6 +665,12 @@ export default function WebViewSurvivalScreen() {
                 if (!completedGestures.has(gesture) && isCooldownOver) {
                     detectionCooldownRef.current = now;
 
+                    // ✅ Get the current hint count for this gesture
+                    const currentHintCount = hintUsage[gesture] || 0;
+                    console.log(`💡 Hint count for ${gesture}: ${currentHintCount}`);
+
+                    console.log(`🎯 COMPLETED: ${gesture}`);
+
                     // Track successful attempts - count each one!
                     setGestureAttempts(prev => {
                         const current = prev[gesture] || { gesture, attempts: 0, wrongAttempts: 0, successCount: 0 };
@@ -641,7 +687,7 @@ export default function WebViewSurvivalScreen() {
                     // Track successful gestures for completion
                     successfulGesturesRef.current.add(gesture);
 
-                    // Award the gesture as completed
+                    // ✅ AWARD THE GESTURE AS COMPLETED
                     const newCompleted = new Set(completedGestures);
                     newCompleted.add(gesture);
                     setCompletedGestures(newCompleted);
@@ -658,7 +704,8 @@ export default function WebViewSurvivalScreen() {
                     // Save performance
                     if (!savedGesturesRef.current.has(gesture)) {
                         savedGesturesRef.current.add(gesture);
-                        await saveSingleGesturePerformance(gesture);
+                        const currentHintCount = hintUsage[gesture] || 0;
+                        await saveSingleGesturePerformance(gesture, currentHintCount);
                     }
 
                     // Show message
@@ -736,6 +783,7 @@ export default function WebViewSurvivalScreen() {
             }
         }
     };
+
     // ─── XP AWARD ──────────────────────────────────────────────────────────────
     const awardModuleXp = async (starRating: number) => {
         try {
@@ -835,7 +883,7 @@ export default function WebViewSurvivalScreen() {
             await saveSingleGesturePerformance(gesture);
         }
 
-        await saveAllPerformance();
+
 
         setShowResults(false);
 

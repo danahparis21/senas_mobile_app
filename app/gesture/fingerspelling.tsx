@@ -762,6 +762,12 @@ export default function FingerspellingScreen() {
         await playCompleteSound();
         await saveAllPerformance();
 
+        // 🔥 NEW: Save fingerspelling completion to notify teacher
+        // Wait a moment for the performance to save first
+        setTimeout(async () => {
+            await saveFingerspellingCompletion();
+        }, 1500);
+
         // Award XP based on mode
         setTimeout(async () => {
             const result = await awardXPByMode(wordMode, xpToAward, newStarRating);
@@ -800,6 +806,79 @@ export default function FingerspellingScreen() {
         } catch (error) {
             console.error('Error awarding XP:', error);
             return null;
+        }
+    };
+
+    const saveFingerspellingCompletion = async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return;
+
+            // Calculate stats from session
+            const wordsCompleted = Array.from(completedWords);
+            const totalWords = wordsToSpell.length;
+            const totalLetters = wordsToSpell.reduce((sum, word) => sum + word.length, 0);
+
+            // Calculate total attempts (including wrong attempts from wordResults)
+            let totalAttempts = 0;
+            let totalWrong = 0;
+            Object.values(wordResults).forEach((w: WordResult) => {
+                totalAttempts += w.attempts || 0;
+                totalWrong += w.wrongAttempts || 0;
+            });
+
+            // Use starRating from state
+            const stars = starRating;
+            const xp = xpResult?.xp_earned || 0;
+
+            // Calculate time spent
+            const timeSpent = endTime ? Math.round((endTime - startTime) / 1000) : 0;
+
+            // Get the actual words that were practiced (the ones with data)
+            const wordsPracticed = Object.keys(wordResults).filter(
+                word => wordResults[word]?.attempts > 0 || wordResults[word]?.successCount > 0
+            );
+
+            // Get letters that were mastered (signed correctly at least once)
+            const lettersMastered: string[] = [];
+            wordsPracticed.forEach(word => {
+                word.split('').forEach(letter => {
+                    if (!lettersMastered.includes(letter)) {
+                        lettersMastered.push(letter);
+                    }
+                });
+            });
+
+            const modeLabel = wordMode === 'random' ? 'Random Words' : 'Custom Words';
+            const modeEmoji = wordMode === 'random' ? '🎲' : '✏️';
+
+            console.log(`📤 Saving fingerspelling completion for teacher notification...`);
+            console.log(`📊 Mode: ${modeLabel}, Words: ${totalWords}, XP: ${xp}, Stars: ${stars}`);
+
+            const result = await api.completeChallenge({
+                module_name: 'fingerspelling',
+                mode: wordMode === 'random' ? 'master' : 'infinite', // Use existing mode types
+                signs_mastered: lettersMastered,
+                signs_practiced: wordsPracticed,
+                total_attempts: totalAttempts + totalWrong,
+                star_rating: stars,
+                xp_earned: xp,
+                time_spent_seconds: timeSpent,
+                // Extra data specific to fingerspelling
+                data: {
+                    word_mode: wordMode,
+                    words: wordsToSpell,
+                    words_completed: wordsCompleted,
+                    total_letters: totalLetters,
+                    wrong_attempts: totalWrong,
+                }
+            });
+
+            if (result && result.success) {
+                console.log('✅ Fingerspelling completion saved, teacher notified!');
+            }
+        } catch (error) {
+            console.error('❌ Error saving fingerspelling completion:', error);
         }
     };
 

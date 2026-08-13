@@ -4,7 +4,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     Pressable,
     ActivityIndicator,
     Platform,
@@ -18,6 +17,7 @@ import {
     LayoutAnimation,
     UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -114,6 +114,10 @@ export default function WebViewCameraScreen() {
     const [isStruggling, setIsStruggling] = useState(false);
     const [hintPulseAnim] = useState(new Animated.Value(1));
     const [hintShakeAnim] = useState(new Animated.Value(0));
+
+    const [hintUsage, setHintUsage] = useState<Record<string, number>>({});
+
+    const [moduleSessionId] = useState<string>(`session_${Date.now()}`);
 
     // Add these functions for the hint button animations
     const animateHintButton = () => {
@@ -248,18 +252,49 @@ export default function WebViewCameraScreen() {
         const index = ALPHABET_PART1.indexOf(currentLetter);
         setHintsCurrentIndex(index >= 0 ? index : 0);
         setShowHintsModal(true);
+
+        // ✅ TRACK HINT USAGE - ADD THIS
+        if (currentLetter && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [currentLetter]: (prev[currentLetter] || 0) + 1
+            }));
+            console.log(`💡 Hint opened for letter: ${currentLetter}`);
+        }
     };
 
     const goToPreviousHint = () => {
-        setHintsCurrentIndex(prev =>
-            prev > 0 ? prev - 1 : ALPHABET_PART1.length - 1
-        );
+        const prevIndex = hintsCurrentIndex > 0
+            ? hintsCurrentIndex - 1
+            : ALPHABET_PART1.length - 1;
+        setHintsCurrentIndex(prevIndex);
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATED LETTER - ADD THIS
+        const letter = ALPHABET_PART1[prevIndex];
+        if (letter && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [letter]: (prev[letter] || 0) + 1
+            }));
+            console.log(`💡 Hint navigated to letter: ${letter}`);
+        }
     };
 
     const goToNextHint = () => {
-        setHintsCurrentIndex(prev =>
-            prev < ALPHABET_PART1.length - 1 ? prev + 1 : 0
-        );
+        const nextIndex = hintsCurrentIndex < ALPHABET_PART1.length - 1
+            ? hintsCurrentIndex + 1
+            : 0;
+        setHintsCurrentIndex(nextIndex);
+
+        // ✅ TRACK HINT USAGE FOR NAVIGATED LETTER - ADD THIS
+        const letter = ALPHABET_PART1[nextIndex];
+        if (letter && !isModuleComplete) {
+            setHintUsage(prev => ({
+                ...prev,
+                [letter]: (prev[letter] || 0) + 1
+            }));
+            console.log(`💡 Hint navigated to letter: ${letter}`);
+        }
     };
 
     const currentHintLetter = ALPHABET_PART1[hintsCurrentIndex];
@@ -702,14 +737,19 @@ export default function WebViewCameraScreen() {
 
             console.log(`📤 Saving performance for letter ${letter}...`);
 
+            const hintCount = hintUsage[letter] || 0;
+            const hintData = hintCount > 0 ? { [letter]: hintCount } : null;
+
+            // ✅ USE THE SAME SESSION ID FOR ALL LETTERS
             const result = await api.saveGesturePerformance(
                 'alphabet_part1',
                 letterPerformance,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use the SAME session ID, not new Date.now()
+                hintData
             );
 
             if (result && result.success) {
-                console.log(`✅ Letter ${letter} saved!`);
+                console.log(`✅ Letter ${letter} saved! Hint count: ${hintCount}`);
                 return result;
             } else {
                 console.error(`❌ Failed to save letter ${letter}:`, result);
@@ -720,7 +760,6 @@ export default function WebViewCameraScreen() {
             return null;
         }
     };
-
     // ─── SAVE ALL ON COMPLETION ──────────────────────────────────────
     const saveAllPerformance = async () => {
         try {
@@ -746,16 +785,22 @@ export default function WebViewCameraScreen() {
             const totalAttempts = letterPerformances.reduce((sum, l) => sum + l.attempts, 0);
             if (totalAttempts === 0) return null;
 
-            console.log(`📤 Saving final performance...`);
+            console.log(`📤 Saving final performance with hints...`);
+            console.log('📊 Hint usage:', hintUsage);
 
+            const hasHints = Object.keys(hintUsage).length > 0;
             const result = await api.saveGesturePerformance(
                 'alphabet_part1',
                 letterPerformances,
-                `session_${Date.now()}`
+                moduleSessionId,  // ← Use the SAME session ID
+                hasHints ? hintUsage : null
             );
 
             if (result && result.success) {
                 console.log('✅ Final performance saved!');
+                if (result.is_module_complete) {
+                    console.log('🎉 Module complete notification sent to teacher!');
+                }
                 return result;
             }
             return null;
@@ -764,21 +809,21 @@ export default function WebViewCameraScreen() {
             return null;
         }
     };
-
     // Update the useEffect for module completion
-    useEffect(() => {
-        if (isModuleComplete) {
-            saveAllPerformance().then(result => {
-                if (result) {
-                    console.log('📊 All performance data saved');
-                }
-            });
-        }
-    }, [isModuleComplete]);
+    // useEffect(() => {
+    //     if (isModuleComplete) {
+    //         saveAllPerformance().then(result => {
+    //             if (result) {
+    //                 console.log('📊 All performance data saved');
+    //             }
+    //         });
+    //     }
+    // }, [isModuleComplete]);
 
     const [xpResult, setXpResult] = useState<any>(null);
 
     const handleContinue = async () => {
+        // Save any letters that might not have been saved yet
         const unsavedLetters = ALPHABET_PART1.filter(
             letter => completedLetters.has(letter) && !savedLettersRef.current.has(letter)
         );
@@ -787,11 +832,11 @@ export default function WebViewCameraScreen() {
             await saveSingleLetterPerformance(letter);
         }
 
-        await saveAllPerformance();
+        // NO saveAllPerformance() here - it already ran in useEffect
 
         setShowResults(false);
 
-        // Fetch streak regardless of XP
+        // Fetch streak
         let streakDays = 0;
         try {
             const streakData = await api.getStreak();
