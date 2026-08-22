@@ -1,5 +1,5 @@
 // app/help.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -14,6 +14,7 @@ import {
     Platform,
     TouchableWithoutFeedback,
     Keyboard,
+    Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -95,6 +96,75 @@ function ChevronForwardIcon() {
     );
 }
 
+function CloseIcon() {
+    return (
+        <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <Path d="M18 6L6 18M6 6l12 12" stroke="#0f3172" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+    );
+}
+
+// ── Help Request Types & Helpers ──────────────────────────────────────
+type HelpRequestStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
+
+type HelpRequest = {
+    id: number;
+    message: string;
+    status: HelpRequestStatus;
+    admin_response: string | null;
+    created_at: string;
+    resolved_at: string | null;
+    responded_at: string | null;
+};
+
+const STATUS_META: Record<HelpRequestStatus, { label: string; color: string; bg: string }> = {
+    pending: { label: 'Pending', color: '#B45309', bg: 'rgba(245,158,11,0.14)' },
+    in_progress: { label: 'In Progress', color: '#1D4ED8', bg: 'rgba(37,99,235,0.12)' },
+    resolved: { label: 'Resolved', color: '#15803D', bg: 'rgba(34,197,94,0.14)' },
+    closed: { label: 'Closed', color: '#4B5563', bg: 'rgba(107,114,128,0.14)' },
+};
+
+function formatRequestDate(dateString: string) {
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    } catch {
+        return dateString;
+    }
+}
+
+// ── Help Request Row Component ────────────────────────────────────────
+function HelpRequestRow({ request, onPress }: { request: HelpRequest; onPress: () => void }) {
+    const meta = STATUS_META[request.status] || STATUS_META.pending;
+    const hasResponse = !!request.admin_response;
+
+    return (
+        <Pressable style={styles.requestRow} onPress={onPress}>
+            <View style={styles.requestRowTop}>
+                <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
+                    <Text style={[styles.statusBadgeText, { color: meta.color }]}>{meta.label}</Text>
+                </View>
+                <Text style={styles.requestDate}>{formatRequestDate(request.created_at)}</Text>
+            </View>
+            <Text style={styles.requestMessage} numberOfLines={2}>
+                {request.message}
+            </Text>
+            <View style={styles.requestRowBottom}>
+                <Text style={[styles.requestReplyHint, hasResponse && styles.requestReplyHintActive]}>
+                    {hasResponse ? '💬 Admin replied — tap to view' : 'Waiting for a response'}
+                </Text>
+                <ChevronForwardIcon />
+            </View>
+        </Pressable>
+    );
+}
+
 // ── FAQ Item Component ────────────────────────────────────────────────
 function FAQItem({ question, answer }: { question: string; answer: string }) {
     const [expanded, setExpanded] = useState(false);
@@ -156,6 +226,25 @@ export default function HelpSupport() {
     const scrollViewRef = useRef<ScrollView>(null);
     const textInputRef = useRef<TextInput>(null);
 
+    const [helpRequests, setHelpRequests] = useState<HelpRequest[]>([]);
+    const [loadingRequests, setLoadingRequests] = useState(true);
+    const [selectedRequest, setSelectedRequest] = useState<HelpRequest | null>(null);
+
+    const fetchHelpRequests = useCallback(async () => {
+        try {
+            const result = await api.getHelpRequests();
+            setHelpRequests(result.help_requests || []);
+        } catch (error) {
+            console.error('❌ Failed to load help requests:', error);
+        } finally {
+            setLoadingRequests(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchHelpRequests();
+    }, [fetchHelpRequests]);
+
     const faqs = [
         {
             question: 'How do I start a lesson?',
@@ -214,7 +303,7 @@ export default function HelpSupport() {
                         text: 'OK',
                         onPress: () => {
                             setMessage('');
-                            router.back();
+                            fetchHelpRequests();
                         }
                     }
                 ]
@@ -373,12 +462,114 @@ export default function HelpSupport() {
                                 </Pressable>
 
                                 {/* Extra bottom padding for keyboard */}
-                                <View style={styles.bottomSpacer} />
                             </View>
+
+                            <View style={styles.divider} />
+
+                            {/* Your Help Requests Section */}
+                            <View style={styles.requestsSection}>
+                                <View style={styles.sectionHeader}>
+                                    <View style={styles.iconBox}>
+                                        <FAQIcon />
+                                    </View>
+                                    <Text style={styles.sectionTitle}>Your Requests</Text>
+                                </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Track your past messages and see admin responses.
+                                </Text>
+
+                                {loadingRequests ? (
+                                    <ActivityIndicator color="#1848c8" style={{ marginTop: 8 }} />
+                                ) : helpRequests.length === 0 ? (
+                                    <Text style={styles.noRequestsText}>
+                                        You haven't sent any messages yet.
+                                    </Text>
+                                ) : (
+                                    <View style={styles.requestsList}>
+                                        {helpRequests.map((request) => (
+                                            <HelpRequestRow
+                                                key={request.id}
+                                                request={request}
+                                                onPress={() => setSelectedRequest(request)}
+                                            />
+                                        ))}
+                                    </View>
+                                )}
+                            </View>
+
+                            <View style={styles.bottomSpacer} />
                         </View>
                     </ScrollView>
                 </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
+
+            {/* Help Request Detail Modal */}
+            <Modal
+                visible={!!selectedRequest}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setSelectedRequest(null)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Your Request</Text>
+                            <Pressable style={styles.modalCloseBtn} onPress={() => setSelectedRequest(null)}>
+                                <CloseIcon />
+                            </Pressable>
+                        </View>
+
+                        {selectedRequest && (
+                            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                                <View
+                                    style={[
+                                        styles.statusBadge,
+                                        styles.modalStatusBadge,
+                                        { backgroundColor: (STATUS_META[selectedRequest.status] || STATUS_META.pending).bg },
+                                    ]}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.statusBadgeText,
+                                            { color: (STATUS_META[selectedRequest.status] || STATUS_META.pending).color },
+                                        ]}
+                                    >
+                                        {(STATUS_META[selectedRequest.status] || STATUS_META.pending).label}
+                                    </Text>
+                                </View>
+
+                                <Text style={styles.modalLabel}>Your Message</Text>
+                                <Text style={styles.modalDate}>{formatRequestDate(selectedRequest.created_at)}</Text>
+                                <View style={styles.modalMessageBox}>
+                                    <Text style={styles.modalMessageText}>{selectedRequest.message}</Text>
+                                </View>
+
+                                <Text style={styles.modalLabel}>Admin Response</Text>
+                                {selectedRequest.admin_response ? (
+                                    <>
+                                        {selectedRequest.responded_at && (
+                                            <Text style={styles.modalDate}>
+                                                {formatRequestDate(selectedRequest.responded_at)}
+                                            </Text>
+                                        )}
+                                        <View style={styles.modalResponseBox}>
+                                            <Text style={styles.modalResponseText}>
+                                                {selectedRequest.admin_response}
+                                            </Text>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <View style={styles.modalWaitingBox}>
+                                        <Text style={styles.modalWaitingText}>
+                                            No response yet. We'll get back to you within 24 hours.
+                                        </Text>
+                                    </View>
+                                )}
+                            </ScrollView>
+                        )}
+                    </View>
+                </View>
+            </Modal>
 
             {/* Tutorial Modals */}
             <GestureTutorialModal
@@ -625,5 +816,166 @@ const styles = StyleSheet.create({
     },
     bottomSpacer: {
         height: 100, // Extra space at bottom for keyboard
+    },
+
+    // ── Your Requests Section ──────────────────────────────────────
+    requestsSection: {
+        marginTop: 4,
+    },
+    noRequestsText: {
+        fontSize: 13.5,
+        color: '#6B7280',
+        fontWeight: '500',
+        paddingLeft: 44,
+        marginTop: 4,
+    },
+    requestsList: {
+        gap: 10,
+    },
+    requestRow: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.06)',
+        padding: 14,
+        gap: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.02,
+        shadowRadius: 4,
+        elevation: 1,
+    },
+    requestRowTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    statusBadge: {
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        borderRadius: 20,
+        alignSelf: 'flex-start',
+    },
+    statusBadgeText: {
+        fontSize: 11.5,
+        fontWeight: '700',
+    },
+    requestDate: {
+        fontSize: 11.5,
+        color: '#9CA3AF',
+        fontWeight: '500',
+    },
+    requestMessage: {
+        fontSize: 14,
+        color: '#1F2937',
+        fontWeight: '500',
+        lineHeight: 19,
+    },
+    requestRowBottom: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    requestReplyHint: {
+        fontSize: 12.5,
+        color: '#9CA3AF',
+        fontWeight: '600',
+    },
+    requestReplyHintActive: {
+        color: '#1848c8',
+    },
+
+    // ── Help Request Detail Modal ──────────────────────────────────
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(15,49,114,0.35)',
+        justifyContent: 'flex-end',
+    },
+    modalCard: {
+        backgroundColor: '#eaf5fd',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingTop: 8,
+        paddingHorizontal: 20,
+        paddingBottom: 30,
+        maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+    },
+    modalTitle: {
+        fontSize: 17,
+        fontWeight: '800',
+        color: '#0f3172',
+    },
+    modalCloseBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(15,49,114,0.06)',
+    },
+    modalScroll: {
+        marginTop: 4,
+    },
+    modalStatusBadge: {
+        marginBottom: 16,
+    },
+    modalLabel: {
+        fontSize: 12.5,
+        fontWeight: '700',
+        color: '#6B7280',
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
+        marginBottom: 4,
+    },
+    modalDate: {
+        fontSize: 11.5,
+        color: '#9CA3AF',
+        fontWeight: '500',
+        marginBottom: 8,
+    },
+    modalMessageBox: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(15,49,114,0.06)',
+        padding: 14,
+        marginBottom: 20,
+    },
+    modalMessageText: {
+        fontSize: 14,
+        color: '#1F2937',
+        lineHeight: 20,
+    },
+    modalResponseBox: {
+        backgroundColor: 'rgba(37,99,235,0.08)',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(37,99,235,0.16)',
+        padding: 14,
+        marginBottom: 10,
+    },
+    modalResponseText: {
+        fontSize: 14,
+        color: '#0f3172',
+        lineHeight: 20,
+        fontWeight: '500',
+    },
+    modalWaitingBox: {
+        backgroundColor: 'rgba(107,114,128,0.08)',
+        borderRadius: 14,
+        padding: 14,
+        marginBottom: 10,
+    },
+    modalWaitingText: {
+        fontSize: 13.5,
+        color: '#6B7280',
+        fontWeight: '500',
+        lineHeight: 19,
     },
 });
