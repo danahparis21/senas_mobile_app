@@ -29,8 +29,8 @@ export function WebViewMedia({
     objectFit = 'cover',
     objectPosition = 'center',
 }: WebViewMediaProps) {
-    // Use the API_BASE_URL from config
-    // Replace /api with /media-player
+    // All media — including YouTube URLs — goes through the Laravel media-player endpoint.
+    // The media-player page handles rendering YouTube links, images, and videos correctly.
     const baseUrl = API_BASE_URL.replace('/api', '/media-player');
 
     let aspectRatio = '16:9';

@@ -1338,7 +1338,7 @@ const styles = StyleSheet.create({
     imageDivider: { justifyContent: 'center', alignItems: 'center', width: 20, paddingHorizontal: 2 },
     imageDividerIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(24,72,200,0.06)', alignItems: 'center', justifyContent: 'center' },
 
-    imageCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12, borderWidth: 2, borderColor: 'rgba(15,49,114,0.10)', padding: 10, alignItems: 'center', justifyContent: 'center', minHeight: 132, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, position: 'relative' },
+    imageCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12, borderWidth: 2, borderColor: 'rgba(15,49,114,0.10)', padding: 10, alignItems: 'center', justifyContent: 'center', minHeight: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, position: 'relative' },
     imageCardDragging: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.08)', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 10, borderWidth: 2 },
     imageCardMatched: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.06)', borderStyle: 'dashed', opacity: 0.6 },
     imageCardExamMatched: { borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.06)', borderStyle: 'solid', opacity: 0.8 },
@@ -1347,14 +1347,20 @@ const styles = StyleSheet.create({
     imageCardSuccess: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
     imageCardContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
     imageCardImg: {
-        width: 96,
-        height: 96,
+        // Widened from a 96x96 square to a landscape box — the sign videos
+        // are wider than they are tall, so a square "cover" crop was
+        // trimming the sides (usually cutting off the right side of the
+        // sign). A wider box that better matches the source aspect ratio
+        // shows much more of the frame without needing to touch the
+        // underlying media component.
+        width: 128,
+        height: 92,
         borderRadius: 14,
         backgroundColor: 'rgba(15,49,114,0.02)',
         overflow: 'hidden',  // ✅ Add this for WebView
     },
     imageCardText: { fontSize: 13, fontWeight: '600', color: '#0f3172', marginTop: 4, textAlign: 'center' },
-    imageDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.15)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 132 },
+    imageDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.15)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 140 },
     imageDropZoneContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
     imageDropZoneLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8', textAlign: 'center' },
 

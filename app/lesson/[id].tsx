@@ -291,8 +291,7 @@ function LessonMedia({ path, style, contentType, mediaType = 'content', hideCont
 
   if (!mediaUrl) return null;
 
-  // ✅ FIX: Only use video if the file itself is a video
-  // The content type should NOT override the file type
+  // Only use video player if the file itself is a video extension
   const shouldUseVideo = isVideo;
 
   return (
@@ -356,6 +355,115 @@ function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose:
           </View>
         </Pressable>
       </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Finishing Quiz / Loading Modal ─────────────────────────────────────────
+// Shown the instant the student finishes the last question (button tap or
+// gesture/drag-drop success) so there is never a "dead" screen while we wait
+// for the submit-quiz network request to resolve.
+const FINISHING_MESSAGES = [
+  'Calculating your score…',
+  'Adding up your XP…',
+  'Checking the leaderboard…',
+  'Almost there…',
+];
+
+function LoadingDot({ bounceAnim, delay }: { bounceAnim: Animated.Value; delay: number }) {
+  const translateY = bounceAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -8, 0],
+  });
+  return (
+    <Animated.View
+      style={[
+        s.finishingDot,
+        { transform: [{ translateY }], opacity: bounceAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.5, 1, 0.5] }) },
+      ]}
+    />
+  );
+}
+
+function FinishingQuizModal({ visible }: { visible: boolean }) {
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    glowAnim.setValue(0);
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+      ])
+    );
+    glowLoop.start();
+
+    const makeDotLoop = (anim: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: 400, useNativeDriver: true }),
+          Animated.delay(600 - delay),
+        ])
+      );
+    const dotLoop1 = makeDotLoop(dot1, 0);
+    const dotLoop2 = makeDotLoop(dot2, 150);
+    const dotLoop3 = makeDotLoop(dot3, 300);
+    dotLoop1.start();
+    dotLoop2.start();
+    dotLoop3.start();
+
+    setMessageIndex(0);
+    const interval = setInterval(() => {
+      setMessageIndex(i => (i + 1) % FINISHING_MESSAGES.length);
+    }, 1500);
+
+    return () => {
+      glowLoop.stop();
+      dotLoop1.stop();
+      dotLoop2.stop();
+      dotLoop3.stop();
+      clearInterval(interval);
+    };
+  }, [visible]);
+
+  const ringOuterScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
+  const ringOuterOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
+  const ringInnerScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+  const ringInnerOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.75, 0.25] });
+  const senyaScale = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={s.finishingOverlay}>
+        <View style={s.finishingGlowWrap}>
+          <Animated.View style={[s.finishingGlowRing, s.finishingGlowRingOuter, { transform: [{ scale: ringOuterScale }], opacity: ringOuterOpacity }]} />
+          <Animated.View style={[s.finishingGlowRing, s.finishingGlowRingInner, { transform: [{ scale: ringInnerScale }], opacity: ringInnerOpacity }]} />
+          <Animated.View style={{ transform: [{ scale: senyaScale }] }}>
+            <Image
+              source={require('../../assets/images/img/senya_teaching.png')}
+              style={s.finishingSenya}
+              contentFit="contain"
+            />
+          </Animated.View>
+        </View>
+
+        <Text style={s.finishingTitle}>Hang tight!</Text>
+        <Text style={s.finishingSubtitle}>{FINISHING_MESSAGES[messageIndex]}</Text>
+
+        <View style={s.finishingDotsRow}>
+          <LoadingDot bounceAnim={dot1} delay={0} />
+          <LoadingDot bounceAnim={dot2} delay={150} />
+          <LoadingDot bounceAnim={dot3} delay={300} />
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -460,7 +568,19 @@ export default function LessonViewer() {
   const [dragDropActive, setDragDropActive] = useState<boolean>(false);
   const [attemptHistory, setAttemptHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  // How many "rest of the leaderboard" rows (rank 4+) to render before
+  // collapsing behind a "Show more" button. Keeps the initial results
+  // screen short — no more rendering 30+ rows on every quiz completion —
+  // and keeps the Continue button reachable without a long scroll.
+  const [showAllRankings, setShowAllRankings] = useState(false);
+  const RANKINGS_PREVIEW_COUNT = 8;
   const [confettiFired, setConfettiFired] = useState(false);
+  // ── Quiz-finishing state ──
+  // Drives the loading modal + button disable so students get instant
+  // feedback instead of a screen that looks frozen while we wait on the
+  // submit-quiz request (and its follow-up progress/history calls).
+  const [isFinishingQuiz, setIsFinishingQuiz] = useState(false);
+  const isSubmittingQuizRef = useRef(false); // guards against duplicate/spam submissions
   const confettiRef = useRef<any>(null);
   const resultsFadeAnim = useRef(new Animated.Value(0)).current;
   const resultsScaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -752,6 +872,10 @@ export default function LessonViewer() {
       // Reset animation values BEFORE starting new animation
       resultsFadeAnim.setValue(0);
       resultsScaleAnim.setValue(0.85);
+      // Also reset the scroll-driven parallax value — otherwise a retake
+      // inherits whatever scroll offset was left over from scrolling down
+      // a long leaderboard, and the score card mounts already faded out.
+      parallelScrollY.setValue(0);
 
       // Start the animation
       Animated.parallel([
@@ -848,20 +972,32 @@ export default function LessonViewer() {
       setSelectedOption(null);
       setQuestionRevealed(false);
     } else {
-      // All questions answered - submit quiz
-      // Use a delay to ensure all state updates are processed
+      // All questions answered - submit quiz.
+      // Show the loading modal immediately so the student gets feedback
+      // right away, then give the state updater a brief tick to flush
+      // quizAnswersRef/currentScoreRef before we read them in submitQuiz.
       console.log('📊 All questions answered, submitting quiz...');
       console.log('📊 Current score:', currentScore);
       console.log('📊 Quiz answers:', quizAnswers);
 
+      setIsFinishingQuiz(true);
       setTimeout(() => {
         submitQuiz();
-      }, 300);
+      }, 50);
     }
   };
 
   const submitQuiz = async (): Promise<void> => {
     if (!lesson || !lesson.quiz) return;
+
+    // Guard against duplicate calls — e.g. a student spam-tapping
+    // "See Results" while the first request is still in flight.
+    if (isSubmittingQuizRef.current) {
+      console.log('⏳ Quiz submission already in progress, ignoring extra call');
+      return;
+    }
+    isSubmittingQuizRef.current = true;
+    setIsFinishingQuiz(true);
 
     const questions = lesson.quiz.questions;
     const latestQuizAnswers = quizAnswersRef.current;
@@ -934,19 +1070,26 @@ export default function LessonViewer() {
           level: response.level || 1,
           streakDays: response.streak_days || 0,
         });
+        // Show the results screen right away — the history/progress calls
+        // below don't need to block that, so run them in the background
+        // instead of stacking three sequential round-trips.
         setQuizSubmitted(true);
-        await fetchAttemptHistory();
 
-        await api.updateLessonProgress(id, {
+        fetchAttemptHistory(); // already catches its own errors internally
+
+        api.updateLessonProgress(id, {
           current_step: lesson.total_steps,
           lesson_completed: true,
           quiz_completed: true,
           quiz_score: percentage,
-        });
+        }).catch(error => console.error('Error updating progress after quiz:', error));
       }
     } catch (error) {
       console.error('Error submitting quiz:', error);
       alert('Failed to submit quiz. Please try again.');
+    } finally {
+      isSubmittingQuizRef.current = false;
+      setIsFinishingQuiz(false);
     }
   };
 
@@ -1011,19 +1154,19 @@ export default function LessonViewer() {
           <View style={[s.slideAccent, { backgroundColor: slideColor }]} />
           <Text style={[s.slideTitle, { color: slideColor }]}>{content.title}</Text>
           <Text style={s.slideBody}>{content.content_text}</Text>
-          {/* ✅ ADD THIS - Media rendering for lesson content */}
+          {/* Media rendering — YouTube links and files all go through WebViewMedia */}
           {content.media_url && (
             <LessonMedia
               path={content.media_url}
               style={{
                 width: '100%',
-                height: 250,
+                height: 220,
                 borderRadius: 12,
                 marginTop: 12,
                 backgroundColor: '#0f172a',
               }}
               contentType={content.content_type}
-              mediaType="content"  // ✅ Add this
+              mediaType="content"
             />
           )}
           <Text style={s.slideCounter}>{currentSlide + 1} / {lesson.contents.length}</Text>
@@ -1068,6 +1211,12 @@ export default function LessonViewer() {
   // ─── RENDER: Quiz Step-by-Step ──────────────────────────────────────────
   const renderQuiz = () => {
     if (!lesson.quiz || !currentQuestion) return null;
+
+    // Captured as a plain number here (where `lesson.quiz` is still
+    // narrowed) so the onComplete closures below don't need to re-read
+    // `lesson.quiz.questions.length` — TS can't carry the null-check
+    // narrowing into a nested closure since `lesson` is mutable state.
+    const totalQuizQuestions = lesson.quiz.questions.length;
 
     if (quizSubmitted) {
       return renderResults();
@@ -1154,6 +1303,13 @@ export default function LessonViewer() {
               });
             }
 
+            // If this was the last question, show the loading modal the
+            // instant the gesture is scored so there's no dead screen while
+            // we wait for the state update + submit request.
+            if (currentQuestionIndex >= totalQuizQuestions - 1) {
+              setIsFinishingQuiz(true);
+            }
+
             // Move to next question AFTER state updates have been processed
             setTimeout(() => {
               console.log('➡️ Moving to next question...');
@@ -1237,6 +1393,10 @@ export default function LessonViewer() {
                   currentScoreRef.current = newScore;
                   return newScore;
                 });
+              }
+
+              if (currentQuestionIndex >= totalQuizQuestions - 1) {
+                setIsFinishingQuiz(true);
               }
 
               setTimeout(() => {
@@ -1380,10 +1540,18 @@ export default function LessonViewer() {
         </View>
 
         {questionRevealed && (
-          <Pressable style={[s.primaryBtn, isCorrect && s.goldBtn]} onPress={handleNextQuestion}>
-            <Text style={s.primaryBtnText}>
-              {currentQuestionIndex < totalQuestions - 1 ? 'Next Question →' : 'See Results →'}
-            </Text>
+          <Pressable
+            style={[s.primaryBtn, isCorrect && s.goldBtn, isFinishingQuiz && s.primaryBtnDisabled]}
+            onPress={handleNextQuestion}
+            disabled={isFinishingQuiz}
+          >
+            {isFinishingQuiz ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={s.primaryBtnText}>
+                {currentQuestionIndex < totalQuestions - 1 ? 'Next Question →' : 'See Results →'}
+              </Text>
+            )}
           </Pressable>
         )}
       </>
@@ -1417,8 +1585,10 @@ export default function LessonViewer() {
           setCurrentScore(0);
           setQuizResult(null);
           setConfettiFired(false);
+          setShowAllRankings(false);
           resultsFadeAnim.setValue(0);
           resultsScaleAnim.setValue(0.85);
+          parallelScrollY.setValue(0);
           setCurrentSlide(0);
           quizAnswersRef.current = {};
           currentScoreRef.current = 0;
@@ -1480,6 +1650,8 @@ export default function LessonViewer() {
   const renderLeaderboardView = () => {
     const rankings = leaderboard;
     const rest = rankings.slice(3);
+    const visibleRest = showAllRankings ? rest : rest.slice(0, RANKINGS_PREVIEW_COUNT);
+    const hiddenCount = rest.length - visibleRest.length;
 
     const rank1 = rankings.find(r => r.rank === 1) || null;
     const rank2 = rankings.find(r => r.rank === 2) || null;
@@ -1664,15 +1836,22 @@ export default function LessonViewer() {
           ) : rest.length === 0 ? (
             <Text style={s.noRankingsText}>Only the top 3 are on the board so far!</Text>
           ) : (
-            rest.map((r, index) => {
+            visibleRest.map((r, index) => {
               const itemRank = r.rank;
+              // Same fallback the student-detail modal uses: prefer
+              // attempts_to_achieve (tries to reach their best score),
+              // falling back to the total attempts count. Previously this
+              // read `r.attempts` only, so rows where the backend sent
+              // attempts_to_achieve but left attempts empty rendered no
+              // number at all — just the word "tries".
+              const attemptsCount = r.attempts_to_achieve ?? r.attempts ?? 0;
               return (
                 <Pressable
                   key={r.student_id}
                   style={[
                     s.leaderboardListItem,
                     r.is_me && s.leaderboardListItemMe,
-                    index < rest.length - 1 && s.leaderboardListItemBorder
+                    index < visibleRest.length - 1 && s.leaderboardListItemBorder
                   ]}
                   onPress={() => handleStudentPress(r)}
                 >
@@ -1688,7 +1867,7 @@ export default function LessonViewer() {
                     <Text style={[s.listName, r.is_me && s.listNameMe]}>
                       {r.is_me ? 'You' : r.name}
                     </Text>
-                    <Text style={s.listAttempts}>{r.attempts} {r.attempts === 1 ? 'try' : 'tries'}</Text>
+                    <Text style={s.listAttempts}>{attemptsCount} {attemptsCount === 1 ? 'try' : 'tries'}</Text>
                   </View>
 
                   <Text style={[s.listScoreText, r.is_me && s.listScoreTextMe]}>
@@ -1697,6 +1876,19 @@ export default function LessonViewer() {
                 </Pressable>
               );
             })
+          )}
+
+          {/* Show more / show less — keeps a long class roster from turning
+              the results screen into an endless scroll */}
+          {rest.length > RANKINGS_PREVIEW_COUNT && (
+            <Pressable
+              style={s.showMoreRankingsBtn}
+              onPress={() => setShowAllRankings(v => !v)}
+            >
+              <Text style={s.showMoreRankingsText}>
+                {showAllRankings ? 'Show less ↑' : `Show ${hiddenCount} more →`}
+              </Text>
+            </Pressable>
           )}
 
           {/* Attempt History - moved here below rankings */}
@@ -1750,6 +1942,8 @@ export default function LessonViewer() {
               // FIRST: Reset animation values to initial state
               resultsFadeAnim.setValue(0);
               resultsScaleAnim.setValue(0.85);
+              // Also reset the scroll-driven parallax value (see note above)
+              parallelScrollY.setValue(0);
 
               // THEN: Reset all state
               setQuizSubmitted(false);
@@ -1759,6 +1953,7 @@ export default function LessonViewer() {
               setCurrentScore(0);
               setQuizResult(null);
               setConfettiFired(false);
+              setShowAllRankings(false);
               setCurrentSlide(0);
               // ✅ Reset refs too
               quizAnswersRef.current = {};
@@ -1808,8 +2003,10 @@ export default function LessonViewer() {
               setCurrentScore(0);
               setQuizResult(null);
               setConfettiFired(false);
+              setShowAllRankings(false);
               resultsFadeAnim.setValue(0);
               resultsScaleAnim.setValue(0.85);
+              parallelScrollY.setValue(0);
               setCurrentSlide(0);
 
               // ─── SIMPLIFIED NAVIGATION: Always show streak page ────────────────────
@@ -1957,6 +2154,9 @@ export default function LessonViewer() {
         student={selectedStudent}
       />
 
+      {/* Loading overlay shown between "last answer" and results screen */}
+      <FinishingQuizModal visible={isFinishingQuiz && !quizSubmitted} />
+
       {quizSubmitted ? (
         renderResults()
       ) : (
@@ -2083,7 +2283,64 @@ const s = StyleSheet.create({
   navRow: { flexDirection: 'row', gap: 10 },
   primaryBtn: { flex: 1, backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 14, alignItems: 'center', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 10 },
   goldBtn: { backgroundColor: '#D97706' },
+  primaryBtnDisabled: { opacity: 0.7 },
   primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  finishingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,20,55,0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  finishingGlowWrap: {
+    width: 160,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  finishingGlowRing: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  finishingGlowRingOuter: {
+    width: 160,
+    height: 160,
+    backgroundColor: '#60A5FA',
+  },
+  finishingGlowRingInner: {
+    width: 118,
+    height: 118,
+    backgroundColor: '#93C5FD',
+  },
+  finishingSenya: {
+    width: 96,
+    height: 96,
+  },
+  finishingTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  finishingSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.75)',
+    textAlign: 'center',
+  },
+  finishingDotsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 20,
+  },
+  finishingDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#93C5FD',
+  },
   ghostBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 60, paddingVertical: 14, alignItems: 'center' },
   ghostBtnText: { fontSize: 15, fontWeight: '700', color: '#0f3172' },
 
@@ -2151,6 +2408,17 @@ const s = StyleSheet.create({
   loadingLeaderboard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 20 },
   loadingLeaderboardText: { fontSize: 14, color: '#6B7280' },
   noRankingsText: { fontSize: 14, color: '#6B7280', textAlign: 'center', paddingVertical: 20 },
+  showMoreRankingsBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  showMoreRankingsText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1848c8',
+  },
 
   // History
   historyToggleBtn: {
