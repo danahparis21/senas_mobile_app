@@ -8,8 +8,11 @@ import {
     Pressable,
     ScrollView,
     Linking,
+    Platform,
+    StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Rect, G, Line } from 'react-native-svg';
 
@@ -124,6 +127,7 @@ function DeveloperCard({
 
 export default function About() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
 
     const developers = [
         {
@@ -146,12 +150,18 @@ export default function About() {
         },
     ];
 
+    const androidTopPadding = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight ?? 24) + 12 : 16;
+
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Header with Back Button */}
-                <View style={styles.header}>
-                    <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                <View style={[styles.header, { paddingTop: androidTopPadding }]}>
+                    <Pressable
+                        style={styles.backBtn}
+                        onPress={() => router.back()}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
                         <BackIcon />
                     </Pressable>
                     <Text style={styles.headerTitle}>About SEÑAS</Text>

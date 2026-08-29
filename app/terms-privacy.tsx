@@ -6,8 +6,11 @@ import {
     SafeAreaView,
     Pressable,
     ScrollView,
+    Platform,
+    StatusBar,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle, Line } from 'react-native-svg';
 
 // ── SUNNY SKY PALETTE (matches app-wide styling) ────────────────────
@@ -140,17 +143,24 @@ function SafetyBanner() {
 // ── MAIN SCREEN ───────────────────────────────────────────────────
 export default function TermsPrivacyScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
     const [tab, setTab] = useState<'terms' | 'privacy'>(
         tabParam === 'terms' ? 'terms' : 'privacy'
     );
 
+    const androidTopPadding = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight ?? 24) + 12 : 16;
+
     return (
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Header */}
-                <View style={styles.header}>
-                    <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                <View style={[styles.header, { paddingTop: androidTopPadding }]}>
+                    <Pressable
+                        style={styles.backBtn}
+                        onPress={() => router.back()}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
                         <BackIcon />
                     </Pressable>
                     <Text style={styles.headerTitle}>Terms & Privacy</Text>

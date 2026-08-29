@@ -15,8 +15,10 @@ import {
     TouchableWithoutFeedback,
     Keyboard,
     Modal,
+    StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Line, Polyline, Rect, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -220,11 +222,14 @@ function TutorialRow({
 
 export default function HelpSupport() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [message, setMessage] = useState('');
     const [sending, setSending] = useState(false);
     const [activeTutorial, setActiveTutorial] = useState<TutorialKey | null>(null);
     const scrollViewRef = useRef<ScrollView>(null);
     const textInputRef = useRef<TextInput>(null);
+
+    const androidTopPadding = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight ?? 24) + 12 : 16;
 
     const [helpRequests, setHelpRequests] = useState<HelpRequest[]>([]);
     const [loadingRequests, setLoadingRequests] = useState(true);
@@ -338,8 +343,12 @@ export default function HelpSupport() {
                         showsVerticalScrollIndicator={false}
                     >
                         {/* Header */}
-                        <View style={styles.header}>
-                            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                        <View style={[styles.header, { paddingTop: androidTopPadding }]}>
+                            <Pressable
+                                style={styles.backBtn}
+                                onPress={() => router.back()}
+                                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            >
                                 <BackIcon />
                             </Pressable>
                             <Text style={styles.headerTitle}>Help & Support</Text>

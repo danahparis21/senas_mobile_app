@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Svg, { Path, Circle, Polyline, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import ConfettiCannon from 'react-native-confetti-cannon';
@@ -324,6 +325,7 @@ export default function CheckpointExamScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { settings } = useSettings();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [exam, setExam] = useState<ExamData | null>(null);
@@ -1193,7 +1195,7 @@ export default function CheckpointExamScreen() {
           contentContainerStyle={s.moduleScroll}
           scrollEnabled={!isDragActive}
         >
-          <View style={s.topBar}>
+          <View style={[s.topBar, { paddingTop: Platform.OS === 'android' ? Math.max(insets.top, 12) : 0 }]}>
             <Text style={s.logoText}>SEÑAS</Text>
             <View style={s.topBarRight}>
               {/* Timer display */}
@@ -1265,7 +1267,7 @@ const s = StyleSheet.create({
   exitConfirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   moduleScroll: { padding: 16, paddingBottom: 60 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingHorizontal: 2 },
   topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
   exitBtn: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 12, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },

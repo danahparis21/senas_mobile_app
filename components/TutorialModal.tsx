@@ -260,34 +260,6 @@ export default function TutorialModal({
             <StatusBar barStyle="light-content" translucent backgroundColor="rgba(0,0,0,0.5)" />
             <View style={styles.overlay}>
                 <SafeAreaView style={styles.safeArea}>
-                    {/* Close button - top right */}
-                    <TouchableOpacity
-                        onPress={finish}
-                        style={styles.closeButton}
-                        hitSlop={8}
-                    >
-                        <LinearGradient
-                            colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']}
-                            style={styles.closeButtonGradient}
-                        >
-                            <Ionicons name="close" size={22} color="#0F3172" />
-                        </LinearGradient>
-                    </TouchableOpacity>
-
-                    {/* Progress dots */}
-                    <View style={styles.dotsContainer}>
-                        {slides.map((_, i) => (
-                            <View
-                                key={i}
-                                style={[
-                                    styles.dot,
-                                    i === index && styles.dotActive,
-                                    i < index && styles.dotCompleted,
-                                ]}
-                            />
-                        ))}
-                    </View>
-
                     <Animated.View
                         style={[
                             styles.contentContainer,
@@ -297,6 +269,37 @@ export default function TutorialModal({
                             },
                         ]}
                     >
+                        {/* Top bar with progress dots & close button directly attached to the modal */}
+                        <View style={styles.modalHeaderRow}>
+                            {/* Progress dots */}
+                            <View style={styles.dotsContainer}>
+                                {slides.map((_, i) => (
+                                    <View
+                                        key={i}
+                                        style={[
+                                            styles.dot,
+                                            i === index && styles.dotActive,
+                                            i < index && styles.dotCompleted,
+                                        ]}
+                                    />
+                                ))}
+                            </View>
+
+                            {/* Close button - top right of modal */}
+                            <TouchableOpacity
+                                onPress={finish}
+                                style={styles.closeButton}
+                                hitSlop={12}
+                                activeOpacity={0.8}
+                            >
+                                <LinearGradient
+                                    colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.85)']}
+                                    style={styles.closeButtonGradient}
+                                >
+                                    <Ionicons name="close" size={20} color="#0F3172" />
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
                         <ScrollView
                             showsVerticalScrollIndicator={false}
                             contentContainerStyle={styles.scrollContent}
@@ -448,35 +451,45 @@ const styles = StyleSheet.create({
     },
     safeArea: {
         flex: 1,
-        width: '80%',
+        width: '90%',
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 12,
+    },
+    modalHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        marginBottom: 10,
+        position: 'relative',
+        minHeight: 38,
     },
     closeButton: {
         position: 'absolute',
-        top: 40,
-        right: 16,
+        right: 0,
+        top: 0,
         zIndex: 10,
     },
     closeButtonGradient: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.15,
         shadowRadius: 4,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.6)',
     },
     dotsContainer: {
         flexDirection: 'row',
         justifyContent: 'center',
+        alignItems: 'center',
         gap: 6,
-        marginBottom: 12,
-        marginTop: 50,
     },
     dot: {
         width: 8,
@@ -494,7 +507,7 @@ const styles = StyleSheet.create({
     contentContainer: {
         width: '100%',
         maxWidth: 400,
-        maxHeight: SCREEN_HEIGHT * 0.85,
+        maxHeight: SCREEN_HEIGHT * 0.88,
     },
     scrollContent: {
         flexGrow: 1,

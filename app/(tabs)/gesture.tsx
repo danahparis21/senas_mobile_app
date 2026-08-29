@@ -14,12 +14,14 @@ import {
   RefreshControl,
   ActivityIndicator,
   Modal,
-  Alert
+  Alert,
+  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 import GestureTutorialModal, { shouldShowGestureTutorial, markGestureTutorialSeen } from '../../components/GestureTutorialModal';
@@ -575,6 +577,7 @@ function ChallengeModal({
 
 export default function GestureMain() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [modules, setModules] = useState(DEFAULT_MODULES);
@@ -746,6 +749,9 @@ export default function GestureMain() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingBottom: 110 + (insets.bottom > 0 ? (Platform.OS === 'ios' ? Math.max(insets.bottom - 10, 0) : insets.bottom) : 10),
+          }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }

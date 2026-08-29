@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
   Pressable, Switch, Modal, Alert, TextInput, ActivityIndicator,
-  Dimensions, Animated, Easing
+  Dimensions, Animated, Easing, Platform
 } from 'react-native';
 
 import { Image } from 'expo-image';
@@ -1274,15 +1274,23 @@ const styles = StyleSheet.create({
   // Teacher Card
   teacherCard: {
     padding: 16,
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    backdropFilter: 'blur(10px)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    shadowColor: '#0f3172',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(255,255,255,0.75)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.4)',
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 12,
+      },
+      android: {
+        backgroundColor: '#FFFFFF',
+        borderColor: 'rgba(215, 235, 252, 0.8)',
+        borderWidth: 1,
+        elevation: 3,
+      },
+    }),
   },
   teacherRow: {
     flexDirection: 'row',

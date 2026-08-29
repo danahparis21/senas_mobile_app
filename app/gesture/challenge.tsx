@@ -155,6 +155,9 @@ export default function ChallengeScreen() {
 
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
+    const [isModelLoading, setIsModelLoading] = useState(true);
+    const isModelLoadingRef = useRef(true);
+    const pendingRoundStartRef = useRef<{ signs: string[]; index: number } | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const countdownRef = useRef<number | null>(null);
     const isProcessingRef = useRef(false);
@@ -484,6 +487,7 @@ export default function ChallengeScreen() {
             clearInterval(countdownRef.current);
             countdownRef.current = null;
         }
+        setCountdown(null);
         isTimeUpProcessingRef.current = false;
         isProcessingRef.current = false;
         shouldProcessMessages.current = true;
@@ -492,6 +496,8 @@ export default function ChallengeScreen() {
         setIsComplete(false);
         setIsConnected(false);
         setLoading(true);
+        isModelLoadingRef.current = true;
+        setIsModelLoading(true);
 
         setMasteredSigns(new Set());
         setCompletedSigns(new Set());
@@ -611,10 +617,10 @@ export default function ChallengeScreen() {
         // Dismiss loading screen → triggers main render with WebView for the first time
         setMasterAuditLoading(false);
 
-        // Small delay so the WebView begins initializing before the countdown fires
-        setTimeout(() => {
-            startRound(firstEntry.weakSigns);
-        }, 300);
+        isModelLoadingRef.current = true;
+        setIsModelLoading(true);
+
+        startRound(firstEntry.weakSigns);
     };
 
     // ─── ADVANCE TO NEXT STAGE (plan-based, no API call) ─────────────────────────
@@ -625,6 +631,7 @@ export default function ChallengeScreen() {
 
         stopTimer();
         if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+        setCountdown(null);
         isTimeUpProcessingRef.current = false;
         isProcessingRef.current = false;
         shouldProcessMessages.current = true;
@@ -633,6 +640,8 @@ export default function ChallengeScreen() {
         setIsComplete(false);
         setIsConnected(false);
         setLoading(true);
+        isModelLoadingRef.current = true;
+        setIsModelLoading(true);
 
         setMasteredSigns(new Set());
         setCompletedSigns(new Set());
@@ -656,7 +665,6 @@ export default function ChallengeScreen() {
         // Switch WebView URL (intentional — student is actively advancing)
         setModuleType(nextEntry.stage);
 
-        // Countdown gives the new WebView time to initialize
         startRound(nextEntry.weakSigns);
     };
 
@@ -769,9 +777,9 @@ export default function ChallengeScreen() {
     };
     // ─── TIMER LOGIC - FIXED ──────────────────────────────────────────────────────────
     const startTimer = (signs: string[], index: number) => {
-        // ✅ Guard: don't start timer if screen is no longer active
-        if (!shouldProcessMessages.current || isWebViewPaused.current) {
-            console.log('⏰ startTimer skipped – screen not active');
+        // ✅ Guard: don't start timer if screen is no longer active or model is still loading
+        if (!shouldProcessMessages.current || isWebViewPaused.current || isModelLoadingRef.current) {
+            console.log('⏰ startTimer skipped – screen not active or model loading');
             return;
         }
         console.log('⏰ Starting timer for sign:', signs[index]);
@@ -945,6 +953,26 @@ export default function ChallengeScreen() {
         }
     };
 
+    // ─── MODEL READY HANDLER ──────────────────────────────────────────────────
+    const handleModelReady = () => {
+        setIsConnected(true);
+        setLoading(false);
+
+        if (isModelLoadingRef.current) {
+            console.log(`✅ Gesture Recognition Model READY for [${moduleType}]`);
+            isModelLoadingRef.current = false;
+            setIsModelLoading(false);
+            setSenyaMessage(`🎯 ${STAGE_LABELS[moduleType] || 'Model'} ready! Let's sign!`);
+
+            if (pendingRoundStartRef.current) {
+                const pending = pendingRoundStartRef.current;
+                pendingRoundStartRef.current = null;
+                console.log(`🚀 Triggering pending round with ${pending.signs.length} signs`);
+                startCountdown(pending.signs);
+            }
+        }
+    };
+
     // ─── START ROUND ──────────────────────────────────────────────────────────
     const startRound = (signs: string[]) => {
         if (signs.length === 0) {
@@ -973,7 +1001,14 @@ export default function ChallengeScreen() {
         setCurrentRoundSigns(roundSigns);
         setCurrentIndex(0);
         setCompletedSigns(new Set());
-        startCountdown(roundSigns);
+
+        if (isModelLoadingRef.current) {
+            console.log('⏳ Gesture model still loading – queueing countdown for when model is ready');
+            pendingRoundStartRef.current = { signs: roundSigns, index: 0 };
+            setSenyaMessage(`Loading ${STAGE_LABELS[moduleType] || 'AI'} model... Please wait.`);
+        } else {
+            startCountdown(roundSigns);
+        }
     };
 
 
@@ -981,6 +1016,11 @@ export default function ChallengeScreen() {
 
     // ─── COUNTDOWN LOGIC ──────────────────────────────────────────────────────
     const startCountdown = async (signs: string[]) => {
+        if (isModelLoadingRef.current) {
+            console.log('⏳ startCountdown postponed – model still loading');
+            pendingRoundStartRef.current = { signs, index: 0 };
+            return;
+        }
         // ✅ In Infinite Mode, only show countdown once (the very first time)
         if (mode === 'infinite' && infiniteCountdownShownRef.current) {
             // Skip countdown and start timer directly
@@ -1034,6 +1074,7 @@ export default function ChallengeScreen() {
                 setSenyaMessage(`Round ${roundNumber} starting in ${count}...`);
             } else {
                 if (countdownRef.current) clearInterval(countdownRef.current);
+                countdownRef.current = null;
                 setCountdown(null);
                 setSenyaMessage(`Round ${roundNumber}: ${signs.length} signs to practice!`);
                 startTimer(signs, 0);
@@ -1132,10 +1173,16 @@ export default function ChallengeScreen() {
         setInfiniteSignCount(0);
         setTotalAttemptedSigns(0);
         setShowFinishButton(true);
-        setSenyaMessage(`♾️ ${STAGE_LABELS[currentModule]} - Keep practicing!`);
 
-        // Show countdown only ONCE at the very start
-        startCountdown(roundSigns);
+        if (isModelLoadingRef.current) {
+            console.log('⏳ Infinite mode: Model loading, queueing first round...');
+            pendingRoundStartRef.current = { signs: roundSigns, index: 0 };
+            setSenyaMessage(`Loading ${STAGE_LABELS[currentModule]} model... Please wait.`);
+        } else {
+            setSenyaMessage(`♾️ ${STAGE_LABELS[currentModule]} - Keep practicing!`);
+            // Show countdown only ONCE at the very start
+            startCountdown(roundSigns);
+        }
     };
 
     // Update advanceInfiniteBatch to use unlocked modules
@@ -1160,20 +1207,29 @@ export default function ChallengeScreen() {
         setCurrentIndex(0);
         setCompletedSigns(new Set());
         setTotalAttemptedSigns(prev => prev + roundSigns.length);
-        setSenyaMessage(`♾️ ${STAGE_LABELS[nextModule]} — keep going! 💪`);
 
-        // Switch WebView if needed, then start timer immediately (NO countdown)
+        // Switch WebView if needed, wait for model to load before starting timer
         if (nextModule !== moduleType) {
             console.log(`🔄 Switching WebView to: ${nextModule}`);
+            stopTimer();
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+                countdownRef.current = null;
+            }
+            setCountdown(null);
+
+            isModelLoadingRef.current = true;
+            setIsModelLoading(true);
+            pendingRoundStartRef.current = { signs: roundSigns, index: 0 };
+            setSenyaMessage(`Loading ${STAGE_LABELS[nextModule]} model... Keep going! 💪`);
             setModuleType(nextModule);
-            // Wait for WebView to load, then start timer
-            setTimeout(() => {
-                if (shouldProcessMessages.current && !isWebViewPaused.current) {
-                    startTimer(roundSigns, 0);
-                }
-            }, 800);
         } else {
-            startTimer(roundSigns, 0);
+            setSenyaMessage(`♾️ ${STAGE_LABELS[nextModule]} — keep going! 💪`);
+            if (isModelLoadingRef.current) {
+                pendingRoundStartRef.current = { signs: roundSigns, index: 0 };
+            } else {
+                startTimer(roundSigns, 0);
+            }
         }
     };
 
@@ -1824,20 +1880,18 @@ export default function ChallengeScreen() {
         try {
             const data = JSON.parse(event.nativeEvent.data);
 
-            if (data.type === 'model_status' || data.type === 'model_ready') {
-                setIsConnected(true);
-                setLoading(false);
-                return;
-            }
-
-            if (data.test) {
-                setIsConnected(true);
-                setLoading(false);
+            if (data.type === 'model_status' || data.type === 'model_ready' || data.status === 'loaded' || data.status === 'all_loaded' || data.type === 'mediapipe_ready' || data.test) {
+                handleModelReady();
                 return;
             }
 
             const detectedValue = data.letter || data.greeting || '';
             const confidence = data.confidence || 0;
+
+            // If we receive active detections, the model is definitely ready!
+            if (isModelLoadingRef.current && (confidence > 0 || (detectedValue && detectedValue !== '✋' && detectedValue !== '...'))) {
+                handleModelReady();
+            }
 
             if (confidence < 0.6 || !detectedValue || detectedValue === '✋' || detectedValue === '...') {
                 setLiveLetter('—');
@@ -1847,6 +1901,7 @@ export default function ChallengeScreen() {
 
             setIsConnected(true);
             if (loading) setLoading(false);
+            if (isModelLoadingRef.current) handleModelReady();
 
             // Map detected value
             let matchValue = detectedValue;
@@ -2108,7 +2163,8 @@ export default function ChallengeScreen() {
             '#overlay',
             '.progress-bar',
             '#level-badge',
-            '#match-indicator'
+            '#match-indicator',
+            '#camera-switch-btn'
         ];
         
         elementsToHide.forEach(selector => {
@@ -2138,18 +2194,45 @@ export default function ChallengeScreen() {
         
         console.log('🎯 Challenge mode activated!');
         
-        const checkModelStatus = setInterval(function() {
-            const statusText = document.getElementById('status-text');
-            if (statusText && statusText.textContent === 'Model Ready') {
-                clearInterval(checkModelStatus);
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'model_ready',
-                        status: 'loaded'
-                    }));
-                }
+        let reported = false;
+        function notifyModelReady() {
+            if (reported) return;
+            reported = true;
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'model_ready',
+                    status: 'loaded'
+                }));
             }
-        }, 1000);
+        }
+
+        const checkModelStatus = setInterval(function() {
+            const statusEl = document.getElementById('status-text') || document.getElementById('statusText') || document.getElementById('status');
+            const statusText = statusEl ? (statusEl.textContent || '').trim().toLowerCase() : '';
+            const loadingElem = document.getElementById('loading');
+            const loadingHidden = loadingElem && (
+                loadingElem.style.display === 'none' || 
+                (window.getComputedStyle && window.getComputedStyle(loadingElem).display === 'none') ||
+                (window.getComputedStyle && window.getComputedStyle(loadingElem).opacity === '0')
+            );
+            
+            if (
+                statusText.includes('ready') || 
+                statusText.includes('detecting') || 
+                statusText.includes('model ready') || 
+                loadingHidden ||
+                (typeof tf !== 'undefined' && typeof Hands !== 'undefined')
+            ) {
+                clearInterval(checkModelStatus);
+                notifyModelReady();
+            }
+        }, 200);
+
+        // Fallback: notify ready after 12s so user is never blocked indefinitely
+        setTimeout(function() {
+            clearInterval(checkModelStatus);
+            notifyModelReady();
+        }, 12000);
     })();
     true;
     `;
@@ -2491,16 +2574,37 @@ export default function ChallengeScreen() {
                         <Text
                             style={[
                                 styles.targetLetterBase,
-                                currentTarget && currentTarget.length <= 1 && { fontSize: 56, lineHeight: 60 },
-                                currentTarget && currentTarget.length === 2 && { fontSize: 50, lineHeight: 54 },
-                                currentTarget && currentTarget.length === 3 && { fontSize: 46, lineHeight: 50 },
-                                currentTarget && currentTarget.length === 4 && { fontSize: 42, lineHeight: 46 },
-                                currentTarget && currentTarget.length > 4 && currentTarget.length <= 6 && { fontSize: 38, lineHeight: 42 },
-                                currentTarget && currentTarget.length > 6 && currentTarget.length <= 10 && { fontSize: 32, lineHeight: 36 },
-                                currentTarget && currentTarget.length > 10 && currentTarget.length <= 15 && { fontSize: 26, lineHeight: 30 },
-                                currentTarget && currentTarget.length > 15 && { fontSize: 20, lineHeight: 24 },
+                                (() => {
+                                    const text = currentTarget || '';
+                                    const len = text.length;
+                                    const words = text.trim().split(/\s+/);
+                                    const maxWordLen = Math.max(...words.map(w => w.length));
+
+                                    if (maxWordLen >= 10 || len > 15) {
+                                        return { fontSize: 16, lineHeight: 20 };
+                                    }
+                                    if (maxWordLen >= 8 || len > 11) {
+                                        return { fontSize: 18, lineHeight: 22 };
+                                    }
+                                    if (maxWordLen >= 6 || len > 7) {
+                                        return { fontSize: 24, lineHeight: 28 };
+                                    }
+                                    if (len > 4) {
+                                        return { fontSize: 32, lineHeight: 36 };
+                                    }
+                                    if (len === 4) {
+                                        return { fontSize: 38, lineHeight: 42 };
+                                    }
+                                    if (len === 3) {
+                                        return { fontSize: 44, lineHeight: 48 };
+                                    }
+                                    if (len === 2) {
+                                        return { fontSize: 48, lineHeight: 52 };
+                                    }
+                                    return { fontSize: 54, lineHeight: 58 };
+                                })(),
                             ]}
-                            numberOfLines={2}
+                            numberOfLines={3}
                         >
                             {currentTarget}
                         </Text>
@@ -2543,8 +2647,8 @@ export default function ChallengeScreen() {
                     </View>
                 )}
 
-                {/* Timer Countdown Bar - only show when not in countdown */}
-                {countdown === null && (
+                {/* Timer Countdown Bar - only show when not in countdown AND model is loaded */}
+                {countdown === null && !isModelLoading && (
                     <View style={styles.timerBarContainer}>
                         <View style={[
                             styles.timerBarFill,
@@ -2577,16 +2681,33 @@ export default function ChallengeScreen() {
                         </Text>
                     )}
                 </View>
-                {/* Loading overlay */}
-                {loading && !isConnected && (
-                    <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#FFD700" />
-                        <Text style={styles.loadingOverlayText}>Starting camera…</Text>
-                        <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
+
+                {/* ─── MODEL LOADING OVERLAY ─── */}
+                {isModelLoading && (
+                    <View style={styles.modelLoadingOverlay}>
+                        <View style={styles.modelLoadingCard}>
+                            <View style={styles.modelLoadingIconRing}>
+                                <Ionicons name="scan-outline" size={32} color="#FFD700" />
+                            </View>
+                            <ActivityIndicator size="large" color="#FFD700" style={{ marginVertical: 14 }} />
+                            <Text style={styles.modelLoadingTitle}>
+                                {`Loading ${STAGE_LABELS[moduleType] || 'Gesture'} Recognition...`}
+                            </Text>
+                            <Text style={styles.modelLoadingSubtitle}>
+                                Initializing camera & AI gesture recognition models
+                            </Text>
+                            
+                            <View style={styles.modelLoadingTipBox}>
+                                <Ionicons name="bulb-outline" size={16} color="#FFD700" style={{ marginRight: 6 }} />
+                                <Text style={styles.modelLoadingTipText}>
+                                    The timer will only start once the model is fully loaded!
+                                </Text>
+                            </View>
+                        </View>
                     </View>
                 )}
 
-                {!isConnected && !loading && (
+                {!isConnected && !loading && !isModelLoading && (
                     <Pressable style={styles.browserButton} onPress={openInBrowser}>
                         <Ionicons name="open-outline" size={20} color="#fff" />
                         <Text style={styles.browserButtonText}>Open in Browser</Text>
@@ -3128,7 +3249,7 @@ const styles = StyleSheet.create({
         top: 14,
         left: 14,
         alignItems: 'flex-start',
-        maxWidth: SCREEN_WIDTH * 0.55,
+        maxWidth: SCREEN_WIDTH * 0.72,
     },
     targetLabelOverlay: {
         fontSize: 10,
@@ -3140,21 +3261,30 @@ const styles = StyleSheet.create({
     },
     targetLetterCard: {
         minWidth: 60,
-        maxWidth: SCREEN_WIDTH * 0.45,
-        paddingHorizontal: 14,
-        paddingVertical: 6,
-        minHeight: 60,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.22)',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.55)',
+        maxWidth: SCREEN_WIDTH * 0.65,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        minHeight: 56,
+        borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 14,
-        elevation: 6,
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.22)',
+                borderWidth: 1.5,
+                borderColor: 'rgba(255,255,255,0.55)',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.25,
+                shadowRadius: 14,
+            },
+            android: {
+                backgroundColor: 'rgba(15, 49, 114, 0.85)',
+                borderWidth: 1.5,
+                borderColor: 'rgba(255, 255, 255, 0.35)',
+                elevation: 6,
+            },
+        }),
     },
     targetLetterBase: {
         fontWeight: '900',
@@ -3352,6 +3482,77 @@ const styles = StyleSheet.create({
     },
     loadingSubtext: {
         color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 6,
+    },
+
+    modelLoadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(10, 22, 40, 0.88)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50,
+        paddingHorizontal: 24,
+    },
+    modelLoadingCard: {
+        backgroundColor: 'rgba(15, 35, 75, 0.96)',
+        borderRadius: 24,
+        padding: 24,
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: 340,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 215, 0, 0.35)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    modelLoadingIconRing: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(255, 215, 0, 0.12)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 215, 0, 0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 4,
+    },
+    modelLoadingTitle: {
+        color: '#FFFFFF',
+        fontSize: 17,
+        fontWeight: '800',
+        textAlign: 'center',
+        letterSpacing: 0.3,
+    },
+    modelLoadingSubtitle: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: 12,
+        textAlign: 'center',
+        marginTop: 6,
+        lineHeight: 16,
+    },
+    modelLoadingTipBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+        marginTop: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 215, 0, 0.25)',
+    },
+    modelLoadingTipText: {
+        color: '#FFD700',
+        fontSize: 11.5,
+        fontWeight: '600',
+        flexShrink: 1,
+        lineHeight: 15,
     },
     browserButton: {
         position: 'absolute', bottom: 30, alignSelf: 'center',

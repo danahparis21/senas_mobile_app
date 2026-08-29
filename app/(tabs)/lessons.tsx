@@ -719,8 +719,14 @@ export default function Lessons() {
       <View style={styles.lockedModuleContainer}>
         <ScrollView
           style={styles.lockedModuleScroll}
-          contentContainerStyle={styles.lockedModuleScreen}
+          contentContainerStyle={[
+            styles.lockedModuleScreen,
+            { paddingBottom: Math.max(tabBarClearance + 30, 110) }
+          ]}
           showsVerticalScrollIndicator={false}
+          alwaysBounceVertical={true}
+          overScrollMode="always"
+          bounces={true}
         >
           {/* Refresh button at top */}
           <TouchableOpacity
@@ -734,7 +740,7 @@ export default function Lessons() {
 
           {/* 1. Lock mark */}
           <View style={styles.lockedModuleLockCircle}>
-            <LockIcon size={40} color="#64748B" />
+            <LockIcon size={36} color="#64748B" />
           </View>
 
           {/* 2. Eyebrow + Title (primary hierarchy) */}
@@ -1691,7 +1697,7 @@ export default function Lessons() {
             )
           ) : (
             <ScrollView
-              contentContainerStyle={{ height: safeTotalNodes * NODE_ROW_HEIGHT + 70 }}
+              contentContainerStyle={{ height: safeTotalNodes * NODE_ROW_HEIGHT + tabBarClearance + 160 }}
               showsVerticalScrollIndicator={false}
               scrollEnabled={!isDragging}
               refreshControl={
@@ -3013,43 +3019,43 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 40,
-    paddingBottom: 64,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 120,
     backgroundColor: 'transparent',
   },
   lockedModuleLockCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: 'rgba(255,255,255,0.45)',
     borderWidth: 2,
     borderColor: 'rgba(100,116,139,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
+    marginBottom: 12,
   },
   lockedEyebrow: {
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.6,
     color: '#64748B',
-    marginBottom: 6,
+    marginBottom: 4,
     textTransform: 'uppercase',
   },
   lockedModuleHeadline: {
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: '900',
     color: '#0f3172',
     textAlign: 'center',
     letterSpacing: 0.2,
-    marginBottom: 26,
-    maxWidth: 300,
+    marginBottom: 16,
+    maxWidth: 320,
   },
   lockedMetaBlock: {
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   lockedMetaLabel: {
     fontSize: 10,
@@ -3065,32 +3071,32 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 6,
   },
   lockedPillNeutral: {
     borderColor: '#BFDBFE',
     backgroundColor: 'rgba(239,246,255,0.7)',
   },
   lockedPillText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
   lockedModuleDivider: {
-    width: 56,
+    width: 48,
     height: 1,
     backgroundColor: 'rgba(100,116,139,0.25)',
-    marginVertical: 22,
+    marginVertical: 14,
   },
 
   lockedModuleTip: {
-    fontSize: 12,
+    fontSize: 12.5,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 19,
-    maxWidth: 260,
-    marginTop: 26,
-    fontWeight: '500',
+    maxWidth: 290,
+    marginTop: 18,
+    fontWeight: '600',
   },
   // ── Locked lesson node label ────────────────────────────────────────────
   lockedLabelContainer: {

@@ -1296,7 +1296,24 @@ const styles = StyleSheet.create({
 
     topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
     logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
-    exitBtn: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 12, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
+    exitBtn: {
+        borderRadius: 12,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.7)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.85)',
+            },
+            android: {
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: 'rgba(215, 235, 252, 0.8)',
+                elevation: 1,
+            },
+        }),
+    },
     statusBadge: { backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
     statusText: { fontSize: 12, fontWeight: '700', color: '#10B981' },
 
@@ -1338,31 +1355,63 @@ const styles = StyleSheet.create({
     imageDivider: { justifyContent: 'center', alignItems: 'center', width: 20, paddingHorizontal: 2 },
     imageDividerIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(24,72,200,0.06)', alignItems: 'center', justifyContent: 'center' },
 
-    imageCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 12, borderWidth: 2, borderColor: 'rgba(15,49,114,0.10)', padding: 10, alignItems: 'center', justifyContent: 'center', minHeight: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, position: 'relative' },
+    imageCard: {
+        borderRadius: 12,
+        borderWidth: 2,
+        padding: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 158,
+        position: 'relative',
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                borderColor: 'rgba(15,49,114,0.10)',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+            },
+            android: {
+                backgroundColor: '#FFFFFF',
+                borderColor: 'rgba(215, 235, 252, 0.9)',
+                elevation: 2,
+            },
+        }),
+    },
     imageCardDragging: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.08)', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 10, borderWidth: 2 },
-    imageCardMatched: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.06)', borderStyle: 'dashed', opacity: 0.6 },
-    imageCardExamMatched: { borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.06)', borderStyle: 'solid', opacity: 0.8 },
-    imageCardWrong: { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.08)' },
-    imageCardHovered: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.06)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
-    imageCardSuccess: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+    imageCardMatched: { borderColor: '#10B981', backgroundColor: Platform.OS === 'android' ? '#ECFDF5' : 'rgba(16,185,129,0.06)', borderStyle: 'dashed', opacity: 0.7 },
+    imageCardExamMatched: { borderColor: '#2563EB', backgroundColor: Platform.OS === 'android' ? '#EFF6FF' : 'rgba(37,99,235,0.06)', borderStyle: 'solid', opacity: 0.85 },
+    imageCardWrong: { borderColor: '#EF4444', backgroundColor: Platform.OS === 'android' ? '#FEF2F2' : 'rgba(239,68,68,0.08)' },
+    imageCardHovered: { borderColor: '#1848c8', backgroundColor: Platform.OS === 'android' ? '#EFF6FF' : 'rgba(24,72,200,0.06)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
+    imageCardSuccess: { borderColor: '#10B981', backgroundColor: Platform.OS === 'android' ? '#ECFDF5' : 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
     imageCardContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
     imageCardImg: {
-        // Widened from a 96x96 square to a landscape box — the sign videos
-        // are wider than they are tall, so a square "cover" crop was
-        // trimming the sides (usually cutting off the right side of the
-        // sign). A wider box that better matches the source aspect ratio
-        // shows much more of the frame without needing to touch the
-        // underlying media component.
         width: 128,
-        height: 92,
+        height: 112,
         borderRadius: 14,
         backgroundColor: 'rgba(15,49,114,0.02)',
-        overflow: 'hidden',  // ✅ Add this for WebView
+        overflow: 'hidden',
     },
     imageCardText: { fontSize: 13, fontWeight: '600', color: '#0f3172', marginTop: 4, textAlign: 'center' },
-    imageDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.15)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 140 },
+    imageDropZone: {
+        borderStyle: 'dashed',
+        borderWidth: 2,
+        minHeight: 158,
+        borderRadius: 12,
+        ...Platform.select({
+            ios: {
+                borderColor: 'rgba(15,49,114,0.15)',
+                backgroundColor: 'rgba(255,255,255,0.3)',
+            },
+            android: {
+                borderColor: 'rgba(15,49,114,0.25)',
+                backgroundColor: '#EFF6FF',
+            },
+        }),
+    },
     imageDropZoneContent: { alignItems: 'center', justifyContent: 'center', width: '100%' },
-    imageDropZoneLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8', textAlign: 'center' },
+    imageDropZoneLabel: { fontSize: 13, fontWeight: '600', color: '#64748B', textAlign: 'center' },
 
     textLayoutContainer: { flexDirection: 'row', gap: 4, marginBottom: 12 },
     textLayoutColumn: { flex: 1, gap: 4 },
@@ -1370,19 +1419,55 @@ const styles = StyleSheet.create({
     textDivider: { justifyContent: 'center', alignItems: 'center', width: 16, paddingHorizontal: 2 },
     textDividerIcon: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(24,72,200,0.06)', alignItems: 'center', justifyContent: 'center' },
 
-    textCard: { borderRadius: 10, borderWidth: 1.5, borderColor: 'rgba(15,49,114,0.10)', minHeight: 42, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1, position: 'relative', overflow: 'hidden', backgroundColor: '#fff' },
+    textCard: {
+        borderRadius: 10,
+        borderWidth: 1.5,
+        minHeight: 42,
+        position: 'relative',
+        overflow: 'hidden',
+        ...Platform.select({
+            ios: {
+                borderColor: 'rgba(15,49,114,0.10)',
+                backgroundColor: '#fff',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.04,
+                shadowRadius: 3,
+            },
+            android: {
+                borderColor: 'rgba(215, 235, 252, 0.9)',
+                backgroundColor: '#FFFFFF',
+                elevation: 2,
+            },
+        }),
+    },
     textCardGradient: { flex: 1, padding: 8, alignItems: 'center', justifyContent: 'center', minHeight: 42 },
     textCardGradientText: { fontSize: 14, fontWeight: '700', color: '#fff', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.1)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
     textCardDragging: { borderColor: '#1848c8', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8, borderWidth: 2 },
-    textCardMatched: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.04)', borderStyle: 'dashed', opacity: 0.6 },
-    textCardExamMatched: { borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.04)', borderStyle: 'solid', opacity: 0.8 },
+    textCardMatched: { borderColor: '#10B981', backgroundColor: Platform.OS === 'android' ? '#ECFDF5' : 'rgba(16,185,129,0.04)', borderStyle: 'dashed', opacity: 0.7 },
+    textCardExamMatched: { borderColor: '#2563EB', backgroundColor: Platform.OS === 'android' ? '#EFF6FF' : 'rgba(37,99,235,0.04)', borderStyle: 'solid', opacity: 0.85 },
     textCardMatchedText: { color: '#10B981', textDecorationLine: 'line-through', textDecorationColor: '#10B981' },
     textCardExamMatchedText: { color: '#2563EB' },
-    textCardWrong: { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.08)' },
-    textCardHovered: { borderColor: '#1848c8', backgroundColor: 'rgba(24,72,200,0.04)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3 },
-    textCardSuccess: { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
+    textCardWrong: { borderColor: '#EF4444', backgroundColor: Platform.OS === 'android' ? '#FEF2F2' : 'rgba(239,68,68,0.08)' },
+    textCardHovered: { borderColor: '#1848c8', backgroundColor: Platform.OS === 'android' ? '#EFF6FF' : 'rgba(24,72,200,0.04)', borderStyle: 'solid', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3 },
+    textCardSuccess: { borderColor: '#10B981', backgroundColor: Platform.OS === 'android' ? '#ECFDF5' : 'rgba(16,185,129,0.10)', borderWidth: 2, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 6 },
     textCardText: { fontSize: 14, fontWeight: '600', color: '#0f3172', textAlign: 'center', padding: 8 },
-    textDropZone: { borderStyle: 'dashed', borderColor: 'rgba(15,49,114,0.12)', backgroundColor: 'rgba(255,255,255,0.3)', minHeight: 42 },
+    textDropZone: {
+        borderStyle: 'dashed',
+        borderWidth: 1.5,
+        minHeight: 42,
+        borderRadius: 10,
+        ...Platform.select({
+            ios: {
+                borderColor: 'rgba(15,49,114,0.12)',
+                backgroundColor: 'rgba(255,255,255,0.3)',
+            },
+            android: {
+                borderColor: 'rgba(15,49,114,0.25)',
+                backgroundColor: '#EFF6FF',
+            },
+        }),
+    },
     textDropHint: { position: 'absolute', bottom: -4, backgroundColor: '#1848c8', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
     textDropHintText: { fontSize: 7, fontWeight: '700', color: '#fff' },
 
@@ -1396,9 +1481,29 @@ const styles = StyleSheet.create({
 
     feedbackRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginVertical: 12 },
     senyaFeedback: { width: 70, height: 70, flexShrink: 0 },
-    feedbackBubble: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 14, padding: 10 },
-    feedbackCorrect: { backgroundColor: 'rgba(236,253,245,0.88)', borderColor: '#a7f3d0' },
-    feedbackWrong: { backgroundColor: 'rgba(254,242,242,0.88)', borderColor: '#fecaca' },
+    feedbackBubble: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
+        borderRadius: 14,
+        padding: 10,
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.75)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.9)',
+            },
+            android: {
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: 'rgba(215, 235, 252, 0.9)',
+                elevation: 2,
+            },
+        }),
+    },
+    feedbackCorrect: { backgroundColor: Platform.OS === 'android' ? '#ECFDF5' : 'rgba(236,253,245,0.88)', borderColor: '#a7f3d0' },
+    feedbackWrong: { backgroundColor: Platform.OS === 'android' ? '#FEF2F2' : 'rgba(254,242,242,0.88)', borderColor: '#fecaca' },
     feedbackText: { flex: 1, fontSize: 12, fontWeight: '500', color: '#0f3172', lineHeight: 17 },
 
     examProgressContainer: { marginVertical: 12, paddingHorizontal: 4 },

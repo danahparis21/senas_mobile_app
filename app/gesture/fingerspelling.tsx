@@ -19,8 +19,10 @@ import {
     Alert,
     UIManager,
     KeyboardAvoidingView,
+    StatusBar,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router'; // ← ADD useFocusEffect
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
@@ -138,8 +140,11 @@ interface WordResult {
 
 export default function FingerspellingScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     usePracticeTimeTracker();
     const { settings, refreshSettings } = useSettings();
+
+    const androidTopPadding = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight ?? 24) + 10 : 10;
 
     const webViewRef = useRef<WebView>(null);
     const scrollViewRef = useRef<ScrollView>(null);
@@ -1307,8 +1312,12 @@ export default function FingerspellingScreen() {
             </Modal>
 
             {/* ─── HEADER ────────────────────────────────────────────────── */}
-            <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <View style={[styles.header, { paddingTop: androidTopPadding }]}>
+                <Pressable
+                    onPress={() => router.back()}
+                    style={styles.backBtn}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
                     <Ionicons name="arrow-back" size={24} color="#0f3172" />
                 </Pressable>
                 <Text style={styles.headerTitle}>Fingerspelling</Text>
@@ -1905,27 +1914,36 @@ const styles = StyleSheet.create({
         width: 48,
         height: 64,
         borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.78)',
-        borderWidth: 2,
-        borderColor: 'rgba(15, 49, 114, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 6,
-        shadowColor: '#0f3172',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.07,
-        shadowRadius: 4,
-        elevation: 2,
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.78)',
+                borderWidth: 2,
+                borderColor: 'rgba(15, 49, 114, 0.12)',
+                shadowColor: '#0f3172',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.07,
+                shadowRadius: 4,
+            },
+            android: {
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1.5,
+                borderColor: 'rgba(215, 235, 252, 0.9)',
+                elevation: 2,
+            },
+        }),
     },
     letterCompleted: {
-        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+        backgroundColor: Platform.OS === 'android' ? '#ECFDF5' : 'rgba(16, 185, 129, 0.12)',
         borderColor: '#10B981',
         shadowColor: '#10B981',
         shadowOpacity: 0.2,
     },
     letterActive: {
         borderColor: '#FFD700',
-        backgroundColor: 'rgba(255, 215, 0, 0.15)',
+        backgroundColor: Platform.OS === 'android' ? '#FFFBEB' : 'rgba(255, 215, 0, 0.15)',
         transform: [{ scale: 1.1 }],
         shadowColor: '#FFD700',
         shadowOpacity: 0.55,
@@ -1956,18 +1974,27 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: 10,
-        backgroundColor: 'rgba(255,255,255,0.95)',
         marginHorizontal: 12,
         marginBottom: 12,
         borderRadius: 14,
         gap: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.8)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 3,
+        ...Platform.select({
+            ios: {
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.8)',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+            },
+            android: {
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: 'rgba(215, 235, 252, 0.9)',
+                elevation: 3,
+            },
+        }),
     },
     resultLabel: {
         fontSize: 11,
