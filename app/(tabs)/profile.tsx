@@ -69,6 +69,16 @@ function InfoIcon({ size = 20 }: { size?: number }) {
     </Svg>
   );
 }
+function RateIcon({ size = 20 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2.5l2.9 6.3 6.9.7-5.2 4.7 1.5 6.8L12 17.6l-6.1 3.4 1.5-6.8L2.2 9.5l6.9-.7z"
+        stroke="#4b7bbb" strokeWidth="1.8" strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 function CertificateIcon({ size = 20 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -531,19 +541,6 @@ export default function Profile() {
   // ── Settings Items ──
   const settingsItems = [
     {
-      label: 'Daily Reminders',
-      sub: 'Get notified to practice',
-      val: settings.notificationsEnabled,
-      set: async (value: boolean) => {
-        try {
-          await updateSetting('notificationsEnabled', value);
-        } catch (error) {
-          console.error('Error updating notification setting:', error);
-        }
-      },
-      Icon: BellIcon
-    },
-    {
       label: 'Sound Effects',
       sub: 'Play sounds during lessons',
       val: settings.soundEnabled,
@@ -561,6 +558,7 @@ export default function Profile() {
   // ── Account Items ──
   const accountItems = [
     { label: 'Help & Support', Icon: HelpIcon, route: '/help' },
+    { label: 'Rate Us', Icon: RateIcon, route: '/rate-us' },
     { label: 'About SEÑAS', Icon: InfoIcon, route: '/about' },
   ];
 

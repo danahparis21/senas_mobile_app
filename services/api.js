@@ -1791,7 +1791,14 @@ export const api = {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) {
-                throw new Error('No token found. Please login first.');
+                // Return default cached settings if user is not logged in
+                return {
+                    success: false,
+                    settings: {
+                        soundEnabled: true,
+                        notificationsEnabled: true,
+                    }
+                };
             }
 
             console.log('⚙️ Fetching student settings...');
@@ -1809,6 +1816,15 @@ export const api = {
             console.log('⚙️ Settings response:', data);
 
             if (!response.ok) {
+                if (response.status === 401) {
+                    return {
+                        success: false,
+                        settings: {
+                            soundEnabled: true,
+                            notificationsEnabled: true,
+                        }
+                    };
+                }
                 throw new Error(data.message || data.error || 'Failed to fetch settings');
             }
 
@@ -2183,9 +2199,85 @@ export const api = {
     },
 
     /**
-   * 📨 Submit a help request (no email needed - student is already authenticated)
-   * POST /api/student/help-request
-   */
+     * ⭐ Submit or update the student's app rating
+     * POST /api/student/rating
+     */
+    submitRating: async (rating, feedback) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log('⭐ Submitting rating...');
+
+            const response = await fetch(`${API_URL}/student/rating`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    rating,
+                    feedback: feedback?.trim() || null,
+                }),
+            });
+
+            const data = await response.json();
+            console.log('⭐ Rating response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to submit rating');
+            }
+
+            // Invalidate cache for GET rating so subsequent reads fetch latest
+            delete _cache[`${API_URL}/student/rating`];
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error submitting rating:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * ⭐ Get the student's existing app rating, if any
+     * GET /api/student/rating
+     */
+    getRating: async () => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            const response = await apiFetch(`${API_URL}/student/rating`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch rating');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching rating:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 📨 Submit a help request (no email needed - student is already authenticated)
+     * POST /api/student/help-request
+     */
     sendHelpRequest: async (message) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
