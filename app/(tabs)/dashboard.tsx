@@ -558,8 +558,10 @@ export default function Dashboard() {
   };
 
   // ── UPDATE REFRESH ALL DATA ──
-  const refreshAllData = async () => {
-    setRefreshing(true);
+  const refreshAllData = async (isManual: boolean = false) => {
+    if (isManual) {
+      setRefreshing(true);
+    }
     try {
       await Promise.all([
         fetchStudentData(),
@@ -573,13 +575,15 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
-      setRefreshing(false);
+      if (isManual) {
+        setRefreshing(false);
+      }
     }
   };
 
   // ── UPDATE USEEFFECT ──
   useEffect(() => {
-    refreshAllData();
+    refreshAllData(false);
     startPulseAnimation();
   }, []);
 
@@ -636,11 +640,11 @@ export default function Dashboard() {
     );
   };
 
-  // Refresh when screen comes into focus
+  // Refresh when screen comes into focus (silent background refresh)
   useFocusEffect(
     useCallback(() => {
       if (!loading && !refreshing) {
-        refreshAllData();
+        refreshAllData(false);
       }
     }, [])
   );
@@ -1184,11 +1188,9 @@ export default function Dashboard() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={refreshAllData}
+              onRefresh={() => refreshAllData(true)}
               colors={[C.blueDeep, C.blue]}
               tintColor={C.blueDeep}
-              title="Refreshing..."
-              titleColor={C.blueDeep}
             />
           }
         >

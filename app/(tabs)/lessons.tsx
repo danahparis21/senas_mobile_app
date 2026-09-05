@@ -1706,8 +1706,6 @@ export default function Lessons() {
                   onRefresh={onRefresh}
                   colors={['#1848c8']}
                   tintColor="#1848c8"
-                  title="Pull to refresh..."
-                  titleColor="#1848c8"
                 />
               }
             >
