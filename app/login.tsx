@@ -387,6 +387,146 @@ function FriendlyErrorModal({ visible, message, tip, onClose }: FriendlyErrorMod
   );
 }
 
+// ── Forgot PIN Modal ──────────────────────────────────────────────────
+interface ForgotPinModalProps {
+  visible: boolean;
+  initialLrn: string;
+  onClose: () => void;
+}
+
+function ForgotPinModal({ visible, initialLrn, onClose }: ForgotPinModalProps) {
+  const [modalLrn, setModalLrn] = useState(initialLrn);
+  const [submitting, setSubmitting] = useState(false);
+  const [lrnError, setLrnError] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setModalLrn(initialLrn);
+      setLrnError('');
+    }
+  }, [visible, initialLrn]);
+
+  const handleLrnChange = (val: string) => {
+    const digits = val.replace(/[^0-9]/g, '');
+    setModalLrn(digits);
+    if (digits.length > 0 && digits.length < 12) {
+      setLrnError(`LRN must be 12 digits (${digits.length}/12)`);
+    } else {
+      setLrnError('');
+    }
+  };
+
+  const handleSend = async () => {
+    if (modalLrn.length !== 12) {
+      setLrnError('Please enter your 12-digit LRN');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.sendForgotPinRequest(
+        modalLrn,
+        'I forgot my PIN. Please help me recover or reset it.'
+      );
+      onClose();
+      Alert.alert(
+        'Help Sent! 📬',
+        'Wait for your teacher to respond. Your teacher has been notified on their dashboard and will assist you with your PIN.',
+        [{ text: 'OK' }]
+      );
+    } catch (err: any) {
+      Alert.alert(
+        'Notice',
+        err.message || 'Help request recorded. Please tell your teacher in class that you forgot your PIN.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.forgotModalCard} onPress={e => e.stopPropagation()}>
+          <View style={styles.forgotModalIconWrapper}>
+            <Image
+              source={require('../assets/images/img/teacher.png')}
+              style={styles.forgotModalAvatar}
+              contentFit="contain"
+            />
+          </View>
+          <Text style={styles.forgotModalHeading}>Forgot Your PIN?</Text>
+          <Text style={styles.forgotModalSub}>
+            Send a notification directly to your teacher's dashboard so they can assist you with your PIN!
+          </Text>
+
+          {/* LRN Field */}
+          <View style={styles.forgotLrnBox}>
+            <Text style={styles.forgotLrnLabel}>Learner Reference Number (LRN)</Text>
+            <View style={[styles.forgotLrnInputRow, !!lrnError && styles.inputWrapperError]}>
+              <IdCard size={18} color={C.blue} />
+              <TextInput
+                style={styles.forgotLrnInput}
+                value={modalLrn}
+                onChangeText={handleLrnChange}
+                placeholder="Enter your 12-digit LRN"
+                placeholderTextColor="#9AABB8"
+                keyboardType="number-pad"
+                maxLength={12}
+                editable={!submitting}
+              />
+              {modalLrn.length > 0 && (
+                <Text style={[styles.counterText, modalLrn.length === 12 && styles.counterTextComplete]}>
+                  {modalLrn.length}/12
+                </Text>
+              )}
+            </View>
+            {!!lrnError && <Text style={styles.errorText}>{lrnError}</Text>}
+          </View>
+
+          {/* Pre-typed message note */}
+          <View style={styles.pretypedMessageBox}>
+            <View style={styles.pretypedHeader}>
+              <Text style={styles.pretypedIcon}>💬</Text>
+              <Text style={styles.pretypedTitle}>Message for Teacher:</Text>
+            </View>
+            <Text style={styles.pretypedText}>
+              "I forgot my PIN. Please help me recover or reset it."
+            </Text>
+          </View>
+
+          {/* Buttons */}
+          <View style={styles.forgotActionsRow}>
+            <Pressable
+              style={styles.forgotCancelButton}
+              onPress={onClose}
+              disabled={submitting}
+            >
+              <Text style={styles.forgotCancelButtonText}>Cancel</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.forgotSendButton,
+                modalLrn.length !== 12 && styles.signInBtnDisabled,
+                { transform: [{ scale: pressed ? 0.97 : 1 }] }
+              ]}
+              onPress={handleSend}
+              disabled={submitting || modalLrn.length !== 12}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.forgotSendButtonText}>Send to Teacher 📨</Text>
+              )}
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function Login() {
   const router = useRouter();
   const [lrn, setLrn] = useState('');
@@ -399,6 +539,9 @@ export default function Login() {
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [errorTip, setErrorTip] = useState('');
+
+  // State for forgot PIN modal
+  const [showForgotModal, setShowForgotModal] = useState(false);
 
   const validateLRN = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, '');
@@ -516,6 +659,12 @@ export default function Login() {
         onClose={() => setErrorModalVisible(false)}
       />
 
+      <ForgotPinModal
+        visible={showForgotModal}
+        initialLrn={lrn}
+        onClose={() => setShowForgotModal(false)}
+      />
+
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -582,7 +731,10 @@ export default function Login() {
                     counterText="Enter 4-digit PIN"
                   />
 
-                  <Pressable style={styles.forgotBtn}>
+                  <Pressable
+                    style={({ pressed }) => [styles.forgotBtn, pressed && { opacity: 0.7 }]}
+                    onPress={() => setShowForgotModal(true)}
+                  >
                     <Text style={styles.forgotText}>Forgot PIN? Ask your teacher 🧑‍🏫</Text>
                   </Pressable>
 
@@ -869,5 +1021,144 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     letterSpacing: 0.2,
+  },
+  forgotModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 28,
+    paddingVertical: 24,
+    paddingHorizontal: 22,
+    width: width > 400 ? 380 : width * 0.9,
+    alignItems: 'center',
+    shadowColor: C.blueDeep,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.25,
+    shadowRadius: 28,
+    elevation: 16,
+  },
+  forgotModalIconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E6F0FB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#9EC5EC',
+  },
+  forgotModalAvatar: {
+    width: 60,
+    height: 60,
+  },
+  forgotModalHeading: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: C.ink,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  forgotModalSub: {
+    fontSize: 13,
+    color: C.inkSoft,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 18,
+    paddingHorizontal: 8,
+  },
+  forgotLrnBox: {
+    width: '100%',
+    marginBottom: 14,
+  },
+  forgotLrnLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.ink,
+    marginBottom: 6,
+  },
+  forgotLrnInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  forgotLrnInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.ink,
+    paddingHorizontal: 8,
+  },
+  pretypedMessageBox: {
+    width: '100%',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 12,
+    marginBottom: 20,
+  },
+  pretypedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  pretypedIcon: {
+    fontSize: 13,
+    marginRight: 6,
+  },
+  pretypedTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  pretypedText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1E3A8A',
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+  forgotActionsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  forgotCancelButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  forgotCancelButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  forgotSendButton: {
+    flex: 1.6,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: C.blue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: C.blue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  forgotSendButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

@@ -1204,6 +1204,10 @@ export default function DragDropQuestion({
                 <View style={[styles.glassCard, styles.questionCard]}>
                     <Text style={styles.questionEmoji}>{isExamMode ? '📝' : '🧩'}</Text>
                     <Text style={styles.questionText}>{question.question_text}</Text>
+                    <View style={styles.dragDropInstructionBadge}>
+                        <Ionicons name="hand-left-outline" size={14} color="#2563EB" />
+                        <Text style={styles.dragDropInstructionText}>Drag the boxes to the right box</Text>
+                    </View>
                     {question.media_url && (
                         <DragDropMedia
                             path={question.media_url}
@@ -1347,6 +1351,24 @@ const styles = StyleSheet.create({
     questionCard: { alignItems: 'center', paddingVertical: 20 },
     questionEmoji: { fontSize: 28, marginBottom: 6 },
     questionText: { fontSize: 16, fontWeight: '800', color: '#0f3172', textAlign: 'center', lineHeight: 24 },
+    dragDropInstructionBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EFF6FF',
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+        marginTop: 10,
+        gap: 6,
+    },
+    dragDropInstructionText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#1D4ED8',
+        letterSpacing: 0.2,
+    },
     questionImage: { width: '100%', height: 120, borderRadius: 12, marginTop: 12, backgroundColor: 'rgba(15,49,114,0.03)' },
 
     imageLayoutContainer: { flexDirection: 'row', gap: 6, marginBottom: 12 },

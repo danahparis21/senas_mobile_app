@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Circle, Rect, Line, Polyline, Defs, LinearGradient, Stop } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
@@ -201,20 +202,23 @@ function EditProfileModal({
   visible,
   onClose,
   userName,
-  onSave,
   currentAvatar,
   onAvatarChange
 }: {
   visible: boolean;
   onClose: () => void;
   userName: string;
-  onSave: (name: string) => void;
+  onSave?: (name: string) => void;
   currentAvatar: string;
   onAvatarChange: (avatar: string) => void;
 }) {
-  const [name, setName] = useState(userName);
-  const [showBadges, setShowBadges] = useState(true);
   const [selectedAvatar, setSelectedAvatar] = useState(currentAvatar);
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedAvatar(currentAvatar);
+    }
+  }, [visible, currentAvatar]);
 
   // Available characters
   const characters = [
@@ -228,11 +232,10 @@ function EditProfileModal({
     try {
       await api.updateProfilePicture(selectedAvatar);
       onAvatarChange(selectedAvatar);
-      onSave(name);
       onClose();
-      Alert.alert('✅ Success', 'Profile updated successfully!');
+      Alert.alert('✅ Success', 'Profile character updated successfully!');
     } catch (error) {
-      Alert.alert('❌ Error', 'Failed to update profile. Please try again.');
+      Alert.alert('❌ Error', 'Failed to update character. Please try again.');
       console.error(error);
     }
   };
@@ -242,7 +245,7 @@ function EditProfileModal({
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <Pressable style={styles.editModal} onPress={e => e.stopPropagation()}>
           <View style={styles.editModalHeader}>
-            <Text style={styles.editModalTitle}>Edit Profile</Text>
+            <Text style={styles.editModalTitle}>Choose Character</Text>
             <Pressable style={styles.closeBtn} onPress={onClose}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
@@ -257,10 +260,10 @@ function EditProfileModal({
                 contentFit="cover"
               />
             </View>
-            <Text style={styles.avatarEditLabel}>Choose your character</Text>
+            <Text style={styles.avatarEditLabel}>Select your companion avatar</Text>
           </View>
 
-          {/* Character Grid */}
+          {/* Character Grid - 4 responsive options */}
           <View style={styles.characterGrid}>
             {characters.map((char) => (
               <Pressable
@@ -276,41 +279,26 @@ function EditProfileModal({
                   style={styles.characterImage}
                   contentFit="contain"
                 />
-                <Text style={[
-                  styles.characterLabel,
-                  selectedAvatar === char.id && styles.characterLabelSelected,
-                ]}>
+                <Text
+                  style={[
+                    styles.characterLabel,
+                    selectedAvatar === char.id && styles.characterLabelSelected,
+                  ]}
+                  numberOfLines={1}
+                >
                   {char.label}
                 </Text>
               </Pressable>
             ))}
           </View>
 
-          {/* Display Name */}
+          {/* Display Name (Read-only actual name) */}
           <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>Display Name</Text>
-            <TextInput
-              style={styles.fieldInput}
-              value={name}
-              onChangeText={setName}
-              placeholder="Enter a nickname"
-              placeholderTextColor="#9CA3AF"
-            />
-            <Text style={styles.fieldNote}>*Your real name cannot be changed</Text>
-          </View>
-
-          {/* Badge toggle */}
-          <View style={styles.badgeToggleRow}>
-            <View>
-              <Text style={styles.badgeToggleLabel}>Show Badges</Text>
-              <Text style={styles.badgeToggleSub}>Display your earned badges on profile</Text>
+            <Text style={styles.fieldLabel}>Student Name</Text>
+            <View style={styles.readOnlyNameBox}>
+              <Ionicons name="person-circle-outline" size={22} color="#2563EB" />
+              <Text style={styles.readOnlyNameText}>{userName || 'Student'}</Text>
             </View>
-            <Switch
-              value={showBadges}
-              onValueChange={setShowBadges}
-              trackColor={{ false: '#ddd', true: '#2563EB' }}
-              thumbColor="#fff"
-            />
           </View>
 
           {/* Actions */}
@@ -1488,22 +1476,30 @@ const styles = StyleSheet.create({
     borderRadius: 40, paddingVertical: 8, paddingHorizontal: 16,
   },
   changePicText: { fontSize: 12, fontWeight: '600', color: '#2563EB' },
-  fieldBlock: { marginBottom: 20 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#1F2937', marginBottom: 6 },
+  fieldBlock: { marginBottom: 24 },
+  fieldLabel: { fontSize: 13, fontWeight: '700', color: '#1F2937', marginBottom: 8 },
   fieldInput: {
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', borderRadius: 16,
     paddingVertical: 12, paddingHorizontal: 16, fontSize: 14,
     backgroundColor: 'rgba(255,255,255,0.8)', color: '#1F2937',
   },
-  fieldNote: { fontSize: 10, color: '#9CA3AF', marginTop: 4 },
-  badgeToggleRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  readOnlyNameBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1.5,
+    borderColor: 'rgba(37, 99, 235, 0.18)',
+    borderRadius: 16,
     paddingVertical: 12,
-    borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
-    marginBottom: 24,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(239, 246, 255, 0.7)',
   },
-  badgeToggleLabel: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  badgeToggleSub: { fontSize: 11, color: '#6B7280', marginTop: 2 },
+  readOnlyNameText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f3172',
+  },
+  fieldNote: { fontSize: 11, color: '#9CA3AF', marginTop: 4 },
   editModalBtns: { flexDirection: 'row', gap: 12 },
   cancelEditBtn: {
     flex: 1, paddingVertical: 12,
@@ -1619,32 +1615,36 @@ const styles = StyleSheet.create({
   },
   characterGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 20,
-    paddingHorizontal: 4,
+    width: '100%',
   },
   characterOption: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: 'transparent',
     backgroundColor: 'rgba(15,49,114,0.04)',
-    minWidth: 60,
   },
   characterOptionSelected: {
     borderColor: '#2563EB',
     backgroundColor: 'rgba(37,99,235,0.10)',
   },
   characterImage: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
   },
   characterLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#6B7280',
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 4,
+    textAlign: 'center',
   },
   characterLabelSelected: {
     color: '#2563EB',

@@ -885,7 +885,18 @@ export default function Dashboard() {
       console.log('📚 Dashboard - Student modules response:', JSON.stringify(response, null, 2));
 
       if (response.success && response.modules) {
-        const summaries: ModuleSummary[] = response.modules.map((module: any) => {
+        const levelWeight: Record<string, number> = { beginner: 1, intermediate: 2, advanced: 3 };
+        const sortedRawModules = [...response.modules].sort((a: any, b: any) => {
+          const weightA = levelWeight[(a.mastery_level || a.requires_level || 'beginner').toLowerCase()] ?? 99;
+          const weightB = levelWeight[(b.mastery_level || b.requires_level || 'beginner').toLowerCase()] ?? 99;
+          if (weightA !== weightB) return weightA - weightB;
+          const orderA = Number(a.module_order) || 0;
+          const orderB = Number(b.module_order) || 0;
+          if (orderA !== orderB) return orderA - orderB;
+          return (Number(a.module_id) || 0) - (Number(b.module_id) || 0);
+        });
+
+        const summaries: ModuleSummary[] = sortedRawModules.map((module: any) => {
           const lessons = module.lessons || [];
           const totalCount = lessons.length;
           const doneCount = lessons.filter(

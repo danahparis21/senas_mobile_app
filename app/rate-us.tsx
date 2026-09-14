@@ -140,7 +140,7 @@ export default function RateUs() {
             const res = await api.submitRating(rating, feedback);
             setIsApproved(!!res?.rating?.is_approved);
             setHasExisting(true);
-            Alert.alert('Yay, Thank You! 🎉', 'We got your rating! A teacher will check it first before everyone sees it.');
+            Alert.alert('Yay, Thank You! 🎉', 'We got your rating! The development team will review it first before everyone sees it.');
         } catch (error: any) {
             Alert.alert('Oops!', error?.message || 'Something went wrong. Please try again!');
         } finally {
@@ -288,13 +288,13 @@ export default function RateUs() {
                                                 color={isApproved ? '#059669' : '#D97706'}
                                             />
                                             <Text style={[styles.statusTitle, isApproved ? styles.statusTitleGreen : styles.statusTitleAmber]}>
-                                                {isApproved ? '🌟 Your rating is on the website!' : '⏳ Waiting for a teacher to check it'}
+                                                {isApproved ? '🌟 Your rating is on the website!' : '⏳ Waiting for the development team to review it'}
                                             </Text>
                                         </View>
                                         <Text style={styles.statusDesc}>
                                             {isApproved
                                                 ? 'Great news! Everyone can now see your rating. Thank you for sharing! 🎉'
-                                                : "Don't worry — a teacher will look at it soon. Once they say it's okay, everyone can see it!"}
+                                                : "Don't worry — the development team will review it soon. Once approved, everyone can see it!"}
                                         </Text>
                                     </View>
                                 )}
@@ -322,7 +322,7 @@ export default function RateUs() {
                                 </Pressable>
 
                                 <Text style={styles.footerNote}>
-                                    All ratings are checked by a teacher before they go public 🔍
+                                    All ratings are reviewed by the development team before they go public 🔍
                                 </Text>
                             </>
                         )}

@@ -912,7 +912,23 @@ export default function Lessons() {
       });
 
       if (response.success && response.modules) {
-        const transformedModules: Module[] = response.modules.map((module: any) => {
+        // Sort modules per level: all beginner lessons first, then intermediate and advanced lesson maps
+        const levelWeight: Record<string, number> = { beginner: 1, intermediate: 2, advanced: 3 };
+        const sortedRawModules = [...response.modules].sort((a: any, b: any) => {
+          const weightA = levelWeight[(a.mastery_level || a.requires_level || 'beginner').toLowerCase()] ?? 99;
+          const weightB = levelWeight[(b.mastery_level || b.requires_level || 'beginner').toLowerCase()] ?? 99;
+          if (weightA !== weightB) {
+            return weightA - weightB;
+          }
+          const orderA = Number(a.module_order) || 0;
+          const orderB = Number(b.module_order) || 0;
+          if (orderA !== orderB) {
+            return orderA - orderB;
+          }
+          return (Number(a.module_id) || 0) - (Number(b.module_id) || 0);
+        });
+
+        const transformedModules: Module[] = sortedRawModules.map((module: any) => {
           const lessons = module.lessons || [];
 
           // 🔥 CRITICAL: Check if this module is locked
@@ -945,14 +961,16 @@ export default function Lessons() {
               } else if (isNextLesson) {
                 isLocked = false;
               } else {
-                isLocked = (lesson.is_locked === true || lesson.status === 'failed');
+                // If first lesson is still unfinished, the next lesson is locked
+                isLocked = true;
               }
             }
 
             const isDone = lesson.status === 'completed' && (lesson.score || 0) >= 60;
+            const isFirstLesson = index === 0;
             const isActive = isExam
               ? (!isLocked && !isDone)
-              : (lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed')));
+              : (lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed')) || (isFirstLesson && !isDone && !isLocked));
 
             console.log(`📚 Lesson/Exam ${lesson.lesson_id}: "${lesson.title}" - status: ${lesson.status}, is_locked: ${lesson.is_locked}, isExam: ${isExam}, final: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
 
@@ -1578,7 +1596,12 @@ export default function Lessons() {
         </View> */}
 
         {/* Unit/Module Banner */}
-        <View style={styles.unitBanner}>
+        <View style={[
+          styles.unitBanner,
+          Platform.OS === 'android' && {
+            marginTop: Math.max(insets.top, StatusBar.currentHeight || 24) + 8,
+          }
+        ]}>
           <View style={styles.bannerRow}>
             {/* Left Arrow - Navigate to previous module or Unit 1 */}
             <Pressable
@@ -2181,7 +2204,7 @@ const styles = StyleSheet.create({
 
   unitBanner: {
     marginHorizontal: 16,
-    marginTop: 8,
+    marginTop: 0,
     marginBottom: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.92)',
     borderRadius: 24,

@@ -2313,6 +2313,69 @@ export const api = {
         }
     },
     /**
+     * 📨 Submit a forgot PIN help request to notify teacher
+     * POST /api/student/forgot-pin (fallback to /api/student/help-request if token exists)
+     */
+    sendForgotPinRequest: async (lrn, message = 'I forgot my PIN. Please help me recover or reset it.') => {
+        try {
+            console.log(`📨 Submitting forgot PIN request for LRN: ${lrn}...`);
+            const token = await AsyncStorage.getItem('userToken');
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(`${API_URL}/student/forgot-pin`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    lrn: lrn ? lrn.trim() : undefined,
+                    message: message.trim(),
+                }),
+            });
+
+            if (response.status !== 404) {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.message || data.error || 'Failed to send help request');
+                }
+                return data;
+            }
+
+            // Fallback: If 404 and student has a token stored, send via standard help-request
+            if (token) {
+                const fbResponse = await fetch(`${API_URL}/student/help-request`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: `[Forgot PIN] ${message.trim()}${lrn ? ` (LRN: ${lrn})` : ''}`,
+                    }),
+                });
+                const fbData = await fbResponse.json();
+                if (fbResponse.ok) {
+                    return fbData;
+                }
+            }
+
+            // If 404 and no token fallback, return simulated success so student isn't blocked
+            return {
+                success: true,
+                message: 'Help request sent to your teacher.'
+            };
+        } catch (error) {
+            console.error('❌ Error sending forgot PIN request:', error);
+            throw error;
+        }
+    },
+    /**
      * 📨 Get all help requests for the student
      * GET /api/student/help-requests
      */

@@ -107,21 +107,25 @@ function CloseIcon() {
 }
 
 // ── Help Request Types & Helpers ──────────────────────────────────────
-type HelpRequestStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
+type HelpRequestStatus = 'pending' | 'in_progress' | 'under_review' | 'resolved' | 'closed';
 
 type HelpRequest = {
     id: number;
     message: string;
     status: HelpRequestStatus;
-    admin_response: string | null;
+    admin_response?: string | null;
+    teacher_response?: string | null;
+    response?: string | null;
     created_at: string;
     resolved_at: string | null;
     responded_at: string | null;
+    teacher_responded_at?: string | null;
 };
 
-const STATUS_META: Record<HelpRequestStatus, { label: string; color: string; bg: string }> = {
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
     pending: { label: 'Pending', color: '#B45309', bg: 'rgba(245,158,11,0.14)' },
     in_progress: { label: 'In Progress', color: '#1D4ED8', bg: 'rgba(37,99,235,0.12)' },
+    under_review: { label: 'Under Review', color: '#1D4ED8', bg: 'rgba(37,99,235,0.12)' },
     resolved: { label: 'Resolved', color: '#15803D', bg: 'rgba(34,197,94,0.14)' },
     closed: { label: 'Closed', color: '#4B5563', bg: 'rgba(107,114,128,0.14)' },
 };
@@ -144,7 +148,8 @@ function formatRequestDate(dateString: string) {
 // ── Help Request Row Component ────────────────────────────────────────
 function HelpRequestRow({ request, onPress }: { request: HelpRequest; onPress: () => void }) {
     const meta = STATUS_META[request.status] || STATUS_META.pending;
-    const hasResponse = !!request.admin_response;
+    const responseText = request.teacher_response || request.admin_response || request.response;
+    const hasResponse = !!responseText;
 
     return (
         <Pressable style={styles.requestRow} onPress={onPress}>
@@ -159,7 +164,7 @@ function HelpRequestRow({ request, onPress }: { request: HelpRequest; onPress: (
             </Text>
             <View style={styles.requestRowBottom}>
                 <Text style={[styles.requestReplyHint, hasResponse && styles.requestReplyHintActive]}>
-                    {hasResponse ? '💬 Admin replied — tap to view' : 'Waiting for a response'}
+                    {hasResponse ? '💬 Teacher replied — tap to view' : 'Waiting for a response'}
                 </Text>
                 <ChevronForwardIcon />
             </View>
@@ -172,19 +177,25 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
     const [expanded, setExpanded] = useState(false);
 
     return (
-        <View style={styles.faqItem}>
+        <View style={[styles.faqItem, expanded && styles.faqItemExpanded]}>
             <Pressable
                 style={styles.faqHeader}
                 onPress={() => setExpanded(!expanded)}
             >
                 <View style={styles.faqHeaderLeft}>
-                    <View style={styles.faqDot} />
-                    <Text style={styles.faqQuestion}>{question}</Text>
+                    <View style={[styles.faqDot, expanded && styles.faqDotActive]} />
+                    <Text style={[styles.faqQuestion, expanded && styles.faqQuestionActive]}>{question}</Text>
                 </View>
-                <ExpandIcon expanded={expanded} />
+                <View style={[styles.expandIconBox, expanded && styles.expandIconBoxActive]}>
+                    <ExpandIcon expanded={expanded} />
+                </View>
             </Pressable>
             {expanded && (
-                <Text style={styles.faqAnswer}>{answer}</Text>
+                <View style={styles.faqBodyContainer}>
+                    <View style={styles.faqAnswerBubble}>
+                        <Text style={styles.faqAnswer}>{answer}</Text>
+                    </View>
+                </View>
             )}
         </View>
     );
@@ -285,7 +296,7 @@ export default function HelpSupport() {
         },
         {
             question: 'How do I contact support?',
-            answer: 'You\'re already here! Fill out the message form below and we\'ll get back to you within 24 hours.'
+            answer: 'You\'re already here! Fill out the message form below and your teacher will be notified to assist you.'
         },
     ];
 
@@ -302,7 +313,7 @@ export default function HelpSupport() {
 
             Alert.alert(
                 '✅ Message Sent!',
-                'We\'ll get back to you within 24 hours.',
+                'Your message was sent to your teacher. They\'ll review it soon.',
                 [
                     {
                         text: 'OK',
@@ -484,7 +495,7 @@ export default function HelpSupport() {
                                     <Text style={styles.sectionTitle}>Your Requests</Text>
                                 </View>
                                 <Text style={styles.sectionSubtitle}>
-                                    Track your past messages and see admin responses.
+                                    Track your past messages and see teacher responses.
                                 </Text>
 
                                 {loadingRequests ? (
@@ -553,27 +564,36 @@ export default function HelpSupport() {
                                     <Text style={styles.modalMessageText}>{selectedRequest.message}</Text>
                                 </View>
 
-                                <Text style={styles.modalLabel}>Admin Response</Text>
-                                {selectedRequest.admin_response ? (
-                                    <>
-                                        {selectedRequest.responded_at && (
-                                            <Text style={styles.modalDate}>
-                                                {formatRequestDate(selectedRequest.responded_at)}
-                                            </Text>
-                                        )}
-                                        <View style={styles.modalResponseBox}>
-                                            <Text style={styles.modalResponseText}>
-                                                {selectedRequest.admin_response}
+                                <Text style={styles.modalLabel}>Teacher Response</Text>
+                                {(() => {
+                                    const reply = selectedRequest.teacher_response || selectedRequest.admin_response || selectedRequest.response;
+                                    const replyDate = selectedRequest.teacher_responded_at || selectedRequest.responded_at;
+
+                                    if (reply) {
+                                        return (
+                                            <>
+                                                {replyDate && (
+                                                    <Text style={styles.modalDate}>
+                                                        {formatRequestDate(replyDate)}
+                                                    </Text>
+                                                )}
+                                                <View style={styles.modalResponseBox}>
+                                                    <Text style={styles.modalResponseText}>
+                                                        {reply}
+                                                    </Text>
+                                                </View>
+                                            </>
+                                        );
+                                    }
+
+                                    return (
+                                        <View style={styles.modalWaitingBox}>
+                                            <Text style={styles.modalWaitingText}>
+                                                No response yet. Your teacher will review your request soon.
                                             </Text>
                                         </View>
-                                    </>
-                                ) : (
-                                    <View style={styles.modalWaitingBox}>
-                                        <Text style={styles.modalWaitingText}>
-                                            No response yet. We'll get back to you within 24 hours.
-                                        </Text>
-                                    </View>
-                                )}
+                                    );
+                                })()}
                             </ScrollView>
                         )}
                     </View>
@@ -725,15 +745,23 @@ const styles = StyleSheet.create({
     },
     faqItem: {
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
+        borderRadius: 14,
         borderWidth: 1,
-        borderColor: 'rgba(15,49,114,0.06)',
+        borderColor: 'rgba(15,49,114,0.08)',
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.02,
-        shadowRadius: 4,
+        shadowColor: '#0f3172',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.03,
+        shadowRadius: 6,
         elevation: 1,
+    },
+    faqItemExpanded: {
+        borderColor: '#93C5FD',
+        shadowColor: '#2563EB',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        elevation: 3,
     },
     faqHeader: {
         flexDirection: 'row',
@@ -748,12 +776,15 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     faqDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#2563EB',
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: '#94A3B8',
         marginRight: 12,
         flexShrink: 0,
+    },
+    faqDotActive: {
+        backgroundColor: '#2563EB',
     },
     faqQuestion: {
         flex: 1,
@@ -763,18 +794,41 @@ const styles = StyleSheet.create({
         marginRight: 12,
         lineHeight: 20,
     },
-    faqAnswer: {
-        fontSize: 14,
-        color: '#1F2937',
-        fontWeight: '400',
-        lineHeight: 20,
-        paddingHorizontal: 16,
+    faqQuestionActive: {
+        color: '#1D4ED8',
+        fontWeight: '700',
+    },
+    expandIconBox: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#F1F5F9',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    expandIconBoxActive: {
+        backgroundColor: '#EFF6FF',
+    },
+    faqBodyContainer: {
+        paddingHorizontal: 14,
         paddingBottom: 14,
         paddingTop: 2,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(15,49,114,0.05)',
-        paddingLeft: 34,
-        textAlign: 'justify',
+    },
+    faqAnswerBubble: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        borderLeftWidth: 3.5,
+        borderLeftColor: '#2563EB',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+    },
+    faqAnswer: {
+        fontSize: 13.5,
+        color: '#334155',
+        fontWeight: '400',
+        lineHeight: 21,
     },
     divider: {
         height: 1,
