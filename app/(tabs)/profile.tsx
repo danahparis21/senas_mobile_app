@@ -422,6 +422,250 @@ function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => voi
   );
 }
 
+// ── School Year Item Interface ──────────────────────────────────────────
+interface SchoolYearItem {
+  school_year_id: number | null;
+  school_year_name: string;
+  program_type?: string;
+  grade_level?: string;
+  section?: string;
+  is_active: boolean;
+  is_enrolled: boolean;
+  enrolled_at?: string;
+}
+
+// ── School Year Picker Modal ────────────────────────────────────────────
+function SchoolYearPickerModal({
+  visible,
+  onClose,
+  schoolYears,
+  selectedYear,
+  onSelectYear,
+  activeYear,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  schoolYears: SchoolYearItem[];
+  selectedYear: string;
+  onSelectYear: (yearName: string) => void;
+  activeYear: string;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.syModal} onPress={e => e.stopPropagation()}>
+          <View style={styles.editModalHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 22 }}>🎓</Text>
+              <Text style={styles.editModalTitle}>Select School Year</Text>
+            </View>
+            <Pressable style={styles.closeBtn} onPress={onClose}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.syModalSubtitle}>
+            Filter and review your enrolled progress, grades, badges, and certificates for each school year.
+          </Text>
+
+          <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+            {schoolYears.map((sy, idx) => {
+              const isSelected = (sy.school_year_name === selectedYear) || (!selectedYear && sy.is_active);
+              const isCurrentActive = (sy.school_year_name === activeYear) || sy.is_active;
+
+              return (
+                <Pressable
+                  key={sy.school_year_name || idx}
+                  style={[
+                    styles.syOptionCard,
+                    isSelected && styles.syOptionCardSelected,
+                  ]}
+                  onPress={() => {
+                    onSelectYear(sy.school_year_name);
+                    onClose();
+                  }}
+                >
+                  <View style={styles.syOptionLeft}>
+                    <View style={[styles.syRadioCircle, isSelected && styles.syRadioCircleActive]}>
+                      {isSelected && <View style={styles.syRadioInner} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={[styles.syOptionTitle, isSelected && styles.syOptionTitleSelected]}>
+                          S.Y. {sy.school_year_name}
+                        </Text>
+                        {isCurrentActive && (
+                          <View style={styles.syActiveBadge}>
+                            <Text style={styles.syActiveBadgeText}>Active S.Y.</Text>
+                          </View>
+                        )}
+                        {sy.is_enrolled && (
+                          <View style={styles.syEnrolledBadge}>
+                            <Text style={styles.syEnrolledBadgeText}>Enrolled</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.syOptionSub}>
+                        {[sy.program_type, sy.grade_level ? `${sy.grade_level}${sy.section ? ` - ${sy.section}` : ''}` : '']
+                          .filter(Boolean)
+                          .join(' • ') || 'Enrolled Academic Year'}
+                      </Text>
+                    </View>
+                  </View>
+                  {isSelected && (
+                    <Text style={{ fontSize: 18, color: '#2563EB', fontWeight: 'bold' }}>✓</Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <Pressable style={styles.syModalDoneBtn} onPress={onClose}>
+            <Text style={styles.syModalDoneText}>Done</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── AndroidAcademicCard (Android-only collapsible card) ─────────────────
+interface AndroidAcademicCardProps {
+  selectedSchoolYear: string | null;
+  activeSchoolYear: string | null;
+  isEnrolledInActiveYear: boolean;
+  studentAcademicInfo: {
+    program_type?: string;
+    grade_level?: string;
+    section?: string;
+    lrn?: string;
+  };
+  onPickSY: () => void;
+  onReturnToActive: () => void;
+}
+
+function AndroidAcademicCard({
+  selectedSchoolYear,
+  activeSchoolYear,
+  isEnrolledInActiveYear,
+  studentAcademicInfo,
+  onPickSY,
+  onReturnToActive,
+}: AndroidAcademicCardProps) {
+  const [expanded, setExpanded] = React.useState(false);
+  const animHeight = useRef(new Animated.Value(0)).current;
+  const animRotate = useRef(new Animated.Value(0)).current;
+
+  const toggle = () => {
+    const toValue = expanded ? 0 : 1;
+    Animated.parallel([
+      Animated.spring(animHeight, { toValue, useNativeDriver: false, bounciness: 0, speed: 18 }),
+      Animated.timing(animRotate, { toValue, useNativeDriver: true, duration: 220, easing: Easing.out(Easing.quad) }),
+    ]).start();
+    setExpanded(v => !v);
+  };
+
+  const isArchived = selectedSchoolYear && activeSchoolYear && selectedSchoolYear !== activeSchoolYear;
+
+  // Status config
+  const statusConfig = isArchived
+    ? { bg: '#FEF3C7', border: '#F59E0B', dotColor: '#D97706', textColor: '#92400E', label: 'Archived S.Y.' }
+    : isEnrolledInActiveYear
+      ? { bg: '#ECFDF5', border: '#10B981', dotColor: '#10B981', textColor: '#065F46', label: 'Enrolled · Active S.Y.' }
+      : { bg: '#FEF2F2', border: '#EF4444', dotColor: '#EF4444', textColor: '#991B1B', label: 'Not Enrolled (Last Records)' };
+
+  const chevronRotation = animRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+
+  // Expanded content height estimate (enough for all fields + return btn)
+  const contentMaxHeight = animHeight.interpolate({ inputRange: [0, 1], outputRange: [0, isArchived ? 260 : 210] });
+
+  return (
+    <View style={styles.syAndroidCard}>
+      {/* ── Collapsed Header Row ── */}
+      <View style={styles.syAndroidCardHeader}>
+        {/* Left: icon + title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+          <View style={[styles.syIconBox, { backgroundColor: '#EFF6FF' }]}>
+            <Text style={{ fontSize: 16 }}>🎓</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.syCardLabel}>ACADEMIC RECORD</Text>
+            <Text style={[styles.syCardTitle, { fontSize: 13 }]}>
+              {selectedSchoolYear ? `S.Y. ${selectedSchoolYear}` : activeSchoolYear ? `S.Y. ${activeSchoolYear}` : 'School Year'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Right: status dot + SY picker + expand toggle */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* Status indicator dot */}
+          <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor, width: 9, height: 9 }]} />
+
+          {/* SY picker button */}
+          <Pressable style={styles.syPickerBtn} onPress={onPickSY}>
+            <Ionicons name="calendar-outline" size={13} color="#2563EB" />
+            <Text style={[styles.syPickerBtnText, { fontSize: 12 }]}>Filter</Text>
+          </Pressable>
+
+          {/* Expand toggle */}
+          <Pressable
+            onPress={toggle}
+            style={{ padding: 4, backgroundColor: '#F3F4F6', borderRadius: 20 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Animated.View style={{ transform: [{ rotate: chevronRotation }] }}>
+              <Ionicons name="chevron-down" size={18} color="#6B7280" />
+            </Animated.View>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* ── Expandable Content ── */}
+      <Animated.View style={[{ overflow: 'hidden' }, { maxHeight: contentMaxHeight }]}>
+        <View style={styles.syAndroidExpandedContent}>
+          {/* Status Pill */}
+          <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border, marginBottom: 12 }]}>
+            <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
+            <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
+          </View>
+
+          {/* Academic Info Grid */}
+          <View style={[styles.syAcademicGrid, { backgroundColor: '#F9FAFB' }]}>
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>Program</Text>
+              <Text style={styles.syAcademicVal} numberOfLines={1}>
+                {studentAcademicInfo.program_type || 'Non-Graded'}
+              </Text>
+            </View>
+            <View style={styles.syAcademicDividerVertical} />
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>Grade & Section</Text>
+              <Text style={styles.syAcademicVal} numberOfLines={1}>
+                {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
+              </Text>
+            </View>
+            <View style={styles.syAcademicDividerVertical} />
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>LRN</Text>
+              <Text style={styles.syAcademicVal} numberOfLines={1}>
+                {studentAcademicInfo.lrn || '—'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Return to Active SY button */}
+          {isArchived && (
+            <Pressable style={[styles.syReturnBtn, { marginTop: 10 }]} onPress={onReturnToActive}>
+              <Ionicons name="arrow-undo-outline" size={14} color="#2563EB" />
+              <Text style={styles.syReturnBtnText}>Return to Active S.Y. ({activeSchoolYear})</Text>
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
 // ── Main Profile Screen ─────────────────────────────────────────────────
 export default function Profile() {
   const router = useRouter();
@@ -442,6 +686,20 @@ export default function Profile() {
   const [visibleDocsCount, setVisibleDocsCount] = useState(DOCS_PAGE_SIZE);
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [showPromotionModal, setShowPromotionModal] = useState(false);
+
+  // ── School Year & Academic states ──
+  const [enrolledSchoolYears, setEnrolledSchoolYears] = useState<SchoolYearItem[]>([]);
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>('');
+  const [activeSchoolYear, setActiveSchoolYear] = useState<string>('');
+  const [isEnrolledInActiveYear, setIsEnrolledInActiveYear] = useState(true);
+  const [isEnrolledInSelectedYear, setIsEnrolledInSelectedYear] = useState(true);
+  const [showSchoolYearModal, setShowSchoolYearModal] = useState(false);
+  const [studentAcademicInfo, setStudentAcademicInfo] = useState<{
+    program_type?: string;
+    grade_level?: string;
+    section?: string;
+    lrn?: string;
+  }>({});
 
   // ── Teacher Info ──
   const [teacherName, setTeacherName] = useState<string | null>(null);
@@ -594,9 +852,11 @@ export default function Profile() {
     }
   };
 
-  const fetchProfileData = async () => {
+  const fetchProfileData = async (targetSyName?: string) => {
     try {
       setLoading(true);
+
+      const syToFetch = targetSyName !== undefined ? targetSyName : selectedSchoolYear;
 
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
@@ -614,11 +874,58 @@ export default function Profile() {
         }
       }
 
-      const response = await api.getStudentLessons();
+      // ── 1. Fetch Profile endpoint with school year ──
+      let syInfoFromApi: any = null;
+      try {
+        const profileRes = await api.getProfile(syToFetch || null);
+        if (profileRes && profileRes.student) {
+          const st = profileRes.student;
+          if (st.first_name || st.last_name) {
+            setUserName(`${st.first_name || ''} ${st.last_name || ''}`.trim());
+          }
+          if (st.fsl_mastery_level) setStudentLevel(st.fsl_mastery_level);
+          if (st.total_xp !== undefined) setTotalXp(st.total_xp);
+          if (st.streak_days !== undefined) setStreakDays(st.streak_days);
+
+          setStudentAcademicInfo({
+            program_type: st.program_type,
+            grade_level: st.grade_level,
+            section: st.section,
+            lrn: st.lrn,
+          });
+        }
+        if (profileRes && profileRes.school_year_info) {
+          syInfoFromApi = profileRes.school_year_info;
+          if (syInfoFromApi.enrolled_school_years) {
+            setEnrolledSchoolYears(syInfoFromApi.enrolled_school_years);
+          }
+          if (syInfoFromApi.active_school_year) {
+            setActiveSchoolYear(syInfoFromApi.active_school_year);
+          }
+          if (syInfoFromApi.selected_school_year) {
+            setSelectedSchoolYear(syInfoFromApi.selected_school_year);
+          }
+          if (syInfoFromApi.is_enrolled_in_active_year !== undefined) {
+            setIsEnrolledInActiveYear(syInfoFromApi.is_enrolled_in_active_year);
+          }
+          if (syInfoFromApi.is_enrolled_in_selected_year !== undefined) {
+            setIsEnrolledInSelectedYear(syInfoFromApi.is_enrolled_in_selected_year);
+          }
+        }
+      } catch (err) {
+        console.log('Profile endpoint fetch error:', err);
+      }
+
+      // ── 2. Fetch Lessons for school year ──
+      const response = await api.getStudentLessons(syToFetch || null);
       if (response.success) {
         const student = response.student;
-        setTotalXp(student?.total_xp || 0);
-        setStreakDays(student?.streak_days || 0);
+        if (student?.total_xp !== undefined && !syToFetch) {
+          setTotalXp(student.total_xp);
+        }
+        if (student?.streak_days !== undefined) {
+          setStreakDays(student.streak_days);
+        }
 
         if (student?.fsl_mastery_level) {
           setStudentLevel(student.fsl_mastery_level);
@@ -626,6 +933,19 @@ export default function Profile() {
 
         if (student?.profile_picture) {
           setSelectedAvatar(student.profile_picture);
+        }
+
+        if (response.school_year_info && !syInfoFromApi) {
+          const syInfo = response.school_year_info;
+          if (syInfo.enrolled_school_years) {
+            setEnrolledSchoolYears(syInfo.enrolled_school_years);
+          }
+          if (syInfo.active_school_year) {
+            setActiveSchoolYear(syInfo.active_school_year);
+          }
+          if (syInfo.current_school_year && !selectedSchoolYear) {
+            setSelectedSchoolYear(syInfo.current_school_year);
+          }
         }
 
         // ── Also check if teacher data comes from API response ──
@@ -649,35 +969,56 @@ export default function Profile() {
           setTotalLessons(completed.length);
         }
 
-        const earnedBadges = Math.min(Math.floor((student?.total_xp || 0) / 50) + 1, 8);
-        setTotalBadges(earnedBadges > 0 ? Math.min(earnedBadges, 8) : 0);
+        // Fetch actual achievements from the backend and count unlocked ones
+        try {
+          const achievementsResponse = await api.getAchievements();
+          if (achievementsResponse.success && achievementsResponse.achievements) {
+            const allAchievements = achievementsResponse.achievements;
+            const unlockedAchievements = allAchievements.filter((a: any) => a.is_unlocked);
+            setTotalBadges(unlockedAchievements.length);
 
-        const badgeData = [
-          { xp: 0, label: 'First Step', src: require('../../assets/images/img/first_step.png') },
-          { xp: 50, label: 'Alphabet Star', src: require('../../assets/images/img/alphabet_star.png') },
-          { xp: 100, label: 'Streak Starter', src: require('../../assets/images/img/streak1.png') },
-          { xp: 150, label: 'Greeter', src: require('../../assets/images/img/greetings.png') },
-        ];
+            // Build recent badges from actually unlocked achievements
+            const ACHIEVEMENT_IMAGES: Record<string, any> = {
+              'xp_50': require('../../assets/images/img/first_step.png'),
+              'xp_100': require('../../assets/images/img/alphabet_star.png'),
+              'xp_250': require('../../assets/images/img/streak1.png'),
+              'xp_500': require('../../assets/images/img/greetings.png'),
+              'xp_1000': require('../../assets/images/img/numbers.png'),
+              'beginner_welcome': require('../../assets/images/img/first_step.png'),
+              'alphabet_master': require('../../assets/images/img/alphabet_star.png'),
+              'streak_3': require('../../assets/images/img/streak1.png'),
+              'streak_7': require('../../assets/images/img/greetings.png'),
+              'numbers_master': require('../../assets/images/img/numbers.png'),
+              'greetings_master': require('../../assets/images/img/greetings.png'),
+            };
+            const DEFAULT_BADGE = require('../../assets/images/img/badges.png');
+            const LOCKED_BADGE = require('../../assets/images/img/locked.png');
 
-        const earnedBadgeList = badgeData
-          .filter(b => (student?.total_xp || 0) >= b.xp)
-          .slice(0, 4);
+            // Take up to 4 unlocked achievements for the recent badges row
+            const earnedBadgeList: { src: any; label: string }[] = unlockedAchievements
+              .slice(0, 4)
+              .map((a: any) => ({
+                label: a.name,
+                src: ACHIEVEMENT_IMAGES[a.code] || DEFAULT_BADGE,
+              }));
 
-        const placeholderBadges: { xp: number; label: string; src: any }[] = [
-          { xp: 200, label: 'Quiz Whiz', src: require('../../assets/images/img/locked.png') },
-          { xp: 250, label: 'Sign Detective', src: require('../../assets/images/img/locked.png') },
-          { xp: 300, label: 'Number Ninja', src: require('../../assets/images/img/locked.png') },
-          { xp: 350, label: 'Week Warrior', src: require('../../assets/images/img/locked.png') },
-        ];
-
-        while (earnedBadgeList.length < 4) {
-          earnedBadgeList.push(placeholderBadges[earnedBadgeList.length]);
+            // Pad with locked placeholders from the remaining achievements
+            const lockedAchievements = allAchievements.filter((a: any) => !a.is_unlocked);
+            let padIndex = 0;
+            while (earnedBadgeList.length < 4 && padIndex < lockedAchievements.length) {
+              earnedBadgeList.push({ label: lockedAchievements[padIndex].name, src: LOCKED_BADGE });
+              padIndex++;
+            }
+            setRecentBadges(earnedBadgeList);
+          }
+        } catch (achievementError) {
+          console.log('Could not fetch achievements for badge count:', achievementError);
         }
-        setRecentBadges(earnedBadgeList);
       }
 
+      // ── 3. Fetch promotion documents for target school year ──
       try {
-        const promoResponse = await api.getPromotionHistory();
+        const promoResponse = await api.getPromotionHistory(syToFetch || null);
         const promotions = promoResponse?.history || [];
         setDocuments(promotions);
         setVisibleDocsCount(DOCS_PAGE_SIZE);
@@ -807,6 +1148,17 @@ export default function Profile() {
         visible={showAboutModal}
         onClose={() => setShowAboutModal(false)}
       />
+      <SchoolYearPickerModal
+        visible={showSchoolYearModal}
+        onClose={() => setShowSchoolYearModal(false)}
+        schoolYears={enrolledSchoolYears}
+        selectedYear={selectedSchoolYear}
+        activeYear={activeSchoolYear}
+        onSelectYear={(yearName) => {
+          setSelectedSchoolYear(yearName);
+          fetchProfileData(yearName);
+        }}
+      />
       {selectedPromotion && (
         <PromotionModal
           visible={showPromotionModal}
@@ -902,6 +1254,93 @@ export default function Profile() {
               </View>
             </View>
           </View>
+        </View>
+
+        {/* ── Academic & School Year Card ── */}
+        <View style={styles.section}>
+          {Platform.OS === 'ios' ? (
+            /* ── iOS: Glassmorphic card ── */
+            <GlassCard style={styles.syCard}>
+              <View style={styles.syCardHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <View style={styles.syIconBox}>
+                    <Text style={{ fontSize: 18 }}>🎓</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.syCardLabel}>ACADEMIC RECORD</Text>
+                    <Text style={styles.syCardTitle}>School Year Filter</Text>
+                  </View>
+                </View>
+                <Pressable
+                  style={styles.syPickerBtn}
+                  onPress={() => setShowSchoolYearModal(true)}
+                >
+                  <Text style={styles.syPickerBtnText}>
+                    {selectedSchoolYear ? `S.Y. ${selectedSchoolYear}` : (activeSchoolYear ? `S.Y. ${activeSchoolYear}` : 'Select S.Y.')}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color="#2563EB" />
+                </Pressable>
+              </View>
+
+              <View style={styles.syStatusRow}>
+                {selectedSchoolYear && activeSchoolYear && selectedSchoolYear !== activeSchoolYear ? (
+                  <View style={[styles.syStatusPill, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+                    <View style={[styles.syStatusDot, { backgroundColor: '#D97706' }]} />
+                    <Text style={[styles.syStatusPillText, { color: '#92400E' }]}>Archived S.Y. (Viewing Past Progress)</Text>
+                  </View>
+                ) : isEnrolledInActiveYear ? (
+                  <View style={[styles.syStatusPill, { backgroundColor: '#ECFDF5', borderColor: '#10B981' }]}>
+                    <View style={[styles.syStatusDot, { backgroundColor: '#10B981' }]} />
+                    <Text style={[styles.syStatusPillText, { color: '#065F46' }]}>Enrolled • Active School Year</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.syStatusPill, { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}>
+                    <View style={[styles.syStatusDot, { backgroundColor: '#EF4444' }]} />
+                    <Text style={[styles.syStatusPillText, { color: '#991B1B' }]}>Not Enrolled in Active S.Y. (Last Enrolled Records)</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.syAcademicGrid}>
+                <View style={styles.syAcademicCol}>
+                  <Text style={styles.syAcademicLabel}>Program</Text>
+                  <Text style={styles.syAcademicVal} numberOfLines={1}>{studentAcademicInfo.program_type || 'Non-Graded'}</Text>
+                </View>
+                <View style={styles.syAcademicDividerVertical} />
+                <View style={styles.syAcademicCol}>
+                  <Text style={styles.syAcademicLabel}>Grade & Section</Text>
+                  <Text style={styles.syAcademicVal} numberOfLines={1}>
+                    {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
+                  </Text>
+                </View>
+                <View style={styles.syAcademicDividerVertical} />
+                <View style={styles.syAcademicCol}>
+                  <Text style={styles.syAcademicLabel}>LRN</Text>
+                  <Text style={styles.syAcademicVal} numberOfLines={1}>{studentAcademicInfo.lrn || '—'}</Text>
+                </View>
+              </View>
+
+              {selectedSchoolYear && activeSchoolYear && selectedSchoolYear !== activeSchoolYear && (
+                <Pressable
+                  style={styles.syReturnBtn}
+                  onPress={() => { setSelectedSchoolYear(activeSchoolYear); fetchProfileData(activeSchoolYear); }}
+                >
+                  <Ionicons name="arrow-undo-outline" size={14} color="#2563EB" />
+                  <Text style={styles.syReturnBtnText}>Return to Active S.Y. ({activeSchoolYear})</Text>
+                </Pressable>
+              )}
+            </GlassCard>
+          ) : (
+            /* ── Android: Plain white collapsible card ── */
+            <AndroidAcademicCard
+              selectedSchoolYear={selectedSchoolYear}
+              activeSchoolYear={activeSchoolYear}
+              isEnrolledInActiveYear={isEnrolledInActiveYear}
+              studentAcademicInfo={studentAcademicInfo}
+              onPickSY={() => setShowSchoolYearModal(true)}
+              onReturnToActive={() => { setSelectedSchoolYear(activeSchoolYear); fetchProfileData(activeSchoolYear); }}
+            />
+          )}
         </View>
 
         {/* ── Stats ── */}
@@ -1649,5 +2088,256 @@ const styles = StyleSheet.create({
   characterLabelSelected: {
     color: '#2563EB',
     fontWeight: '700',
+  },
+
+  // ── School Year Card & Modal Styles ──
+  syCard: {
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.12)',
+  },
+  syAndroidCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  syAndroidCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  syAndroidExpandedContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  syCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  syIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syCardLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2563EB',
+    letterSpacing: 0.8,
+  },
+  syCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f3172',
+  },
+  syPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  syPickerBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  syStatusRow: {
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  syStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  syStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  syStatusPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  syAcademicGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 49, 114, 0.03)',
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  syAcademicCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  syAcademicDividerVertical: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(15, 49, 114, 0.1)',
+  },
+  syAcademicLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  syAcademicVal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f3172',
+  },
+  syReturnBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+  },
+  syReturnBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+
+  // School Year Picker Modal
+  syModal: {
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 32,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 24,
+  },
+  syModalSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  syOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    marginBottom: 10,
+  },
+  syOptionCardSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#2563EB',
+  },
+  syOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  syRadioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syRadioCircleActive: {
+    borderColor: '#2563EB',
+  },
+  syRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#2563EB',
+  },
+  syOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  syOptionTitleSelected: {
+    color: '#2563EB',
+  },
+  syActiveBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  syActiveBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+  syEnrolledBadge: {
+    backgroundColor: '#E0E7FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  syEnrolledBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4338CA',
+  },
+  syOptionSub: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  syModalDoneBtn: {
+    backgroundColor: '#2563EB',
+    borderRadius: 40,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  syModalDoneText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
   },
 });

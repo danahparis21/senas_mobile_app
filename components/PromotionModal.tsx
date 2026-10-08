@@ -850,11 +850,6 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
           <div class="sig-name">${adviserName}</div>
           <div class="sig-line">Adviser / Teacher</div>
         </div>
-        <div class="sig-divider"></div>
-        <div class="sig-box">
-          <div class="sig-name">&nbsp;</div>
-          <div class="sig-line">FSL Academic Committee</div>
-        </div>
       </div>
     </div>
 
@@ -1400,12 +1395,6 @@ export default function PromotionModal({ visible, promotionData, onClose, studen
                           <Text style={styles.canvaSigName}>{adviserName}</Text>
                           <View style={styles.canvaSigLine} />
                           <Text style={styles.canvaSigTitle}>Adviser</Text>
-                        </View>
-                        <View style={styles.canvaSigVertLine} />
-                        <View style={styles.canvaSigCol}>
-                          <Text style={styles.canvaSigName}> </Text>
-                          <View style={styles.canvaSigLine} />
-                          <Text style={styles.canvaSigTitle}>FSL Academic Committee</Text>
                         </View>
                       </View>
                     </View>

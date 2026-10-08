@@ -83,6 +83,15 @@ const SENYA_MESSAGES = {
     complete: "YOU DID IT! ALL 13 LETTERS!",
 };
 
+// ─── DETECTION CONFIG ────────────────────────────────────────
+const DETECTION_CONFIG = {
+    handsRequired: 1,
+    faceRequired: false,
+    tipLabel: 'Use 1 hand to sign',
+    tipIcon: '☝️',
+    detectedLabel: (n: number) => n === 0 ? 'No hand detected' : n === 1 ? '1 hand detected' : `${n} hands detected`,
+};
+
 // Letter struggle tracking
 interface LetterAttempt {
     letter: string;
@@ -106,6 +115,7 @@ export default function WebViewCameraScreen() {
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
+    const [handsDetected, setHandsDetected] = useState<number | null>(null);
 
     // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
     const [showHintsModal, setShowHintsModal] = useState(false);
@@ -260,6 +270,7 @@ export default function WebViewCameraScreen() {
                 [currentLetter]: (prev[currentLetter] || 0) + 1
             }));
             console.log(`💡 Hint opened for letter: ${currentLetter}`);
+            api.recordHintUsed('alphabet_part1', currentLetter);
         }
     };
 
@@ -277,6 +288,7 @@ export default function WebViewCameraScreen() {
                 [letter]: (prev[letter] || 0) + 1
             }));
             console.log(`💡 Hint navigated to letter: ${letter}`);
+            api.recordHintUsed('alphabet_part1', letter);
         }
     };
 
@@ -293,6 +305,7 @@ export default function WebViewCameraScreen() {
                 ...prev,
                 [letter]: (prev[letter] || 0) + 1
             }));
+            api.recordHintUsed('alphabet_part1', letter);
             console.log(`💡 Hint navigated to letter: ${letter}`);
         }
     };
@@ -883,6 +896,12 @@ export default function WebViewCameraScreen() {
     const handleMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
+            // Track hands detected
+            if (data.hands_detected !== undefined) {
+                setHandsDetected(data.hands_detected);
+            } else if (data.letter !== undefined) {
+                setHandsDetected(data.letter === '✋' ? 0 : 1);
+            }
             if (data.letter !== undefined) {
                 handleDetection(data);
             }
@@ -1137,6 +1156,12 @@ export default function WebViewCameraScreen() {
                 </Text>
             </View>
 
+            {/* Hand Detection Tip Banner */}
+            <View style={styles.handTipBanner}>
+                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
+                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
+            </View>
+
             {/* WebView Container */}
             <View style={styles.webviewContainer}>
                 <WebView
@@ -1253,6 +1278,18 @@ export default function WebViewCameraScreen() {
                         </View>
                         <Text style={styles.resultConfidence}>
                             {Math.round(confidence * 100)}%
+                        </Text>
+                    </View>
+                )}
+                {handsDetected !== null && (
+                    <View style={[
+                        styles.handCountPill,
+                        handsDetected >= DETECTION_CONFIG.handsRequired
+                            ? styles.handCountPillOk
+                            : styles.handCountPillWarn
+                    ]}>
+                        <Text style={styles.handCountPillText}>
+                            {DETECTION_CONFIG.tipIcon} {DETECTION_CONFIG.detectedLabel(handsDetected)}
                         </Text>
                     </View>
                 )}
@@ -1885,6 +1922,28 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         minWidth: 32,
     },
+    // ─── Hand tip banner ─────────────────────────────────────────
+    handTipBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 12,
+        marginBottom: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 10,
+        gap: 6,
+        ...Platform.select({
+            ios: { backgroundColor: 'rgba(79, 130, 220, 0.10)', borderWidth: 1, borderColor: 'rgba(79, 130, 220, 0.25)' },
+            android: { backgroundColor: '#EEF4FF', borderWidth: 1, borderColor: '#C7D9F8' },
+        }),
+    },
+    handTipIcon: { fontSize: 16 },
+    handTipText: { fontSize: 12, fontWeight: '600', color: '#0f3172', flex: 1 },
+    // ─── Hand count pill ─────────────────────────────────────────
+    handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
+    handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
+    handCountPillWarn: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D' },
+    handCountPillText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
     // Popup
     popupContainer: {
         position: 'absolute',

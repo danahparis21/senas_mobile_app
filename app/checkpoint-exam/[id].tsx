@@ -355,6 +355,7 @@ export default function CheckpointExamScreen() {
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userRank, setUserRank] = useState<number | null>(null);
+  const [leaderboardSy, setLeaderboardSy] = useState<string | null>(null);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<LeaderboardEntry | null>(null);
   const [showStudentDetail, setShowStudentDetail] = useState(false);
@@ -506,6 +507,9 @@ export default function CheckpointExamScreen() {
       if (response.success) {
         setLeaderboard(response.rankings);
         setUserRank(response.user_rank);
+        if (response.school_year) {
+          setLeaderboardSy(response.school_year);
+        }
       }
     } catch (error) {
       console.error('Error fetching checkpoint leaderboard:', error);
@@ -975,7 +979,14 @@ export default function CheckpointExamScreen() {
 
     return (
       <View style={s.leaderboardContainer}>
-        <View style={s.leaderboardHeader}><Text style={s.leaderboardHeaderTitle}>🏆 Checkpoint Leaderboard</Text></View>
+        <View style={s.leaderboardHeader}>
+          <Text style={s.leaderboardHeaderTitle}>🏆 Checkpoint Leaderboard</Text>
+          {leaderboardSy && (
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginLeft: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>S.Y. {leaderboardSy}</Text>
+            </View>
+          )}
+        </View>
 
         {userRank ? (
           <View style={s.rankBanner}>

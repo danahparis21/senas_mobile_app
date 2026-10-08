@@ -599,6 +599,7 @@ export default function LessonViewer() {
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userRank, setUserRank] = useState<number | null>(null);
+  const [leaderboardSy, setLeaderboardSy] = useState<string | null>(null);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
 
   // Student detail modal state
@@ -814,6 +815,9 @@ export default function LessonViewer() {
       if (response.success) {
         setLeaderboard(response.rankings);
         setUserRank(response.user_rank);
+        if (response.school_year) {
+          setLeaderboardSy(response.school_year);
+        }
       }
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
@@ -1694,6 +1698,11 @@ export default function LessonViewer() {
         {/* Custom Header */}
         <View style={s.leaderboardHeader}>
           <Text style={s.leaderboardHeaderTitle}>🏆 Leaderboard</Text>
+          {leaderboardSy && (
+            <View style={{ backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#BFDBFE' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#2563EB' }}>S.Y. {leaderboardSy}</Text>
+            </View>
+          )}
         </View>
 
         {/* Rank Banner - improved styling */}

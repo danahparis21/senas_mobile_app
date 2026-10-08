@@ -1596,12 +1596,7 @@ export default function Lessons() {
         </View> */}
 
         {/* Unit/Module Banner */}
-        <View style={[
-          styles.unitBanner,
-          Platform.OS === 'android' && {
-            marginTop: Math.max(insets.top, StatusBar.currentHeight || 24) + 8,
-          }
-        ]}>
+        <View style={styles.unitBanner}>
           <View style={styles.bannerRow}>
             {/* Left Arrow - Navigate to previous module or Unit 1 */}
             <Pressable

@@ -108,6 +108,15 @@ const SENYA_MESSAGES = {
     complete: "YOU DID IT! ALL 10 NUMBERS! 🎉",
 };
 
+// ─── DETECTION CONFIG ────────────────────────────────────────
+const DETECTION_CONFIG = {
+    handsRequired: 1,
+    faceRequired: false,
+    tipLabel: 'Use 1 hand to sign the numbers',
+    tipIcon: '☝️',
+    detectedLabel: (n: number) => n === 0 ? 'No hand detected' : n === 1 ? '1 hand detected' : `${n} hands detected`,
+};
+
 // Gesture struggle tracking
 interface GestureAttempt {
     gesture: string;
@@ -133,6 +142,7 @@ export default function Level3GesturesScreen() {
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
+    const [handsDetected, setHandsDetected] = useState<number | null>(null);
 
     // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
     const [showHintsModal, setShowHintsModal] = useState(false);
@@ -353,6 +363,7 @@ export default function Level3GesturesScreen() {
                 [currentGesture]: (prev[currentGesture] || 0) + 1
             }));
             console.log(`💡 Hint opened for: ${currentGesture}`);
+            api.recordHintUsed('level1_numbers', currentGesture);
         }
     };
 
@@ -369,6 +380,7 @@ export default function Level3GesturesScreen() {
                 ...prev,
                 [gesture]: (prev[gesture] || 0) + 1
             }));
+            api.recordHintUsed('level1_numbers', gesture);
         }
     };
 
@@ -384,6 +396,7 @@ export default function Level3GesturesScreen() {
                 ...prev,
                 [gesture]: (prev[gesture] || 0) + 1
             }));
+            api.recordHintUsed('level1_numbers', gesture);
         }
     };
 
@@ -948,6 +961,14 @@ export default function Level3GesturesScreen() {
                 setConfidence(confidenceValue);
             }
 
+            // Track hands detected
+            if (data.hands_detected !== undefined) {
+                setHandsDetected(data.hands_detected);
+            } else if (data.greeting || data.letter) {
+                const val = data.greeting || data.letter;
+                setHandsDetected(val === '✋' || val === '...' ? 0 : 1);
+            }
+
         } catch (error) {
             console.error('❌ Message error:', error);
         }
@@ -1194,6 +1215,12 @@ export default function Level3GesturesScreen() {
                 </Text>
             </View>
 
+            {/* Hand Detection Tip Banner */}
+            <View style={styles.handTipBanner}>
+                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
+                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
+            </View>
+
             {/* WebView Container */}
             <View style={styles.webviewContainer}>
                 <WebView
@@ -1331,6 +1358,18 @@ export default function Level3GesturesScreen() {
                         </View>
                         <Text style={styles.resultConfidence}>
                             {confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%
+                        </Text>
+                    </View>
+                )}
+                {handsDetected !== null && (
+                    <View style={[
+                        styles.handCountPill,
+                        handsDetected >= DETECTION_CONFIG.handsRequired
+                            ? styles.handCountPillOk
+                            : styles.handCountPillWarn
+                    ]}>
+                        <Text style={styles.handCountPillText}>
+                            {DETECTION_CONFIG.tipIcon} {DETECTION_CONFIG.detectedLabel(handsDetected)}
                         </Text>
                     </View>
                 )}
@@ -2145,6 +2184,26 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         minWidth: 32,
     },
+    handTipBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 12,
+        marginBottom: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 10,
+        gap: 6,
+        ...Platform.select({
+            ios: { backgroundColor: 'rgba(139, 92, 246, 0.10)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.25)' },
+            android: { backgroundColor: '#F3E8FF', borderWidth: 1, borderColor: '#DDD6FE' },
+        }),
+    },
+    handTipIcon: { fontSize: 16 },
+    handTipText: { fontSize: 12, fontWeight: '600', color: '#5B21B6', flex: 1 },
+    handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
+    handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
+    handCountPillWarn: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D' },
+    handCountPillText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
     popupContainer: {
         position: 'absolute',
         top: '35%',

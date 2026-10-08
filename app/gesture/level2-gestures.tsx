@@ -103,6 +103,18 @@ const SENYA_MESSAGES = {
     complete: "YOU DID IT! ALL 10 SURVIVAL PHRASES! 🎉",
 };
 
+// ─── DETECTION CONFIG (2 hands + face tracking) ───────────────────────────
+const DETECTION_CONFIG = {
+    handsRequired: 2,
+    faceRequired: true,
+    tipLabel: 'Use both hands + face expressions',
+    tipIcon: '🤲',
+    detectedLabel: (n: number) =>
+        n === 0 ? 'No hands detected'
+        : n === 1 ? '1 hand — use both hands + face!'
+        : `✅ Both hands detected!`,
+};
+
 // Gesture struggle tracking
 interface GestureAttempt {
     gesture: string;
@@ -127,6 +139,7 @@ export default function WebViewSurvivalScreen() {
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
+    const [handsDetected, setHandsDetected] = useState<number | null>(null);
 
     // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
     const [showHintsModal, setShowHintsModal] = useState(false);
@@ -283,6 +296,7 @@ export default function WebViewSurvivalScreen() {
                 [currentGesture]: (prev[currentGesture] || 0) + 1
             }));
             console.log(`💡 Hint opened for: ${currentGesture}`);
+            api.recordHintUsed(MODULE_NAME, currentGesture);
         }
     };
     const goToPreviousHint = () => {
@@ -297,6 +311,7 @@ export default function WebViewSurvivalScreen() {
                 ...prev,
                 [gesture]: (prev[gesture] || 0) + 1
             }));
+            api.recordHintUsed(MODULE_NAME, gesture);
         }
     };
 
@@ -312,6 +327,7 @@ export default function WebViewSurvivalScreen() {
                 ...prev,
                 [gesture]: (prev[gesture] || 0) + 1
             }));
+            api.recordHintUsed(MODULE_NAME, gesture);
         }
     };
 
@@ -1051,6 +1067,15 @@ export default function WebViewSurvivalScreen() {
                 setConfidence(confidenceValue);
             }
 
+            // Track hands + face detected from backend
+            if (data.hands_detected !== undefined) {
+                setHandsDetected(data.hands_detected);
+            } else if (data.handCount !== undefined) {
+                setHandsDetected(data.handCount);
+            } else if (detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
+                setHandsDetected(1); // at least 1 hand active
+            }
+
         } catch (error) {
             console.error('❌ Message error:', error);
         }
@@ -1158,6 +1183,19 @@ export default function WebViewSurvivalScreen() {
                 <Text style={styles.targetText}>
                     🎯 {DISPLAY_NAMES[currentTarget] || currentTarget}
                 </Text>
+            </View>
+
+            {/* Hand + Face Detection Tip Banner */}
+            <View style={styles.handTipBanner}>
+                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
+                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
+                <View style={styles.handCountBadge}>
+                    <Text style={styles.handCountBadgeText}>2 Hands</Text>
+                </View>
+                <View style={styles.faceBadge}>
+                    <Ionicons name="scan-outline" size={11} color="#fff" />
+                    <Text style={styles.faceBadgeText}>Face</Text>
+                </View>
             </View>
 
             {/* WebView Container */}
@@ -1288,6 +1326,19 @@ export default function WebViewSurvivalScreen() {
                         </View>
                         <Text style={styles.resultConfidence}>
                             {confidence > 1 ? Math.round(confidence) : Math.round(confidence * 100)}%
+                        </Text>
+                    </View>
+                )}
+                {/* Live hand + face count */}
+                {handsDetected !== null && (
+                    <View style={[
+                        styles.handCountPill,
+                        handsDetected >= DETECTION_CONFIG.handsRequired
+                            ? styles.handCountPillOk
+                            : styles.handCountPillWarn
+                    ]}>
+                        <Text style={styles.handCountPillText}>
+                            {DETECTION_CONFIG.detectedLabel(handsDetected)}
                         </Text>
                     </View>
                 )}
@@ -2102,6 +2153,45 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         minWidth: 32,
     },
+    // ─── Hand + Face tip banner (red/rose theme for survival) ─────────────
+    handTipBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 12,
+        marginBottom: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 12,
+        gap: 6,
+        ...Platform.select({
+            ios: { backgroundColor: 'rgba(239, 68, 68, 0.09)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)' },
+            android: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+        }),
+    },
+    handTipIcon: { fontSize: 18 },
+    handTipText: { fontSize: 12, fontWeight: '600', color: '#991B1B', flex: 1 },
+    handCountBadge: {
+        backgroundColor: '#EF4444',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+    },
+    handCountBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+    faceBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: '#7C3AED',
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 10,
+    },
+    faceBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+    // ─── Live hand count pill ──────────────────────────────────────────────
+    handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
+    handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
+    handCountPillWarn: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D' },
+    handCountPillText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
     popupContainer: {
         position: 'absolute',
         top: '35%',

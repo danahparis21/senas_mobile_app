@@ -208,11 +208,15 @@ export const api = {
         }
     },
 
-    getProfile: async () => {
+    /**
+     * @param {string|null} [schoolYear]
+     */
+    getProfile: async (schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
 
-            const response = await apiFetch(`${API_URL}/student/profile`, {
+            const response = await apiFetch(`${API_URL}/student/profile${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -339,7 +343,10 @@ export const api = {
         }
     },
 
-    getStudentLessons: async () => {
+    /**
+     * @param {string|null} [schoolYear]
+     */
+    getStudentLessons: async (schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
@@ -347,9 +354,10 @@ export const api = {
                 throw new Error('No token found. Please login first.');
             }
 
-            console.log('📚 Fetching student lessons...');
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
+            console.log(`📚 Fetching student lessons${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
-            const response = await apiFetch(`${API_URL}/student/lessons`, {
+            const response = await apiFetch(`${API_URL}/student/lessons${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -372,10 +380,10 @@ export const api = {
         }
     },
 
-    // NEW: Get personalized "My Learning Path" lessons (adaptive, based on
-    // learning_goal/fsl_level/performance). Sequencing/locking here is
-    // separate from getStudentLessons() and does not affect module locks.
-    getRecommendedLessons: async () => {
+    /**
+     * @param {string|null} [schoolYear]
+     */
+    getRecommendedLessons: async (schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
@@ -383,9 +391,10 @@ export const api = {
                 throw new Error('No token found. Please login first.');
             }
 
-            console.log('🎯 Fetching My Learning Path lessons...');
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
+            console.log(`🎯 Fetching My Learning Path lessons${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
-            const response = await apiFetch(`${API_URL}/student/learning-path/lessons`, {
+            const response = await apiFetch(`${API_URL}/student/learning-path/lessons${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -409,7 +418,10 @@ export const api = {
     },
 
     // NEW: Get all lessons as flat list for dashboard
-    getAllLessons: async () => {
+    /**
+     * @param {string|null} [schoolYear]
+     */
+    getAllLessons: async (schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
@@ -417,9 +429,10 @@ export const api = {
                 throw new Error('No token found. Please login first.');
             }
 
-            console.log('📚 Fetching all lessons for dashboard...');
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
+            console.log(`📚 Fetching all lessons for dashboard${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
-            const response = await fetch(`${API_URL}/student/all-lessons`, {
+            const response = await fetch(`${API_URL}/student/all-lessons${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -630,14 +643,19 @@ export const api = {
             };
         }
     },
-    getLessonLeaderboard: async (lessonId) => {
+    /**
+     * @param {number|string} lessonId
+     * @param {string|null} [schoolYear]
+     */
+    getLessonLeaderboard: async (lessonId, schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) throw new Error('No token found');
 
-            console.log(`🏆 Fetching leaderboard for lesson ${lessonId}...`);
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
+            console.log(`🏆 Fetching leaderboard for lesson ${lessonId}${schoolYear ? ` (S.Y. ${schoolYear})` : ''}...`);
 
-            const response = await fetch(`${API_URL}/student/lesson/${lessonId}/leaderboard`, {
+            const response = await fetch(`${API_URL}/student/lesson/${lessonId}/leaderboard${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -725,6 +743,38 @@ export const api = {
         } catch (error) {
             console.error('❌ Error saving gesture performance:', error);
             throw error;
+        }
+    },
+
+    /**
+     * Record real-time hint usage so teacher gets notified immediately
+     * @param {string} moduleName - e.g. 'alphabet_part1'
+     * @param {string} letter - e.g. 'C'
+     */
+    recordHintUsed: async (moduleName, letter) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) return null;
+
+            console.log(`💡 Sending real-time hint notification for ${moduleName} - ${letter}...`);
+
+            const response = await fetch(`${API_URL}/student/gesture/hint-used`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    module_name: moduleName,
+                    letter: String(letter),
+                }),
+            });
+
+            return await response.json();
+        } catch (error) {
+            console.warn('⚠️ Non-critical: Failed to record real-time hint:', error);
+            return null;
         }
     },
     /**
@@ -1184,17 +1234,19 @@ export const api = {
     /**
      * 🎯 Get promotion history
      * GET /api/student/promotion/history
+     * @param {string|null} [schoolYear]
      */
-    getPromotionHistory: async () => {
+    getPromotionHistory: async (schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) {
                 throw new Error('No token found. Please login first.');
             }
 
-            console.log('📜 Fetching promotion history...');
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
+            console.log(`📜 Fetching promotion history${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
-            const response = await fetch(`${API_URL}/student/promotion/history`, {
+            const response = await fetch(`${API_URL}/student/promotion/history${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -2129,16 +2181,21 @@ export const api = {
      * 🏆 Get checkpoint exam leaderboard
      * GET /api/student/checkpoint-exam/{examId}/leaderboard
      */
-    getCheckpointExamLeaderboard: async (examId) => {
+    /**
+     * @param {number|string} examId
+     * @param {string|null} [schoolYear]
+     */
+    getCheckpointExamLeaderboard: async (examId, schoolYear = null) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) {
                 throw new Error('No token found. Please login first.');
             }
 
-            console.log(`🏆 Fetching checkpoint exam leaderboard for exam ${examId}...`);
+            const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
+            console.log(`🏆 Fetching checkpoint exam leaderboard for exam ${examId}${schoolYear ? ` (S.Y. ${schoolYear})` : ''}...`);
 
-            const response = await fetch(`${API_URL}/student/checkpoint-exam/${examId}/leaderboard`, {
+            const response = await fetch(`${API_URL}/student/checkpoint-exam/${examId}/leaderboard${query}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
