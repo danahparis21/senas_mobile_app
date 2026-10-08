@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Modal, Platform
+  View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView,
+  Modal, Platform, PanResponder, Animated, Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import Svg, { Path, Line, Polyline, Circle } from 'react-native-svg';
+import Svg, { Path, Line, Polyline } from 'react-native-svg';
+
+const { width: SCREEN_W } = Dimensions.get('window');
 
 /* ══ DATA ══════════════════════════════════════════════════════════════ */
 const dndQuestions = [
@@ -75,36 +78,174 @@ function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose:
   );
 }
 
-/* ══ Quiz Screen ══════════════════════════════════════════════════════════ */
+/* ══ DragCard ── the draggable sign chip ═════════════════════════════════
+   Uses PanResponder. On release we report the finger's last pageX/pageY
+   so parent can hit-test against drop zones using measureInWindow.
+*/
+function DragCard({
+  emoji, letter, onDrop, disabled,
+}: {
+  emoji: string;
+  letter: string;
+  onDrop: (px: number, py: number) => void;
+  disabled: boolean;
+}) {
+  const pan = useRef(new Animated.ValueXY()).current;
+  const [dragging, setDragging] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !disabled,
+      onMoveShouldSetPanResponder: () => !disabled,
+      onPanResponderGrant: () => {
+        pan.setOffset({ x: (pan.x as any)._value, y: (pan.y as any)._value });
+        pan.setValue({ x: 0, y: 0 });
+        setDragging(true);
+      },
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: (evt) => {
+        pan.flattenOffset();
+        setDragging(false);
+        // ── KEY FIX: use the finger's page coords, not the card's position ──
+        const { pageX, pageY } = evt.nativeEvent;
+        onDrop(pageX, pageY);
+        // Spring back to origin
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, friction: 6 }).start();
+      },
+      onPanResponderTerminate: () => {
+        setDragging(false);
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false, friction: 6 }).start();
+      },
+    })
+  ).current;
+
+  return (
+    <Animated.View
+      style={[
+        s.dragCard,
+        { transform: pan.getTranslateTransform() },
+        dragging && s.dragCardActive,
+      ]}
+      {...panResponder.panHandlers}
+    >
+      <Text style={s.dragEmoji}>{emoji}</Text>
+      <Text style={s.dragLetter}>{letter}</Text>
+      {!disabled && <Text style={s.dragHint}>Hold & drag ✋</Text>}
+    </Animated.View>
+  );
+}
+
+/* ══ DropZone ── a single answer box ════════════════════════════════════ */
+function DropZone({
+  text, index, highlighted, revealed, isCorrect, isSelected,
+  registerRef,
+}: {
+  text: string;
+  index: number;
+  highlighted: boolean;
+  revealed: boolean;
+  isCorrect: boolean;
+  isSelected: boolean;
+  registerRef: (ref: View | null, index: number) => void;
+}) {
+  let bg = Platform.OS === 'ios' ? 'rgba(255,255,255,0.65)' : '#FFFFFF';
+  let border = Platform.OS === 'ios' ? 'rgba(255,255,255,0.85)' : '#DCE8F8';
+  let textCol = '#0f3172';
+
+  if (revealed) {
+    if (isCorrect)      { bg = 'rgba(236,253,245,0.95)'; border = '#6EE7B7'; textCol = '#065F46'; }
+    else if (isSelected){ bg = 'rgba(254,242,242,0.95)'; border = '#FCA5A5'; textCol = '#991B1B'; }
+    else                { bg = 'rgba(255,255,255,0.30)'; textCol = '#9CA3AF'; }
+  } else if (highlighted) {
+    bg = 'rgba(219,234,254,0.95)'; border = '#3B82F6'; textCol = '#1D4ED8';
+  }
+
+  return (
+    <View
+      ref={ref => registerRef(ref as any, index)}
+      style={[s.dropZone, { backgroundColor: bg, borderColor: border }]}
+    >
+      <View style={s.dropZoneInner}>
+        {revealed && isCorrect  && <Text style={s.dropCheck}>✓</Text>}
+        {revealed && isSelected && !isCorrect && <Text style={s.dropX}>✗</Text>}
+        {highlighted && !revealed && <Text style={s.dropArrow}>👆</Text>}
+        <Text style={[s.dropZoneText, { color: textCol }]}>{text}</Text>
+      </View>
+    </View>
+  );
+}
+
+/* ══ DndQuizScreen ════════════════════════════════════════════════════════ */
 function DndQuizScreen({ onDone, onExit }: { onDone: (score: number) => void; onExit: () => void }) {
   const [qi, setQi] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [score, setScore] = useState(0);
   const [showExit, setShowExit] = useState(false);
+  const [highlightedZone, setHighlightedZone] = useState<number | null>(null);
+
+  // Refs map: index → native View ref
+  const zoneRefs = useRef<(View | null)[]>([]);
+  const registerRef = useCallback((ref: View | null, index: number) => {
+    zoneRefs.current[index] = ref;
+  }, []);
 
   const q = dndQuestions[qi];
   const isCorrect = selected === q.correct;
 
-  const choose = (i: number) => {
+  // ── Hit-test using FINGER position against each zone's layout ──────────
+  const handleDrop = useCallback((fingerX: number, fingerY: number) => {
     if (revealed) return;
-    setSelected(i);
-    setRevealed(true);
-    if (i === q.correct) setScore(sc => sc + 1);
-  };
+
+    let hitIndex: number | null = null;
+    let promises: Promise<void>[] = [];
+
+    // Measure all drop zones and find which one contains the finger point
+    zoneRefs.current.forEach((ref, idx) => {
+      if (!ref) return;
+      const p = new Promise<void>((resolve) => {
+        (ref as any).measureInWindow((x: number, y: number, w: number, h: number) => {
+          const TOLERANCE = 12; // generous buffer for fat fingers
+          if (
+            fingerX >= x - TOLERANCE &&
+            fingerX <= x + w + TOLERANCE &&
+            fingerY >= y - TOLERANCE &&
+            fingerY <= y + h + TOLERANCE
+          ) {
+            hitIndex = idx;
+          }
+          resolve();
+        });
+      });
+      promises.push(p);
+    });
+
+    Promise.all(promises).then(() => {
+      if (hitIndex !== null) {
+        setSelected(hitIndex);
+        setRevealed(true);
+        setHighlightedZone(null);
+        if (hitIndex === q.correct) setScore(sc => sc + 1);
+      }
+    });
+  }, [revealed, q.correct]);
+
+  // Live highlight while dragging (finger position streamed via onTouchMove on a transparent overlay)
+  // We use a simpler approach: highlight updates happen in onDrop only for snappiness.
+  // But we CAN do live highlight if needed — keeping simple for now.
 
   const next = () => {
     if (qi < dndQuestions.length - 1) {
-      setQi(qi + 1); setSelected(null); setRevealed(false);
+      setQi(qi + 1); setSelected(null); setRevealed(false); setHighlightedZone(null);
     } else {
-      onDone(isCorrect ? score : score);
+      onDone(score + (isCorrect && !revealed ? 0 : 0)); // score already updated
     }
   };
 
   return (
     <SafeAreaView style={s.container}>
       <ExitModal visible={showExit} onClose={() => setShowExit(false)} onConfirm={onExit} />
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={s.scroll} scrollEnabled={!false}>
         {/* Top bar */}
         <View style={s.topBar}>
           <Text style={s.logoText}>SEÑAS</Text>
@@ -131,49 +272,42 @@ function DndQuizScreen({ onDone, onExit }: { onDone: (score: number) => void; on
           ))}
         </View>
 
-        {/* Question card — the "draggable" sign */}
+        {/* Question */}
         <View style={s.glassCard}>
           <Text style={s.questionLabel}>{q.question}</Text>
-          <View style={s.signDisplayBox}>
-            <View style={s.signEmojiBox}>
-              <Text style={s.signEmoji}>{q.emoji}</Text>
-            </View>
-            <View style={s.signLetterBox}>
-              <Text style={s.signLetter}>{q.letter}</Text>
-            </View>
+
+          {/* Draggable sign card */}
+          <View style={s.dragArea}>
+            <DragCard
+              emoji={q.emoji}
+              letter={q.letter}
+              onDrop={handleDrop}
+              disabled={revealed}
+            />
           </View>
-          <Text style={s.dragHint}>Tap the correct description below ↓</Text>
+
+          {!revealed && (
+            <View style={s.instructionRow}>
+              <Text style={s.instructionText}>✋ Drag the sign onto the correct description below</Text>
+            </View>
+          )}
         </View>
 
-        {/* Drop zones (options) */}
-        <Text style={s.dropZonesLabel}>SELECT THE CORRECT MATCH</Text>
+        {/* Drop zones */}
+        <Text style={s.dropZonesLabel}>DROP ONTO THE CORRECT MATCH</Text>
         <View style={s.optionsGrid}>
-          {q.options.map((opt, i) => {
-            const isSel = selected === i;
-            const isCorr = i === q.correct;
-            let bg = 'rgba(255,255,255,0.62)';
-            let border = 'rgba(255,255,255,0.85)';
-            let textCol = '#0f3172';
-
-            if (revealed) {
-              if (isCorr) { bg = 'rgba(236,253,245,0.9)'; border = '#6EE7B7'; textCol = '#065F46'; }
-              else if (isSel) { bg = 'rgba(254,242,242,0.9)'; border = '#FCA5A5'; textCol = '#991B1B'; }
-              else { bg = 'rgba(255,255,255,0.3)'; textCol = '#9CA3AF'; }
-            } else if (isSel) {
-              bg = 'rgba(239,246,255,0.9)'; border = '#93C5FD'; textCol = '#1D4ED8';
-            }
-
-            return (
-              <Pressable key={i} style={[s.optionBox, { backgroundColor: bg, borderColor: border }]}
-                onPress={() => choose(i)} disabled={revealed}>
-                <View style={s.optionBoxInner}>
-                  {revealed && isCorr && <Text style={s.optionCheck}>✓</Text>}
-                  {revealed && isSel && !isCorr && <Text style={s.optionX}>✗</Text>}
-                  <Text style={[s.optionBoxText, { color: textCol }]}>{opt}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
+          {q.options.map((opt, i) => (
+            <DropZone
+              key={i}
+              text={opt}
+              index={i}
+              highlighted={highlightedZone === i}
+              revealed={revealed}
+              isCorrect={i === q.correct}
+              isSelected={selected === i}
+              registerRef={registerRef}
+            />
+          ))}
         </View>
 
         {/* Senya feedback */}
@@ -183,13 +317,18 @@ function DndQuizScreen({ onDone, onExit }: { onDone: (score: number) => void; on
               source={require('../../assets/images/img/senya_teaching.png')}
               style={s.senyaSmall} contentFit="contain"
             />
-            <Text style={[s.feedbackText, { color: isCorrect ? '#065f46' : '#991b1b' }]}>
-              {isCorrect ? '✓ ' : '✗ '}{q.feedback}
-            </Text>
+            <View style={s.feedbackTextCol}>
+              <Text style={[s.feedbackBig, { color: isCorrect ? '#065F46' : '#991B1B' }]}>
+                {isCorrect ? '🎉 Correct!' : '💪 Not quite!'}
+              </Text>
+              <Text style={[s.feedbackText, { color: isCorrect ? '#065f46' : '#991b1b' }]}>
+                {q.feedback}
+              </Text>
+            </View>
           </View>
         )}
 
-        {/* Next */}
+        {/* Next button */}
         {revealed && (
           <Pressable style={[s.nextBtn, isCorrect ? s.nextBtnGold : s.nextBtnBlue]} onPress={next}>
             <Text style={s.nextBtnText}>{qi < dndQuestions.length - 1 ? 'Next Question →' : 'See Results →'}</Text>
@@ -230,12 +369,11 @@ function ResultScreen({ score, onRetry, onHome }: { score: number; onRetry: () =
           </View>
         </View>
 
-        {/* Stats */}
         <View style={[s.glassCard, { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 20 }]}>
           {[
-            { label: 'Correct',  value: score,         icon: '✓' },
-            { label: 'Wrong',    value: total - score,  icon: '✗' },
-            { label: 'Score',    value: `${pct}%`,      icon: '📊' },
+            { label: 'Correct',  value: score,        icon: '✓' },
+            { label: 'Wrong',    value: total - score, icon: '✗' },
+            { label: 'Score',    value: `${pct}%`,     icon: '📊' },
           ].map((stat, i) => (
             <View key={i} style={{ alignItems: 'center', gap: 4 }}>
               <Text style={{ fontSize: 22 }}>{stat.icon}</Text>
@@ -322,33 +460,92 @@ const s = StyleSheet.create({
       android: {
         backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: 'rgba(215, 235, 252, 0.8)',
+        borderColor: 'rgba(215,235,252,0.8)',
         elevation: 3,
       },
     }),
   },
 
   questionLabel: { fontSize: 15, fontWeight: '700', color: '#0f3172', marginBottom: 16, textAlign: 'center' },
-  signDisplayBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 12 },
-  signEmojiBox: { width: 90, height: 90, borderRadius: 20, backgroundColor: 'rgba(37,99,235,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(37,99,235,0.15)', borderStyle: 'dashed' },
-  signEmoji: { fontSize: 52 },
-  signLetterBox: { width: 90, height: 90, borderRadius: 20, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center', shadowColor: '#2563EB', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
-  signLetter: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 1 },
-  dragHint: { fontSize: 11, color: '#4b7bbb', fontWeight: '600', textAlign: 'center' },
+
+  // Drag area — gives the card plenty of vertical space to move without clipping
+  dragArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginBottom: 8,
+    minHeight: 130,
+  },
+  dragCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 20,
+    gap: 4,
+    zIndex: 999,
+    ...Platform.select({
+      ios: {
+        backgroundColor: '#2563EB',
+        shadowColor: '#1D4ED8',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+      },
+      android: {
+        backgroundColor: '#2563EB',
+        elevation: 12,
+      },
+    }),
+  },
+  dragCardActive: {
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0.55,
+        shadowRadius: 28,
+        transform: [{ scale: 1.07 }],
+      },
+      android: { elevation: 22 },
+    }),
+  },
+  dragEmoji: { fontSize: 42 },
+  dragLetter: { fontSize: 24, fontWeight: '900', color: '#fff', letterSpacing: 1 },
+  dragHint: { fontSize: 10, color: 'rgba(255,255,255,0.75)', fontWeight: '600', marginTop: 2 },
+
+  instructionRow: {
+    backgroundColor: 'rgba(37,99,235,0.07)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  instructionText: { fontSize: 12, color: '#1D4ED8', fontWeight: '600', textAlign: 'center' },
 
   dropZonesLabel: { fontSize: 11, fontWeight: '800', color: '#9CA3AF', letterSpacing: 0.5, marginBottom: 10 },
   optionsGrid: { gap: 10, marginBottom: 14 },
-  optionBox: { borderWidth: 1.5, borderRadius: 16, padding: 14 },
-  optionBoxInner: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  optionCheck: { fontSize: 18, color: '#10B981', fontWeight: '700', flexShrink: 0 },
-  optionX: { fontSize: 18, color: '#EF4444', fontWeight: '700', flexShrink: 0 },
-  optionBoxText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  dropZone: {
+    borderWidth: 2,
+    borderRadius: 16,
+    padding: 14,
+    minHeight: 58,
+    justifyContent: 'center',
+    ...Platform.select({
+      android: { elevation: 2 },
+    }),
+  },
+  dropZoneInner: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dropCheck: { fontSize: 18, color: '#10B981', fontWeight: '700', flexShrink: 0 },
+  dropX: { fontSize: 18, color: '#EF4444', fontWeight: '700', flexShrink: 0 },
+  dropArrow: { fontSize: 16, flexShrink: 0 },
+  dropZoneText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
 
-  feedbackBox: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, padding: 14, marginBottom: 14 },
+  feedbackBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: 16, padding: 14, marginBottom: 14 },
   feedbackCorrect: { backgroundColor: 'rgba(236,253,245,0.9)', borderWidth: 1, borderColor: '#a7f3d0' },
   feedbackWrong: { backgroundColor: 'rgba(254,242,242,0.9)', borderWidth: 1, borderColor: '#fecaca' },
-  senyaSmall: { width: 48, height: 48, flexShrink: 0 },
-  feedbackText: { flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 20 },
+  senyaSmall: { width: 52, height: 52, flexShrink: 0 },
+  feedbackTextCol: { flex: 1, gap: 4 },
+  feedbackBig: { fontSize: 15, fontWeight: '800' },
+  feedbackText: { fontSize: 13, fontWeight: '500', lineHeight: 20 },
 
   nextBtn: { borderRadius: 60, paddingVertical: 14, alignItems: 'center', marginBottom: 4 },
   nextBtnBlue: { backgroundColor: '#1848c8', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 10 },
