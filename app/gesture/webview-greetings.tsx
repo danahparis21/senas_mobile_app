@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { HandDetectionGuideOverlay } from '../../components/gesture/HandDetectionGuideOverlay';
 import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
@@ -90,16 +91,14 @@ const SENYA_MESSAGES = {
     complete: "YOU DID IT! ALL 5 GREETINGS! 🎉",
 };
 
-// ─── DETECTION CONFIG ────────────────────────────────────────
-const DETECTION_CONFIG = {
-    handsRequired: 2,
-    faceRequired: false,
-    tipLabel: 'Use both hands together to sign',
-    tipIcon: '🙌',
-    detectedLabel: (n: number) =>
-        n === 0 ? 'No hands detected'
-        : n === 1 ? '1 hand — need both hands!'
-        : `👏 ${n} hands detected!`,
+// Only Hello is one-handed. Keep this with the sign data so the camera guide
+// changes as students move through the module instead of teaching a false rule.
+const GREETING_HANDS: Record<string, 1 | 2> = {
+    'HELLO': 1,
+    'THANK YOU': 2,
+    'SEE YOU TOMORROW': 2,
+    'HOW ARE YOU': 2,
+    'NICE TO MEET YOU': 2,
 };
 
 // Gesture struggle tracking
@@ -998,6 +997,8 @@ export default function WebViewGreetingsScreen() {
 
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
+            setHandsDetected(data.hands_detected ?? data.handCount ??
+                (!detectedValue || detectedValue === '✋' || detectedValue === '...' ? 0 : 1));
 
             if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
                 console.log(`🎯 Learned: ${detectedValue}`);
@@ -1017,16 +1018,6 @@ export default function WebViewGreetingsScreen() {
             } else {
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
-            }
-
-            // Track hands detected from backend
-            if (data.hands_detected !== undefined) {
-                setHandsDetected(data.hands_detected);
-            } else if (data.handCount !== undefined) {
-                setHandsDetected(data.handCount);
-            } else if (detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                // Greetings need 2 hands; infer at least 1 if we got a detection
-                setHandsDetected(1);
             }
 
         } catch (error) {
@@ -1092,7 +1083,7 @@ export default function WebViewGreetingsScreen() {
                             <Ionicons
                                 name="bulb-outline"
                                 size={22}
-                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                                color={isStruggling ? '#92650A' : '#0f3172'}
                             />
                             {isStruggling && (
                                 <View style={styles.hintsBadge}>
@@ -1140,15 +1131,6 @@ export default function WebViewGreetingsScreen() {
                 </Text>
             </View>
 
-            {/* Hand Detection Tip Banner */}
-            <View style={styles.handTipBanner}>
-                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
-                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
-                <View style={styles.handCountBadge}>
-                    <Text style={styles.handCountBadgeText}>2 Hands</Text>
-                </View>
-            </View>
-
             {/* WebView Container */}
             <View style={styles.webviewContainer}>
                 <WebView
@@ -1189,9 +1171,15 @@ export default function WebViewGreetingsScreen() {
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
+                <HandDetectionGuideOverlay
+                    handsRequired={GREETING_HANDS[currentTarget] || 1}
+                    handsDetected={handsDetected}
+                    isModelLoading={loading || modelLoading || !isConnected}
+                    modelStatusText="Loading greeting recognition…"
+                />
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#F59E0B" />
+                        <ActivityIndicator size="large" color="#FFC93C" />
                         <Text style={styles.loadingOverlayText}>Loading Greetings...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
@@ -1248,7 +1236,7 @@ export default function WebViewGreetingsScreen() {
                                 <Ionicons name="checkmark-circle" size={14} color="#10B981" style={styles.gestureIcon} />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#F59E0B" style={styles.gestureIcon} />
+                                <Ionicons name="star" size={13} color="#FFC93C" style={styles.gestureIcon} />
                             )}
                             {!isCompleted && !isActive && (
                                 <View style={styles.gestureStatusDot} />
@@ -1261,7 +1249,7 @@ export default function WebViewGreetingsScreen() {
             {/* Bottom Detection Bar */}
             <View style={styles.resultBar}>
                 <Text style={styles.resultLabel}>Detected:</Text>
-                <Text style={styles.resultGesture}>
+                <Text style={styles.resultGesture} numberOfLines={1} ellipsizeMode="tail">
                     {DISPLAY_NAMES[detectedGesture] || detectedGesture}
                 </Text>
 
@@ -1280,19 +1268,16 @@ export default function WebViewGreetingsScreen() {
                         </Text>
                     </View>
                 )}
-                {/* Live hand count */}
-                {handsDetected !== null && (
-                    <View style={[
-                        styles.handCountPill,
-                        handsDetected >= DETECTION_CONFIG.handsRequired
-                            ? styles.handCountPillOk
-                            : styles.handCountPillWarn
-                    ]}>
-                        <Text style={styles.handCountPillText}>
-                            {DETECTION_CONFIG.detectedLabel(handsDetected)}
-                        </Text>
-                    </View>
-                )}
+                <View style={[
+                    styles.handCountPill,
+                    (handsDetected ?? 0) >= (GREETING_HANDS[currentTarget] || 1)
+                        ? styles.handCountPillOk : styles.handCountPillWarn,
+                ]}>
+                    <Text style={styles.handCountPillText}>
+                        {GREETING_HANDS[currentTarget] || 1} hand{(GREETING_HANDS[currentTarget] || 1) > 1 ? 's' : ''}
+                        {handsDetected !== null ? ` · ${handsDetected} seen` : ''}
+                    </Text>
+                </View>
             </View>
 
             {/* Cute Popup */}
@@ -1448,7 +1433,7 @@ export default function WebViewGreetingsScreen() {
                         </TouchableOpacity>
 
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#F59E0B" />
+                            <Ionicons name="trophy" size={32} color="#FFC93C" />
                         </View>
 
                         <Text style={styles.modalTitle}>Greetings Complete!</Text>
@@ -1472,7 +1457,7 @@ export default function WebViewGreetingsScreen() {
                                         <Ionicons
                                             name={isEarned ? 'star' : 'star-outline'}
                                             size={i === 1 ? 40 : 32}
-                                            color={isEarned ? '#F59E0B' : '#D9E2EC'}
+                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
                                         />
                                     </Animated.View>
                                 );
@@ -1525,7 +1510,7 @@ export default function WebViewGreetingsScreen() {
                                             const items: { icon: any; color: string; text: string }[] = [];
 
                                             if (starRating === 3) {
-                                                items.push({ icon: 'sparkles', color: '#F59E0B', text: "You're absolutely incredible at this!" });
+                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
                                             } else if (starRating === 2) {
                                                 items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
                                             } else {
@@ -1702,7 +1687,7 @@ const styles = StyleSheet.create({
         width: 18,
         height: 18,
         borderRadius: 9,
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
@@ -1711,7 +1696,7 @@ const styles = StyleSheet.create({
     hintsBadgeText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#0f3172',
+        color: '#7A5200',
     },
     // ─── HINTS MODAL STYLES ────────────────────────────────────────────────
     hintsModalOverlay: {
@@ -1830,8 +1815,8 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     hintsDotActive: {
-        backgroundColor: '#FFD700',
-        borderColor: '#0f3172',
+        backgroundColor: '#FFC93C',
+        borderColor: '#92650A',
         transform: [{ scale: 1.15 }],
     },
     hintsDotCompleted: {
@@ -1906,13 +1891,13 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#F59E0B',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     targetText: {
         fontSize: 14,
         fontWeight: '800',
-        color: '#F59E0B',
+        color: '#92650A',
         minWidth: 30,
         textAlign: 'center',
     },
@@ -2020,10 +2005,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
     },
     gestureActive: {
-        borderColor: '#F59E0B',
+        borderColor: '#FFC93C',
         backgroundColor: Platform.OS === 'android' ? '#FFFBEB' : 'rgba(245, 158, 11, 0.15)',
         transform: [{ scale: 1.1 }],
-        shadowColor: '#F59E0B',
+        shadowColor: '#FFD700',
         shadowOpacity: 0.55,
         shadowRadius: 10,
         elevation: 8,
@@ -2089,8 +2074,9 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '800',
         color: '#0f3172',
-        minWidth: 34,
-        textAlign: 'center',
+        maxWidth: 92,
+        flexShrink: 1,
+        textAlign: 'left',
     },
     confidenceContainer: {
         flex: 1,
@@ -2107,12 +2093,12 @@ const styles = StyleSheet.create({
     },
     confidenceFill: {
         height: '100%',
-        backgroundColor: '#F59E0B',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     resultConfidence: {
         fontSize: 11,
-        color: '#F59E0B',
+        color: '#92650A',
         fontWeight: '700',
         minWidth: 32,
     },
@@ -2134,12 +2120,12 @@ const styles = StyleSheet.create({
     handTipIcon: { fontSize: 18 },
     handTipText: { fontSize: 12, fontWeight: '600', color: '#92400E', flex: 1 },
     handCountBadge: {
-        backgroundColor: '#F59E0B',
+        backgroundColor: '#FFC93C',
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 10,
     },
-    handCountBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+    handCountBadgeText: { fontSize: 11, fontWeight: '800', color: '#7A5200' },
     // ─── Live hand count pill ──────────────────────────────────────────────
     handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
     handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
@@ -2166,7 +2152,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#F59E0B',
+        borderColor: '#FFC93C',
         minWidth: 80,
     },
     popupSenya: {

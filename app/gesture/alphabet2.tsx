@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext'; // ← ADD THIS
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { HandDetectionGuideOverlay } from '../../components/gesture/HandDetectionGuideOverlay';
 import { buildMediaUrl } from '../config/api';
 import { StatusBar } from 'react-native';
 
@@ -91,9 +92,6 @@ const SENYA_MESSAGES = {
 const DETECTION_CONFIG = {
     handsRequired: 1,
     faceRequired: false,
-    tipLabel: 'Use 1 hand to sign',
-    tipIcon: '☝️',
-    detectedLabel: (n: number) => n === 0 ? 'No hand detected' : n === 1 ? '1 hand detected' : `${n} hands detected`,
 };
 
 // Letter struggle tracking
@@ -1115,7 +1113,7 @@ export default function WebViewCameraScreen() {
                             <Ionicons
                                 name="bulb-outline"
                                 size={22}
-                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                                color={isStruggling ? '#92650A' : '#0f3172'}
                             />
                             {isStruggling && (
                                 <View style={styles.hintsBadge}>
@@ -1161,18 +1159,6 @@ export default function WebViewCameraScreen() {
                 </Text>
             </View>
 
-            {/* Hand Detection Tip Banner */}
-            <View style={styles.handTipBanner}>
-                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
-                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
-                {DETECTION_CONFIG.faceRequired && (
-                    <View style={styles.handTipFaceBadge}>
-                        <Ionicons name="scan-outline" size={12} color="#7C3AED" />
-                        <Text style={styles.handTipFaceText}>+ Face</Text>
-                    </View>
-                )}
-            </View>
-
             {/* WebView Container */}
             <View style={styles.webviewContainer}>
                 <WebView
@@ -1205,9 +1191,15 @@ export default function WebViewCameraScreen() {
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
+                <HandDetectionGuideOverlay
+                    handsRequired={1}
+                    handsDetected={handsDetected}
+                    isModelLoading={loading || !isConnected}
+                    modelStatusText="Loading alphabet recognition…"
+                />
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#FFD700" />
+                        <ActivityIndicator size="large" color="#FFC93C" />
                         <Text style={styles.loadingOverlayText}>Loading gesture recognition...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
@@ -1257,7 +1249,7 @@ export default function WebViewCameraScreen() {
                                 <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#FFD700" />
+                                <Ionicons name="star" size={13} color="#FFC93C" />
                             )}
                             {!isCompleted && !isActive && (
                                 <View style={styles.letterStatusDot} />
@@ -1286,19 +1278,9 @@ export default function WebViewCameraScreen() {
                         </Text>
                     </View>
                 )}
-                {/* Hand count pill */}
-                {handsDetected !== null && (
-                    <View style={[
-                        styles.handCountPill,
-                        handsDetected >= DETECTION_CONFIG.handsRequired
-                            ? styles.handCountPillOk
-                            : styles.handCountPillWarn
-                    ]}>
-                        <Text style={styles.handCountPillText}>
-                            {DETECTION_CONFIG.tipIcon} {DETECTION_CONFIG.detectedLabel(handsDetected)}
-                        </Text>
-                    </View>
-                )}
+                <View style={[styles.handCountPill, (handsDetected ?? 0) >= 1 ? styles.handCountPillOk : styles.handCountPillWarn]}>
+                    <Text style={styles.handCountPillText}>1 hand{handsDetected !== null ? ` · ${handsDetected} seen` : ''}</Text>
+                </View>
             </View>
 
             {/* Cute Popup - Smaller rounded rectangle */}
@@ -1455,7 +1437,7 @@ export default function WebViewCameraScreen() {
 
                         {/* Trophy badge */}
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#FFD700" />
+                            <Ionicons name="trophy" size={32} color="#FFC93C" />
                         </View>
 
                         <Text style={styles.modalTitle}>You Did It!</Text>
@@ -1681,7 +1663,7 @@ const styles = StyleSheet.create({
         width: 18,
         height: 18,
         borderRadius: 9,
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
@@ -1690,7 +1672,7 @@ const styles = StyleSheet.create({
     hintsBadgeText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#0f3172',
+        color: '#7A5200',
     },
     hintsModalOverlay: {
         flex: 1,
@@ -1808,8 +1790,8 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     hintsDotActive: {
-        backgroundColor: '#FFD700',
-        borderColor: '#0f3172',
+        backgroundColor: '#FFC93C',
+        borderColor: '#92650A',
         transform: [{ scale: 1.15 }],
     },
     hintsDotCompleted: {
@@ -1901,13 +1883,13 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     targetText: {
         fontSize: 14,
         fontWeight: '800',
-        color: '#FFD700',
+        color: '#92650A',
         minWidth: 30,
         textAlign: 'center',
     },
@@ -2014,7 +1996,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
     },
     letterActive: {
-        borderColor: '#FFD700',
+        borderColor: '#FFC93C',
         backgroundColor: Platform.OS === 'android' ? '#FFFBEB' : 'rgba(255, 215, 0, 0.15)',
         transform: [{ scale: 1.1 }],
         shadowColor: '#FFD700',
@@ -2097,12 +2079,12 @@ const styles = StyleSheet.create({
     },
     confidenceFill: {
         height: '100%',
-        backgroundColor: '#10B981',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     resultConfidence: {
         fontSize: 11,
-        color: '#10B981',
+        color: '#92650A',
         fontWeight: '700',
         minWidth: 32,
     },
@@ -2198,7 +2180,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#FFD700',
+        borderColor: '#FFC93C',
         minWidth: 80,
     },
     popupSenya: {
@@ -2257,9 +2239,9 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
         borderWidth: 2,
-        borderColor: 'rgba(255, 201, 60, 0.4)',
+        borderColor: 'rgba(255, 215, 0, 0.4)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -2293,7 +2275,7 @@ const styles = StyleSheet.create({
     starLabelPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
         paddingVertical: 5,
         paddingHorizontal: 12,
         borderRadius: 999,

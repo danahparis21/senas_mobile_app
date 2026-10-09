@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { NetworkAlertProvider } from '../contexts/NetworkAlertContext';
@@ -10,7 +9,12 @@ import { CustomAlertModal } from '../components/CustomAlertModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initErrorHandler } from '../utils/errorHandler';
 import { api } from '../services/api';
-import { getExpoPushToken, cacheExpoPushToken } from '../services/pushNotifications';
+import {
+  getExpoPushToken,
+  cacheExpoPushToken,
+  subscribeToNotificationResponses,
+  getLastNotificationUrl,
+} from '../services/pushNotifications';
 
 function DeviceNotificationManager() {
   const router = useRouter();
@@ -34,20 +38,20 @@ function DeviceNotificationManager() {
 
     registerDevice();
 
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      const actionUrl = response.notification.request.content.data?.action_url;
+    const unsubscribe = subscribeToNotificationResponses((actionUrl) => {
       if (typeof actionUrl === 'string' && actionUrl.startsWith('/')) {
         router.push(actionUrl as any);
       }
     });
 
-    const lastResponse = Notifications.getLastNotificationResponse();
-    const actionUrl = lastResponse?.notification.request.content.data?.action_url;
-    if (typeof actionUrl === 'string' && actionUrl.startsWith('/')) {
-      router.push(actionUrl as any);
+    const lastUrl = getLastNotificationUrl();
+    if (typeof lastUrl === 'string' && lastUrl.startsWith('/')) {
+      router.push(lastUrl as any);
     }
 
-    return () => responseSubscription.remove();
+    return () => {
+      unsubscribe();
+    };
   }, [router]);
 
   return null;

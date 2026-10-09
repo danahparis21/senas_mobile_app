@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { HandDetectionGuideOverlay } from '../../components/gesture/HandDetectionGuideOverlay';
 import { buildMediaUrl } from '../config/api';
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -87,9 +88,6 @@ const SENYA_MESSAGES = {
 const DETECTION_CONFIG = {
     handsRequired: 1,
     faceRequired: false,
-    tipLabel: 'Use 1 hand to sign',
-    tipIcon: '☝️',
-    detectedLabel: (n: number) => n === 0 ? 'No hand detected' : n === 1 ? '1 hand detected' : `${n} hands detected`,
 };
 
 // Letter struggle tracking
@@ -1110,7 +1108,7 @@ export default function WebViewCameraScreen() {
                             <Ionicons
                                 name="bulb-outline"
                                 size={22}
-                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                                color={isStruggling ? '#92650A' : '#0f3172'}
                             />
                             {isStruggling && (
                                 <View style={styles.hintsBadge}>
@@ -1156,12 +1154,6 @@ export default function WebViewCameraScreen() {
                 </Text>
             </View>
 
-            {/* Hand Detection Tip Banner */}
-            <View style={styles.handTipBanner}>
-                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
-                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
-            </View>
-
             {/* WebView Container */}
             <View style={styles.webviewContainer}>
                 <WebView
@@ -1194,9 +1186,15 @@ export default function WebViewCameraScreen() {
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
+                <HandDetectionGuideOverlay
+                    handsRequired={1}
+                    handsDetected={handsDetected}
+                    isModelLoading={loading || !isConnected}
+                    modelStatusText="Loading alphabet recognition…"
+                />
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#FFD700" />
+                        <ActivityIndicator size="large" color="#FFC93C" />
                         <Text style={styles.loadingOverlayText}>Loading gesture recognition...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
@@ -1252,7 +1250,7 @@ export default function WebViewCameraScreen() {
                                 <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#FFD700" />
+                                <Ionicons name="star" size={13} color="#FFC93C" />
                             )}
                             {!isCompleted && !isActive && (
                                 <View style={styles.letterStatusDot} />
@@ -1281,18 +1279,9 @@ export default function WebViewCameraScreen() {
                         </Text>
                     </View>
                 )}
-                {handsDetected !== null && (
-                    <View style={[
-                        styles.handCountPill,
-                        handsDetected >= DETECTION_CONFIG.handsRequired
-                            ? styles.handCountPillOk
-                            : styles.handCountPillWarn
-                    ]}>
-                        <Text style={styles.handCountPillText}>
-                            {DETECTION_CONFIG.tipIcon} {DETECTION_CONFIG.detectedLabel(handsDetected)}
-                        </Text>
-                    </View>
-                )}
+                <View style={[styles.handCountPill, (handsDetected ?? 0) >= 1 ? styles.handCountPillOk : styles.handCountPillWarn]}>
+                    <Text style={styles.handCountPillText}>1 hand{handsDetected !== null ? ` · ${handsDetected} seen` : ''}</Text>
+                </View>
             </View>
 
             {/* Cute Popup - Smaller rounded rectangle */}
@@ -1448,7 +1437,7 @@ export default function WebViewCameraScreen() {
                         </TouchableOpacity>
 
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#FFD700" />
+                            <Ionicons name="trophy" size={32} color="#FFC93C" />
                         </View>
 
                         <Text style={styles.modalTitle}>You Did It!</Text>
@@ -1717,13 +1706,13 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     targetText: {
         fontSize: 14,
         fontWeight: '800',
-        color: '#FFD700',
+        color: '#92650A',
         minWidth: 30,
         textAlign: 'center',
     },
@@ -1830,7 +1819,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
     },
     letterActive: {
-        borderColor: '#FFD700',
+        borderColor: '#FFC93C',
         backgroundColor: Platform.OS === 'android' ? '#FFFBEB' : 'rgba(255, 215, 0, 0.15)',
         transform: [{ scale: 1.1 }],
         shadowColor: '#FFD700',
@@ -1933,12 +1922,12 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         gap: 6,
         ...Platform.select({
-            ios: { backgroundColor: 'rgba(79, 130, 220, 0.10)', borderWidth: 1, borderColor: 'rgba(79, 130, 220, 0.25)' },
-            android: { backgroundColor: '#EEF4FF', borderWidth: 1, borderColor: '#C7D9F8' },
+            ios: { backgroundColor: 'rgba(255, 215, 0, 0.10)', borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.25)' },
+            android: { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D' },
         }),
     },
     handTipIcon: { fontSize: 16 },
-    handTipText: { fontSize: 12, fontWeight: '600', color: '#0f3172', flex: 1 },
+    handTipText: { fontSize: 12, fontWeight: '600', color: '#92650A', flex: 1 },
     // ─── Hand count pill ─────────────────────────────────────────
     handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
     handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
@@ -1966,7 +1955,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#FFD700',
+        borderColor: '#FFC93C',
         minWidth: 80,
     },
     popupSenya: {
@@ -2104,8 +2093,8 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     hintsDotActive: {
-        backgroundColor: '#FFD700',
-        borderColor: '#0f3172',
+        backgroundColor: '#FFC93C',
+        borderColor: '#92650A',
         transform: [{ scale: 1.15 }],
     },
     hintsDotCompleted: {
@@ -2335,7 +2324,7 @@ const styles = StyleSheet.create({
         width: 18,
         height: 18,
         borderRadius: 9,
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
@@ -2344,6 +2333,6 @@ const styles = StyleSheet.create({
     hintsBadgeText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#0f3172',
+        color: '#7A5200',
     },
 });

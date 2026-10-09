@@ -529,8 +529,8 @@ function SchoolYearPickerModal({
   );
 }
 
-// ── AndroidAcademicCard (Android-only collapsible card) ─────────────────
-interface AndroidAcademicCardProps {
+// ── Collapsible Academic Card Components ─────────────────────────────────
+interface AcademicCardProps {
   selectedSchoolYear: string | null;
   activeSchoolYear: string | null;
   isEnrolledInActiveYear: boolean;
@@ -544,6 +544,127 @@ interface AndroidAcademicCardProps {
   onReturnToActive: () => void;
 }
 
+// ── iOS Collapsible Academic Card (Glassmorphic) ─────────────────────────
+function IosAcademicCard({
+  selectedSchoolYear,
+  activeSchoolYear,
+  isEnrolledInActiveYear,
+  studentAcademicInfo,
+  onPickSY,
+  onReturnToActive,
+}: AcademicCardProps) {
+  const [expanded, setExpanded] = React.useState(false);
+  const animHeight = useRef(new Animated.Value(0)).current;
+  const animRotate = useRef(new Animated.Value(0)).current;
+
+  const toggle = () => {
+    const toValue = expanded ? 0 : 1;
+    Animated.parallel([
+      Animated.spring(animHeight, { toValue, useNativeDriver: false, bounciness: 0, speed: 18 }),
+      Animated.timing(animRotate, { toValue, useNativeDriver: true, duration: 220, easing: Easing.out(Easing.quad) }),
+    ]).start();
+    setExpanded(v => !v);
+  };
+
+  const isArchived = selectedSchoolYear && activeSchoolYear && selectedSchoolYear !== activeSchoolYear;
+
+  const statusConfig = isArchived
+    ? { bg: 'rgba(254, 243, 199, 0.9)', border: '#F59E0B', dotColor: '#D97706', textColor: '#92400E', label: 'Archived S.Y. (Viewing Past Progress)' }
+    : isEnrolledInActiveYear
+      ? { bg: 'rgba(236, 253, 245, 0.9)', border: '#10B981', dotColor: '#10B981', textColor: '#065F46', label: 'Enrolled • Active School Year' }
+      : { bg: 'rgba(254, 242, 242, 0.9)', border: '#EF4444', dotColor: '#EF4444', textColor: '#991B1B', label: 'Not Enrolled in Active S.Y. (Last Records)' };
+
+  const chevronRotation = animRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const contentMaxHeight = animHeight.interpolate({ inputRange: [0, 1], outputRange: [0, isArchived ? 280 : 220] });
+
+  return (
+    <GlassCard style={styles.syIosCard}>
+      {/* ── Collapsed Header Row ── */}
+      <View style={styles.syIosCardHeader}>
+        {/* Left: icon + title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+          <View style={styles.syIconBox}>
+            <Text style={{ fontSize: 18 }}>🎓</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.syCardLabel}>ACADEMIC RECORD</Text>
+            <Text style={[styles.syCardTitle, { fontSize: 14 }]}>
+              {selectedSchoolYear ? `S.Y. ${selectedSchoolYear}` : activeSchoolYear ? `S.Y. ${activeSchoolYear}` : 'School Year'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Right: status dot + SY picker + expand toggle */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* Status indicator dot */}
+          <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor, width: 8, height: 8 }]} />
+
+          {/* SY picker button */}
+          <Pressable style={styles.syPickerBtn} onPress={onPickSY}>
+            <Ionicons name="calendar-outline" size={13} color="#2563EB" />
+            <Text style={[styles.syPickerBtnText, { fontSize: 12 }]}>Filter</Text>
+          </Pressable>
+
+          {/* Expand toggle */}
+          <Pressable
+            onPress={toggle}
+            style={styles.syIosToggleBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Animated.View style={{ transform: [{ rotate: chevronRotation }] }}>
+              <Ionicons name="chevron-down" size={18} color="#2563EB" />
+            </Animated.View>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* ── Expandable Content ── */}
+      <Animated.View style={[{ overflow: 'hidden' }, { maxHeight: contentMaxHeight }]}>
+        <View style={styles.syIosExpandedContent}>
+          {/* Status Pill */}
+          <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border, marginTop: 4, marginBottom: 12 }]}>
+            <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
+            <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
+          </View>
+
+          {/* Academic Info Grid with Glassmorphic styling */}
+          <View style={styles.syAcademicGrid}>
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>Program</Text>
+              <Text style={styles.syAcademicVal} numberOfLines={1}>
+                {studentAcademicInfo.program_type || 'Non-Graded'}
+              </Text>
+            </View>
+            <View style={styles.syAcademicDividerVertical} />
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>Grade & Section</Text>
+              <Text style={styles.syAcademicVal} numberOfLines={1}>
+                {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
+              </Text>
+            </View>
+            <View style={styles.syAcademicDividerVertical} />
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>LRN</Text>
+              <Text style={styles.syAcademicVal} numberOfLines={1}>
+                {studentAcademicInfo.lrn || '—'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Return to Active SY button */}
+          {isArchived && (
+            <Pressable style={[styles.syReturnBtn, { marginTop: 10 }]} onPress={onReturnToActive}>
+              <Ionicons name="arrow-undo-outline" size={14} color="#2563EB" />
+              <Text style={styles.syReturnBtnText}>Return to Active S.Y. ({activeSchoolYear})</Text>
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
+    </GlassCard>
+  );
+}
+
+// ── AndroidAcademicCard (Android collapsible card) ──────────────────────
 function AndroidAcademicCard({
   selectedSchoolYear,
   activeSchoolYear,
@@ -551,7 +672,7 @@ function AndroidAcademicCard({
   studentAcademicInfo,
   onPickSY,
   onReturnToActive,
-}: AndroidAcademicCardProps) {
+}: AcademicCardProps) {
   const [expanded, setExpanded] = React.useState(false);
   const animHeight = useRef(new Animated.Value(0)).current;
   const animRotate = useRef(new Animated.Value(0)).current;
@@ -1259,79 +1380,17 @@ export default function Profile() {
         {/* ── Academic & School Year Card ── */}
         <View style={styles.section}>
           {Platform.OS === 'ios' ? (
-            /* ── iOS: Glassmorphic card ── */
-            <GlassCard style={styles.syCard}>
-              <View style={styles.syCardHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                  <View style={styles.syIconBox}>
-                    <Text style={{ fontSize: 18 }}>🎓</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.syCardLabel}>ACADEMIC RECORD</Text>
-                    <Text style={styles.syCardTitle}>School Year Filter</Text>
-                  </View>
-                </View>
-                <Pressable
-                  style={styles.syPickerBtn}
-                  onPress={() => setShowSchoolYearModal(true)}
-                >
-                  <Text style={styles.syPickerBtnText}>
-                    {selectedSchoolYear ? `S.Y. ${selectedSchoolYear}` : (activeSchoolYear ? `S.Y. ${activeSchoolYear}` : 'Select S.Y.')}
-                  </Text>
-                  <Ionicons name="chevron-down" size={16} color="#2563EB" />
-                </Pressable>
-              </View>
-
-              <View style={styles.syStatusRow}>
-                {selectedSchoolYear && activeSchoolYear && selectedSchoolYear !== activeSchoolYear ? (
-                  <View style={[styles.syStatusPill, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
-                    <View style={[styles.syStatusDot, { backgroundColor: '#D97706' }]} />
-                    <Text style={[styles.syStatusPillText, { color: '#92400E' }]}>Archived S.Y. (Viewing Past Progress)</Text>
-                  </View>
-                ) : isEnrolledInActiveYear ? (
-                  <View style={[styles.syStatusPill, { backgroundColor: '#ECFDF5', borderColor: '#10B981' }]}>
-                    <View style={[styles.syStatusDot, { backgroundColor: '#10B981' }]} />
-                    <Text style={[styles.syStatusPillText, { color: '#065F46' }]}>Enrolled • Active School Year</Text>
-                  </View>
-                ) : (
-                  <View style={[styles.syStatusPill, { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}>
-                    <View style={[styles.syStatusDot, { backgroundColor: '#EF4444' }]} />
-                    <Text style={[styles.syStatusPillText, { color: '#991B1B' }]}>Not Enrolled in Active S.Y. (Last Enrolled Records)</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.syAcademicGrid}>
-                <View style={styles.syAcademicCol}>
-                  <Text style={styles.syAcademicLabel}>Program</Text>
-                  <Text style={styles.syAcademicVal} numberOfLines={1}>{studentAcademicInfo.program_type || 'Non-Graded'}</Text>
-                </View>
-                <View style={styles.syAcademicDividerVertical} />
-                <View style={styles.syAcademicCol}>
-                  <Text style={styles.syAcademicLabel}>Grade & Section</Text>
-                  <Text style={styles.syAcademicVal} numberOfLines={1}>
-                    {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
-                  </Text>
-                </View>
-                <View style={styles.syAcademicDividerVertical} />
-                <View style={styles.syAcademicCol}>
-                  <Text style={styles.syAcademicLabel}>LRN</Text>
-                  <Text style={styles.syAcademicVal} numberOfLines={1}>{studentAcademicInfo.lrn || '—'}</Text>
-                </View>
-              </View>
-
-              {selectedSchoolYear && activeSchoolYear && selectedSchoolYear !== activeSchoolYear && (
-                <Pressable
-                  style={styles.syReturnBtn}
-                  onPress={() => { setSelectedSchoolYear(activeSchoolYear); fetchProfileData(activeSchoolYear); }}
-                >
-                  <Ionicons name="arrow-undo-outline" size={14} color="#2563EB" />
-                  <Text style={styles.syReturnBtnText}>Return to Active S.Y. ({activeSchoolYear})</Text>
-                </Pressable>
-              )}
-            </GlassCard>
+            /* ── iOS: Glassmorphic collapsible card ── */
+            <IosAcademicCard
+              selectedSchoolYear={selectedSchoolYear}
+              activeSchoolYear={activeSchoolYear}
+              isEnrolledInActiveYear={isEnrolledInActiveYear}
+              studentAcademicInfo={studentAcademicInfo}
+              onPickSY={() => setShowSchoolYearModal(true)}
+              onReturnToActive={() => { setSelectedSchoolYear(activeSchoolYear); fetchProfileData(activeSchoolYear); }}
+            />
           ) : (
-            /* ── Android: Plain white collapsible card ── */
+            /* ── Android: Material collapsible card ── */
             <AndroidAcademicCard
               selectedSchoolYear={selectedSchoolYear}
               activeSchoolYear={activeSchoolYear}
@@ -2097,6 +2156,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.72)',
     borderWidth: 1,
     borderColor: 'rgba(37, 99, 235, 0.12)',
+  },
+  syIosCard: {
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.12)',
+    overflow: 'hidden',
+  },
+  syIosCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  syIosToggleBtn: {
+    padding: 5,
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.15)',
+  },
+  syIosExpandedContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(37, 99, 235, 0.08)',
   },
   syAndroidCard: {
     backgroundColor: '#FFFFFF',

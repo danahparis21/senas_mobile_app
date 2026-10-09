@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { HandDetectionGuideOverlay } from '../../components/gesture/HandDetectionGuideOverlay';
 import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
@@ -103,16 +104,21 @@ const SENYA_MESSAGES = {
     complete: "YOU DID IT! ALL 10 SURVIVAL PHRASES! 🎉",
 };
 
-// ─── DETECTION CONFIG (2 hands + face tracking) ───────────────────────────
-const DETECTION_CONFIG = {
-    handsRequired: 2,
-    faceRequired: true,
-    tipLabel: 'Use both hands + face expressions',
-    tipIcon: '🤲',
-    detectedLabel: (n: number) =>
-        n === 0 ? 'No hands detected'
-        : n === 1 ? '1 hand — use both hands + face!'
-        : `✅ Both hands detected!`,
+// ─── PER-GESTURE REQUIREMENTS (HANDS + HEAD TRACKING) ──────────────────────
+// One-handed signs: Understand, Don't understand, Know, Don't know, No, Yes, Wrong, Fast
+// Two-handed signs: Correct, Slow
+// Head tracking: Understand (nod), Don't understand (shake), Don't know (shake), No (shake), Yes (nod), Wrong (shake)
+const SURVIVAL_GESTURE_CONFIG: Record<string, { hands: 1 | 2; tracksHead: boolean }> = {
+    'UNDERSTAND': { hands: 1, tracksHead: true },
+    "DON'T UNDERSTAND": { hands: 1, tracksHead: true },
+    'KNOW': { hands: 1, tracksHead: false },
+    "DON'T KNOW": { hands: 1, tracksHead: true },
+    'NO': { hands: 1, tracksHead: true },
+    'YES': { hands: 1, tracksHead: true },
+    'WRONG': { hands: 1, tracksHead: true },
+    'FAST': { hands: 1, tracksHead: false },
+    'CORRECT': { hands: 2, tracksHead: false },
+    'SLOW': { hands: 2, tracksHead: false },
 };
 
 // Gesture struggle tracking
@@ -140,6 +146,7 @@ export default function WebViewSurvivalScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const [showBrowserButton, setShowBrowserButton] = useState(true);
     const [handsDetected, setHandsDetected] = useState<number | null>(null);
+    const [modelStatusText, setModelStatusText] = useState('AI Model Loading...');
 
     // ─── HINTS MODAL STATE ──────────────────────────────────────────────────
     const [showHintsModal, setShowHintsModal] = useState(false);
@@ -971,10 +978,9 @@ export default function WebViewSurvivalScreen() {
         hideUI();
         
         const checkModelStatus = setInterval(function() {
-            const statusText = document.getElementById('status-text');
-            const modelReady = document.getElementById('status-text')?.textContent === 'Model Ready';
-            
-            if (modelReady) {
+            const statusEl = document.getElementById('status-text');
+            const text = statusEl ? statusEl.textContent.trim() : '';
+            if (text === 'Model Ready' || text.toLowerCase().includes('ready')) {
                 clearInterval(checkModelStatus);
                 if (window.ReactNativeWebView) {
                     window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -982,8 +988,13 @@ export default function WebViewSurvivalScreen() {
                         status: 'loaded'
                     }));
                 }
+            } else if (text && window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'model_status',
+                    statusText: text
+                }));
             }
-        }, 1000);
+        }, 800);
         
         setTimeout(function() {
             if (window.ReactNativeWebView) {
@@ -1011,6 +1022,9 @@ export default function WebViewSurvivalScreen() {
             const data = JSON.parse(event.nativeEvent.data);
 
             if (data.type === 'model_status') {
+                if (data.statusText) {
+                    setModelStatusText(data.statusText);
+                }
                 if (data.status === 'loaded') {
                     setModelLoading(false);
                     setLoading(false);
@@ -1046,6 +1060,8 @@ export default function WebViewSurvivalScreen() {
 
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
+            setHandsDetected(data.hands_detected ?? data.handCount ??
+                (!detectedValue || detectedValue === '✋' || detectedValue === '...' ? 0 : 1));
 
             if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
                 console.log(`✅ ${detectedValue} (${Math.round(confidenceValue * 100)}%)`);
@@ -1065,15 +1081,6 @@ export default function WebViewSurvivalScreen() {
             } else {
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
-            }
-
-            // Track hands + face detected from backend
-            if (data.hands_detected !== undefined) {
-                setHandsDetected(data.hands_detected);
-            } else if (data.handCount !== undefined) {
-                setHandsDetected(data.handCount);
-            } else if (detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
-                setHandsDetected(1); // at least 1 hand active
             }
 
         } catch (error) {
@@ -1110,6 +1117,8 @@ export default function WebViewSurvivalScreen() {
         );
     }
 
+    const currentConfig = SURVIVAL_GESTURE_CONFIG[currentTarget] || { hands: 1, tracksHead: false };
+
     // ─── RENDER ────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={styles.container}>
@@ -1139,7 +1148,7 @@ export default function WebViewSurvivalScreen() {
                             <Ionicons
                                 name="bulb-outline"
                                 size={22}
-                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                                color={isStruggling ? '#92650A' : '#0f3172'}
                             />
                             {isStruggling && (
                                 <View style={styles.hintsBadge}>
@@ -1185,19 +1194,6 @@ export default function WebViewSurvivalScreen() {
                 </Text>
             </View>
 
-            {/* Hand + Face Detection Tip Banner */}
-            <View style={styles.handTipBanner}>
-                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
-                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
-                <View style={styles.handCountBadge}>
-                    <Text style={styles.handCountBadgeText}>2 Hands</Text>
-                </View>
-                <View style={styles.faceBadge}>
-                    <Ionicons name="scan-outline" size={11} color="#fff" />
-                    <Text style={styles.faceBadgeText}>Face</Text>
-                </View>
-            </View>
-
             {/* WebView Container */}
             <View style={styles.webviewContainer}>
                 <WebView
@@ -1238,9 +1234,19 @@ export default function WebViewSurvivalScreen() {
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
+
+                {/* Cyber Hand & Head Tracking Guide Overlay (visible when no hands detected) */}
+                <HandDetectionGuideOverlay
+                    handsRequired={currentConfig.hands}
+                    tracksHead={currentConfig.tracksHead}
+                    handsDetected={handsDetected}
+                    isModelLoading={loading || modelLoading || !isConnected}
+                    modelStatusText={modelStatusText}
+                />
+
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#EF4444" />
+                        <ActivityIndicator size="large" color="#FFC93C" />
                         <Text style={styles.loadingOverlayText}>Loading Survival Phrases...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
@@ -1297,7 +1303,7 @@ export default function WebViewSurvivalScreen() {
                                 <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#EF4444" />
+                                <Ionicons name="star" size={13} color="#FFC93C" />
                             )}
                             {!isCompleted && !isActive && (
                                 <View style={styles.gestureStatusDot} />
@@ -1310,7 +1316,7 @@ export default function WebViewSurvivalScreen() {
             {/* Bottom Detection Bar */}
             <View style={styles.resultBar}>
                 <Text style={styles.resultLabel}>Detected:</Text>
-                <Text style={styles.resultGesture}>
+                <Text style={styles.resultGesture} numberOfLines={1} ellipsizeMode="tail">
                     {DISPLAY_NAMES[detectedGesture] || detectedGesture}
                 </Text>
 
@@ -1330,18 +1336,21 @@ export default function WebViewSurvivalScreen() {
                     </View>
                 )}
                 {/* Live hand + face count */}
-                {handsDetected !== null && (
-                    <View style={[
-                        styles.handCountPill,
-                        handsDetected >= DETECTION_CONFIG.handsRequired
-                            ? styles.handCountPillOk
-                            : styles.handCountPillWarn
-                    ]}>
-                        <Text style={styles.handCountPillText}>
-                            {DETECTION_CONFIG.detectedLabel(handsDetected)}
-                        </Text>
-                    </View>
-                )}
+                <View style={[
+                    styles.handCountPill,
+                    (handsDetected ?? 0) >= currentConfig.hands
+                        ? styles.handCountPillOk
+                        : styles.handCountPillWarn
+                ]}>
+                    <Text style={styles.handCountPillText}>
+                        {handsDetected === null || handsDetected === 0
+                            ? `${currentConfig.hands} Hand${currentConfig.hands > 1 ? 's' : ''} Needed`
+                            : (handsDetected ?? 0) >= currentConfig.hands
+                                ? `✅ ${handsDetected}/${currentConfig.hands} Hand${currentConfig.hands > 1 ? 's' : ''}`
+                                : `⚠️ ${handsDetected}/${currentConfig.hands} Hand (Need ${currentConfig.hands})`}
+                {currentConfig.tracksHead ? ' · face' : ''}
+                    </Text>
+                </View>
             </View>
 
             {/* Cute Popup */}
@@ -1497,7 +1506,7 @@ export default function WebViewSurvivalScreen() {
                         </TouchableOpacity>
 
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#EF4444" />
+                            <Ionicons name="trophy" size={32} color="#FFC93C" />
                         </View>
 
                         <Text style={styles.modalTitle}>Survival Complete!</Text>
@@ -1521,7 +1530,7 @@ export default function WebViewSurvivalScreen() {
                                         <Ionicons
                                             name={isEarned ? 'star' : 'star-outline'}
                                             size={i === 1 ? 40 : 32}
-                                            color={isEarned ? '#EF4444' : '#D9E2EC'}
+                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
                                         />
                                     </Animated.View>
                                 );
@@ -1574,7 +1583,7 @@ export default function WebViewSurvivalScreen() {
                                             const items: { icon: any; color: string; text: string }[] = [];
 
                                             if (starRating === 3) {
-                                                items.push({ icon: 'sparkles', color: '#EF4444', text: "You're absolutely incredible at this!" });
+                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
                                             } else if (starRating === 2) {
                                                 items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
                                             } else {
@@ -1741,7 +1750,7 @@ const styles = StyleSheet.create({
         width: 18,
         height: 18,
         borderRadius: 9,
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
@@ -1750,7 +1759,7 @@ const styles = StyleSheet.create({
     hintsBadgeText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#0f3172',
+        color: '#7A5200',
     },
     // ─── HINTS MODAL STYLES ────────────────────────────────────────────────
     hintsModalOverlay: {
@@ -1869,8 +1878,8 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     hintsDotActive: {
-        backgroundColor: '#FFD700',
-        borderColor: '#0f3172',
+        backgroundColor: '#FFC93C',
+        borderColor: '#92650A',
         transform: [{ scale: 1.15 }],
     },
     hintsDotCompleted: {
@@ -1945,13 +1954,13 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#EF4444',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     targetText: {
         fontSize: 13,
         fontWeight: '800',
-        color: '#EF4444',
+        color: '#92650A',
         minWidth: 50,
         textAlign: 'center',
     },
@@ -2059,10 +2068,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
     },
     gestureActive: {
-        borderColor: '#EF4444',
-        backgroundColor: Platform.OS === 'android' ? '#FEF2F2' : 'rgba(239, 68, 68, 0.15)',
+        borderColor: '#FFC93C',
+        backgroundColor: Platform.OS === 'android' ? '#FFFBEB' : 'rgba(255, 215, 0, 0.15)',
         transform: [{ scale: 1.05 }],
-        shadowColor: '#EF4444',
+        shadowColor: '#FFD700',
         shadowOpacity: 0.55,
         shadowRadius: 10,
         elevation: 8,
@@ -2078,7 +2087,7 @@ const styles = StyleSheet.create({
         fontSize: 10,
     },
     gestureCharActive: {
-        color: '#991B1B',
+        color: '#92650A',
         fontSize: 12,
         fontWeight: '800',
     },
@@ -2123,11 +2132,12 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
     },
     resultGesture: {
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: '800',
         color: '#0f3172',
-        minWidth: 50,
-        textAlign: 'center',
+        maxWidth: 92,
+        flexShrink: 1,
+        textAlign: 'left',
     },
     confidenceContainer: {
         flex: 1,
@@ -2144,16 +2154,16 @@ const styles = StyleSheet.create({
     },
     confidenceFill: {
         height: '100%',
-        backgroundColor: '#EF4444',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     resultConfidence: {
         fontSize: 11,
-        color: '#EF4444',
+        color: '#92650A',
         fontWeight: '700',
         minWidth: 32,
     },
-    // ─── Hand + Face tip banner (red/rose theme for survival) ─────────────
+    // ─── Hand + Face tip banner (yellow theme for survival) ─────────────
     handTipBanner: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -2164,29 +2174,29 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         gap: 6,
         ...Platform.select({
-            ios: { backgroundColor: 'rgba(239, 68, 68, 0.09)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)' },
-            android: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+            ios: { backgroundColor: 'rgba(255, 215, 0, 0.10)', borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.30)' },
+            android: { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D' },
         }),
     },
     handTipIcon: { fontSize: 18 },
-    handTipText: { fontSize: 12, fontWeight: '600', color: '#991B1B', flex: 1 },
+    handTipText: { fontSize: 12, fontWeight: '600', color: '#92650A', flex: 1 },
     handCountBadge: {
-        backgroundColor: '#EF4444',
+        backgroundColor: '#FFC93C',
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 10,
     },
-    handCountBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+    handCountBadgeText: { fontSize: 11, fontWeight: '800', color: '#7A5200' },
     faceBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 3,
-        backgroundColor: '#7C3AED',
+        backgroundColor: '#FFF3CD',
         paddingHorizontal: 7,
         paddingVertical: 3,
         borderRadius: 10,
     },
-    faceBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+    faceBadgeText: { fontSize: 11, fontWeight: '800', color: '#92650A' },
     // ─── Live hand count pill ──────────────────────────────────────────────
     handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
     handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
@@ -2213,7 +2223,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#EF4444',
+        borderColor: '#FFC93C',
         minWidth: 80,
     },
     popupSenya: {
@@ -2272,9 +2282,9 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
         borderWidth: 2,
-        borderColor: 'rgba(239, 68, 68, 0.4)',
+        borderColor: 'rgba(255, 215, 0, 0.4)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -2308,7 +2318,7 @@ const styles = StyleSheet.create({
     starLabelPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
         paddingVertical: 5,
         paddingHorizontal: 12,
         borderRadius: 999,

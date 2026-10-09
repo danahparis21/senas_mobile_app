@@ -30,6 +30,7 @@ import { usePracticeTimeTracker } from '../../hooks/usePracticeTimeTracker';
 import { useSettings } from '../../contexts/SettingsContext';
 // Import the WebViewMedia component for displaying signs
 import { WebViewMedia } from '../../components/WebViewMedia';
+import { HandDetectionGuideOverlay } from '../../components/gesture/HandDetectionGuideOverlay';
 import { buildMediaUrl } from '../config/api';
 
 // Enable LayoutAnimation for Android
@@ -112,9 +113,6 @@ const SENYA_MESSAGES = {
 const DETECTION_CONFIG = {
     handsRequired: 1,
     faceRequired: false,
-    tipLabel: 'Use 1 hand to sign the numbers',
-    tipIcon: '☝️',
-    detectedLabel: (n: number) => n === 0 ? 'No hand detected' : n === 1 ? '1 hand detected' : `${n} hands detected`,
 };
 
 // Gesture struggle tracking
@@ -937,6 +935,8 @@ export default function Level3GesturesScreen() {
 
             const detectedValue = data.greeting || data.letter || '';
             const confidenceValue = data.confidence || 0;
+            setHandsDetected(data.hands_detected ?? data.handCount ??
+                (!detectedValue || detectedValue === '✋' || detectedValue === '...' ? 0 : 1));
 
             if (data.isMatch && detectedValue && detectedValue !== '' && detectedValue !== '✋' && detectedValue !== '...') {
                 console.log(`🎯 Learned: ${detectedValue}`);
@@ -959,14 +959,6 @@ export default function Level3GesturesScreen() {
             } else {
                 setDetectedGesture(detectedValue);
                 setConfidence(confidenceValue);
-            }
-
-            // Track hands detected
-            if (data.hands_detected !== undefined) {
-                setHandsDetected(data.hands_detected);
-            } else if (data.greeting || data.letter) {
-                const val = data.greeting || data.letter;
-                setHandsDetected(val === '✋' || val === '...' ? 0 : 1);
             }
 
         } catch (error) {
@@ -1169,7 +1161,7 @@ export default function Level3GesturesScreen() {
                             <Ionicons
                                 name="bulb-outline"
                                 size={22}
-                                color={isStruggling ? '#FFD700' : '#0f3172'}
+                                color={isStruggling ? '#92650A' : '#0f3172'}
                             />
                             {isStruggling && (
                                 <View style={styles.hintsBadge}>
@@ -1213,12 +1205,6 @@ export default function Level3GesturesScreen() {
                 <Text style={styles.targetText}>
                     🎯 {DIGIT_DISPLAY[currentTarget] || currentTarget}
                 </Text>
-            </View>
-
-            {/* Hand Detection Tip Banner */}
-            <View style={styles.handTipBanner}>
-                <Text style={styles.handTipIcon}>{DETECTION_CONFIG.tipIcon}</Text>
-                <Text style={styles.handTipText}>{DETECTION_CONFIG.tipLabel}</Text>
             </View>
 
             {/* WebView Container */}
@@ -1270,9 +1256,15 @@ export default function Level3GesturesScreen() {
                             : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
+                <HandDetectionGuideOverlay
+                    handsRequired={1}
+                    handsDetected={handsDetected}
+                    isModelLoading={loading || modelLoading || !isConnected}
+                    modelStatusText="Loading number recognition…"
+                />
                 {showLoadingOverlay && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#8B5CF6" />
+                        <ActivityIndicator size="large" color="#FFC93C" />
                         <Text style={styles.loadingOverlayText}>Loading Numbers 1-10...</Text>
                         <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
                     </View>
@@ -1329,7 +1321,7 @@ export default function Level3GesturesScreen() {
                                 <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                             )}
                             {isActive && (
-                                <Ionicons name="star" size={13} color="#8B5CF6" />
+                                <Ionicons name="star" size={13} color="#FFC93C" />
                             )}
                             {!isCompleted && !isActive && (
                                 <View style={styles.gestureStatusDot} />
@@ -1361,18 +1353,9 @@ export default function Level3GesturesScreen() {
                         </Text>
                     </View>
                 )}
-                {handsDetected !== null && (
-                    <View style={[
-                        styles.handCountPill,
-                        handsDetected >= DETECTION_CONFIG.handsRequired
-                            ? styles.handCountPillOk
-                            : styles.handCountPillWarn
-                    ]}>
-                        <Text style={styles.handCountPillText}>
-                            {DETECTION_CONFIG.tipIcon} {DETECTION_CONFIG.detectedLabel(handsDetected)}
-                        </Text>
-                    </View>
-                )}
+                <View style={[styles.handCountPill, (handsDetected ?? 0) >= 1 ? styles.handCountPillOk : styles.handCountPillWarn]}>
+                    <Text style={styles.handCountPillText}>1 hand{handsDetected !== null ? ` · ${handsDetected} seen` : ''}</Text>
+                </View>
             </View>
 
             {/* Cute Popup */}
@@ -1529,7 +1512,7 @@ export default function Level3GesturesScreen() {
                         </TouchableOpacity>
 
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#8B5CF6" />
+                            <Ionicons name="trophy" size={32} color="#FFC93C" />
                         </View>
 
                         <Text style={styles.modalTitle}>Numbers Complete!</Text>
@@ -1553,7 +1536,7 @@ export default function Level3GesturesScreen() {
                                         <Ionicons
                                             name={isEarned ? 'star' : 'star-outline'}
                                             size={i === 1 ? 40 : 32}
-                                            color={isEarned ? '#8B5CF6' : '#D9E2EC'}
+                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
                                         />
                                     </Animated.View>
                                 );
@@ -1606,7 +1589,7 @@ export default function Level3GesturesScreen() {
                                             const items: { icon: any; color: string; text: string }[] = [];
 
                                             if (starRating === 3) {
-                                                items.push({ icon: 'sparkles', color: '#8B5CF6', text: "You're absolutely incredible at this!" });
+                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
                                             } else if (starRating === 2) {
                                                 items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
                                             } else {
@@ -1775,7 +1758,7 @@ const styles = StyleSheet.create({
         width: 18,
         height: 18,
         borderRadius: 9,
-        backgroundColor: '#FFD700',
+        backgroundColor: '#FFC93C',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
@@ -1784,7 +1767,7 @@ const styles = StyleSheet.create({
     hintsBadgeText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#0f3172',
+        color: '#7A5200',
     },
     // ─── HINTS MODAL STYLES ────────────────────────────────────────────────
     hintsModalOverlay: {
@@ -1903,8 +1886,8 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     hintsDotActive: {
-        backgroundColor: '#FFD700',
-        borderColor: '#0f3172',
+        backgroundColor: '#FFC93C',
+        borderColor: '#92650A',
         transform: [{ scale: 1.15 }],
     },
     hintsDotCompleted: {
@@ -1979,13 +1962,13 @@ const styles = StyleSheet.create({
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#8B5CF6',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     targetText: {
         fontSize: 14,
         fontWeight: '800',
-        color: '#8B5CF6',
+        color: '#92650A',
         minWidth: 30,
         textAlign: 'center',
     },
@@ -2092,10 +2075,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
     },
     gestureActive: {
-        borderColor: '#8B5CF6',
-        backgroundColor: Platform.OS === 'android' ? '#F5F3FF' : 'rgba(139, 92, 246, 0.15)',
+        borderColor: '#FFC93C',
+        backgroundColor: Platform.OS === 'android' ? '#FFFBEB' : 'rgba(255, 215, 0, 0.15)',
         transform: [{ scale: 1.1 }],
-        shadowColor: '#8B5CF6',
+        shadowColor: '#FFD700',
         shadowOpacity: 0.55,
         shadowRadius: 10,
         elevation: 8,
@@ -2110,7 +2093,7 @@ const styles = StyleSheet.create({
         fontSize: 18,
     },
     gestureCharActive: {
-        color: '#6D28D9',
+        color: '#92650A',
         fontSize: 22,
     },
     gestureStatusDot: {
@@ -2175,12 +2158,12 @@ const styles = StyleSheet.create({
     },
     confidenceFill: {
         height: '100%',
-        backgroundColor: '#8B5CF6',
+        backgroundColor: '#FFC93C',
         borderRadius: 2,
     },
     resultConfidence: {
         fontSize: 11,
-        color: '#8B5CF6',
+        color: '#92650A',
         fontWeight: '700',
         minWidth: 32,
     },
@@ -2194,12 +2177,12 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         gap: 6,
         ...Platform.select({
-            ios: { backgroundColor: 'rgba(139, 92, 246, 0.10)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.25)' },
-            android: { backgroundColor: '#F3E8FF', borderWidth: 1, borderColor: '#DDD6FE' },
+            ios: { backgroundColor: 'rgba(255, 215, 0, 0.10)', borderWidth: 1, borderColor: 'rgba(255, 215, 0, 0.25)' },
+            android: { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D' },
         }),
     },
     handTipIcon: { fontSize: 16 },
-    handTipText: { fontSize: 12, fontWeight: '600', color: '#5B21B6', flex: 1 },
+    handTipText: { fontSize: 12, fontWeight: '600', color: '#92650A', flex: 1 },
     handCountPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, marginLeft: 'auto' },
     handCountPillOk: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#6EE7B7' },
     handCountPillWarn: { backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D' },
@@ -2225,7 +2208,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 8,
         borderWidth: 1.5,
-        borderColor: '#8B5CF6',
+        borderColor: '#FFC93C',
         minWidth: 80,
     },
     popupSenya: {
@@ -2284,9 +2267,9 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(139, 92, 246, 0.15)',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
         borderWidth: 2,
-        borderColor: 'rgba(139, 92, 246, 0.4)',
+        borderColor: 'rgba(255, 215, 0, 0.4)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -2320,7 +2303,7 @@ const styles = StyleSheet.create({
     starLabelPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(139, 92, 246, 0.15)',
+        backgroundColor: 'rgba(255, 215, 0, 0.15)',
         paddingVertical: 5,
         paddingHorizontal: 12,
         borderRadius: 999,
