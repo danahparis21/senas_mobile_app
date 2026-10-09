@@ -1,12 +1,57 @@
 import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { NetworkAlertProvider } from '../contexts/NetworkAlertContext';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { CustomAlertModal } from '../components/CustomAlertModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initErrorHandler } from '../utils/errorHandler';
+import { api } from '../services/api';
+import { getExpoPushToken, cacheExpoPushToken } from '../services/pushNotifications';
+
+function DeviceNotificationManager() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const registerDevice = async () => {
+      try {
+        const sessionToken = await AsyncStorage.getItem('userToken');
+        if (!sessionToken) return;
+
+        const token = await getExpoPushToken();
+        if (!token) return;
+
+        await api.registerPushToken(token);
+        await cacheExpoPushToken(token);
+      } catch (error) {
+        // Device push must never prevent the app itself from working.
+        console.warn('Push notification registration was skipped:', error);
+      }
+    };
+
+    registerDevice();
+
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const actionUrl = response.notification.request.content.data?.action_url;
+      if (typeof actionUrl === 'string' && actionUrl.startsWith('/')) {
+        router.push(actionUrl as any);
+      }
+    });
+
+    const lastResponse = Notifications.getLastNotificationResponse();
+    const actionUrl = lastResponse?.notification.request.content.data?.action_url;
+    if (typeof actionUrl === 'string' && actionUrl.startsWith('/')) {
+      router.push(actionUrl as any);
+    }
+
+    return () => responseSubscription.remove();
+  }, [router]);
+
+  return null;
+}
 
 export default function RootLayout() {
   useEffect(() => {
@@ -18,6 +63,7 @@ export default function RootLayout() {
       <SettingsProvider>
         <NetworkAlertProvider>
           <StatusBar style="dark" />
+          <DeviceNotificationManager />
           <OfflineBanner />
           <CustomAlertModal />
           <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
@@ -43,4 +89,3 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
-

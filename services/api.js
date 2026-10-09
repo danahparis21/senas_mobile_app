@@ -240,8 +240,22 @@ export const api = {
     logout: async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
+            const expoPushToken = await AsyncStorage.getItem('expoPushToken');
 
             if (token) {
+                if (expoPushToken) {
+                    // Best effort only: logging out must still work offline.
+                    await fetch(`${API_URL}/student/push-tokens`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({ expo_push_token: expoPushToken }),
+                    }).catch(() => undefined);
+                }
+
                 await fetch(`${API_URL}/student/logout`, {
                     method: 'POST',
                     headers: {
@@ -259,10 +273,37 @@ export const api = {
             await AsyncStorage.removeItem('userToken');
             await AsyncStorage.removeItem('userData');
             await AsyncStorage.removeItem('userAvatar');
+            await AsyncStorage.removeItem('expoPushToken');
             console.log('👋 Logged out and cache cleared.');
         } catch (error) {
             console.error('❌ Logout error:', error);
         }
+    },
+
+    /**
+     * Associates this signed-in student with the current physical device.
+     * The backend treats this as an upsert, so it is safe to call at launch.
+     */
+    registerPushToken: async (expoPushToken) => {
+        const token = await AsyncStorage.getItem('userToken');
+        if (!token || !expoPushToken) return null;
+
+        const response = await fetch(`${API_URL}/student/push-tokens`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ expo_push_token: expoPushToken }),
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.message || 'Failed to register device notifications');
+        }
+
+        return response.json();
     },
 
     updateFSLMasteryLevel: async (level) => {

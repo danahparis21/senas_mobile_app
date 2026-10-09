@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import Svg, { Path, Rect, Circle, Polyline } from 'react-native-svg';
 import { api } from '../services/api';
+import { cacheExpoPushToken, getExpoPushToken } from '../services/pushNotifications';
 
 const { width, height } = Dimensions.get('window');
 
@@ -599,6 +600,20 @@ export default function Login() {
       const response = await api.login(lrn, pw);
 
       if (response.user) {
+        // Keep device registration separate from sign-in so an unavailable
+        // notification service never prevents a student from entering the app.
+        void (async () => {
+          try {
+            const expoPushToken = await getExpoPushToken();
+            if (expoPushToken) {
+              await api.registerPushToken(expoPushToken);
+              await cacheExpoPushToken(expoPushToken);
+            }
+          } catch (pushError) {
+            console.warn('Push notification registration was skipped:', pushError);
+          }
+        })();
+
         Alert.alert(
           '🎉 Welcome!',
           `Hello, ${response.user.student?.first_name || response.user.name || 'Student'}! Ready to learn?`,
