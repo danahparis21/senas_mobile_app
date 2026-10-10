@@ -455,20 +455,40 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
 
     const handleNotificationPress = (notification: Notification) => {
         markAsRead(notification.id);
+        setModalVisible(false);
 
-        if (notification.type === 'achievement') {
+        let data = notification.data;
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch (e) {}
+        }
+        const lessonId = data?.lesson_id || (notification as any).lesson_id;
+        const moduleId = data?.module_id || (notification as any).module_id;
+
+        if (notification.type === 'lesson' || lessonId || (notification.title && notification.title.toLowerCase().includes('lesson'))) {
+            if (lessonId) {
+                router.push({
+                    pathname: '/(tabs)/lessons',
+                    params: {
+                        tab: 'modules',
+                        lessonId: String(lessonId),
+                        ...(moduleId ? { moduleId: String(moduleId) } : {}),
+                    }
+                } as any);
+            } else {
+                router.push({
+                    pathname: '/(tabs)/lessons',
+                    params: { tab: 'modules' }
+                } as any);
+            }
+        } else if (notification.type === 'achievement') {
             router.push('/(tabs)/achievements');
         } else if (notification.type === 'promotion') {
             router.push('/(tabs)/profile');
-        } else if (notification.type === 'lesson') {
-            router.push('/lessons');
         } else if (notification.type === 'streak') {
             router.push('/(tabs)/dashboard');
         } else if (notification.type === 'system') {
             router.push('/(tabs)/gesture');
         }
-
-        setModalVisible(false);
     };
 
     const animateBadge = () => {

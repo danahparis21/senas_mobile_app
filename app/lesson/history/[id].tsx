@@ -97,6 +97,15 @@ function RefreshIcon({ color = '#6B7280', size = 16 }: { color?: string; size?: 
   );
 }
 
+function LateClockIcon({ size = 12 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2.2" strokeLinecap="round">
+      <Circle cx="12" cy="12" r="10" />
+      <Path d="M12 7v5l3.5 3.5" />
+    </Svg>
+  );
+}
+
 // ─── Attempt Card ──────────────────────────────────────────────────────────────
 function AttemptCard({ attempt, index, total }: { attempt: any; index: number; total: number }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -155,7 +164,7 @@ function AttemptCard({ attempt, index, total }: { attempt: any; index: number; t
           <Text style={[cardStyles.pctText, { color: accentColor }]}>{pct}%</Text>
         </View>
 
-        {/* Bottom row: status + XP */}
+        {/* Bottom row: status + XP + Late tag */}
         <View style={cardStyles.bottomRow}>
           <View style={[cardStyles.statusPill, { backgroundColor: accentColor + '20' }]}>
             {isPerfect ? (
@@ -169,6 +178,14 @@ function AttemptCard({ attempt, index, total }: { attempt: any; index: number; t
               {isPerfect ? 'Perfect Score' : passed ? 'Passed' : 'Failed'}
             </Text>
           </View>
+
+          {/* 🆕 Done Late tag */}
+          {attempt.is_late && (
+            <View style={cardStyles.latePill}>
+              <LateClockIcon size={11} />
+              <Text style={cardStyles.latePillText}>Done Late</Text>
+            </View>
+          )}
 
           {attempt.xp_earned > 0 && (
             <View style={cardStyles.xpPill}>
@@ -251,6 +268,18 @@ const cardStyles = StyleSheet.create({
     borderColor: '#FDE68A',
   },
   xpText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  latePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 99,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  latePillText: { fontSize: 11, fontWeight: '700', color: '#F97316' },
 });
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -260,6 +289,8 @@ export default function AttemptHistoryPage() {
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lessonTitle, setLessonTitle] = useState('');
+  const [lessonDeadline, setLessonDeadline] = useState<string | null>(null);
+  const [lessonIsLate, setLessonIsLate] = useState(false);
   const headerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -280,7 +311,11 @@ export default function AttemptHistoryPage() {
         api.getLessonById(id),
       ]);
       if (attemptsRes.success) setAttempts(attemptsRes.attempts || []);
-      if (lessonRes.success) setLessonTitle(lessonRes.lesson?.title || '');
+      if (lessonRes.success) {
+        setLessonTitle(lessonRes.lesson?.title || '');
+        setLessonDeadline(lessonRes.lesson?.deadline ?? null);
+        setLessonIsLate(!!lessonRes.lesson?.is_late);
+      }
     } catch (err) {
       console.error('Error loading history:', err);
     } finally {
@@ -330,6 +365,35 @@ export default function AttemptHistoryPage() {
         {/* ─── Summary Stats Card ───────────────────────────────────────── */}
         {totalAttempts > 0 && (
           <Animated.View style={[styles.summaryCard, { opacity: headerAnim }]}>
+
+            {/* 🆕 Deadline context banner */}
+            {lessonDeadline && (() => {
+              const deadlineDate = new Date(lessonDeadline);
+              const now = new Date();
+              const isPast = deadlineDate < now;
+              const timeStr = deadlineDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+              const dateStr = deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const isLateOverall = lessonIsLate || attempts.some(a => a.is_late);
+              return (
+                <View style={[
+                  styles.deadlineBanner,
+                  { backgroundColor: isPast ? '#FEF2F2' : '#FFFBEB', borderColor: isPast ? '#FECACA' : '#FDE68A' }
+                ]}>
+                  <Text style={{ fontSize: 16 }}>{isPast ? '⏰' : '📅'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.deadlineBannerTitle, { color: isPast ? '#DC2626' : '#D97706' }]}>
+                      {isPast
+                        ? isLateOverall ? 'Submitted Late' : 'Deadline Passed'
+                        : 'Deadline'}
+                    </Text>
+                    <Text style={styles.deadlineBannerSub}>
+                      {dateStr} at {timeStr}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
+
             <View style={styles.summaryHeader}>
               <BarChartIcon color="#2563EB" size={18} />
               <Text style={styles.summaryTitle}>Your Progress</Text>
@@ -505,6 +569,19 @@ const styles = StyleSheet.create({
   },
   summaryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryTitle: { fontSize: 16, fontWeight: '800', color: '#0f3172' },
+
+  // Deadline context banner inside summary card
+  deadlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  deadlineBannerTitle: { fontSize: 13, fontWeight: '800' },
+  deadlineBannerSub: { fontSize: 11, fontWeight: '500', color: '#6B7280', marginTop: 1 },
 
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statBox: {

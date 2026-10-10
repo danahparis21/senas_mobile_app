@@ -98,7 +98,11 @@ export function subscribeToNotificationResponses(onActionUrl: (url: string) => v
 
   try {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const actionUrl = response.notification.request.content.data?.action_url;
+      const data = response.notification.request.content.data;
+      let actionUrl = data?.action_url;
+      if (data?.lesson_id && (!actionUrl || actionUrl === '/lessons')) {
+        actionUrl = `/(tabs)/lessons?tab=modules&lessonId=${data.lesson_id}${data.module_id ? `&moduleId=${data.module_id}` : ''}`;
+      }
       if (typeof actionUrl === 'string') {
         onActionUrl(actionUrl);
       }
@@ -124,7 +128,11 @@ export function getLastNotificationUrl(): string | null {
 
   try {
     const lastResponse = Notifications.getLastNotificationResponse();
-    const actionUrl = lastResponse?.notification.request.content.data?.action_url;
+    const data = lastResponse?.notification.request.content.data;
+    let actionUrl = data?.action_url;
+    if (data?.lesson_id && (!actionUrl || actionUrl === '/lessons')) {
+      actionUrl = `/(tabs)/lessons?tab=modules&lessonId=${data.lesson_id}${data.module_id ? `&moduleId=${data.module_id}` : ''}`;
+    }
     return typeof actionUrl === 'string' ? actionUrl : null;
   } catch (error) {
     console.warn('[PushNotifications] Failed to get last notification response:', error);

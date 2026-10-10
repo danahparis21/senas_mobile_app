@@ -234,6 +234,143 @@ function HistoryIcon({ color = '#2563EB', size = 15 }: IconProps) {
   );
 }
 
+function CalendarIcon({ color = '#F59E0B', size = 12 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="3" y="4" width="18" height="18" rx="2" />
+      <Path d="M16 2v4M8 2v4M3 10h18" />
+    </Svg>
+  );
+}
+
+function LateIcon({ color = '#EF4444', size = 12 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round">
+      <Circle cx="12" cy="12" r="10" />
+      <Path d="M12 7v5l3.5 3.5" />
+    </Svg>
+  );
+}
+
+// ── DEADLINE HELPERS ──────────────────────────────────────────────────
+/**
+ * Compute deadline display info for a lesson node/card.
+ * Returns null if no deadline.
+ */
+const getDeadlineInfo = (lesson: { deadline?: string | null; has_deadline?: boolean; done?: boolean; is_late?: boolean }) => {
+  if (!lesson.has_deadline || !lesson.deadline) return null;
+
+  const now = new Date();
+  const deadlineDate = new Date(lesson.deadline);
+  const diffMs = deadlineDate.getTime() - now.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  // Format time as "11:59 PM"
+  const timeStr = deadlineDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  // Format date as "Oct 10"
+  const dateStr = deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const isPastDeadline = diffMs < 0;
+  const isDueToday = !isPastDeadline && diffHours <= 24 && deadlineDate.toDateString() === now.toDateString();
+  const isDueTomorrow = !isPastDeadline && diffDays > 0 && diffDays <= 2 && !isDueToday;
+
+  // 1. If student already completed it on time before deadline
+  if (lesson.done && !lesson.is_late) {
+    return {
+      label: 'Done On Time',
+      badgeText: 'Completed',
+      time: timeStr,
+      date: dateStr,
+      color: '#10B981',
+      bgColor: '#ECFDF5',
+      borderColor: '#A7F3D0',
+      urgent: false,
+      type: 'completed_on_time' as const,
+      hideFromNode: true, // Completed on time lessons don't need a pending urgency badge on map
+    };
+  }
+
+  // 2. If student completed it late
+  if (lesson.done && lesson.is_late) {
+    return {
+      label: 'Done Late',
+      badgeText: 'Done Late',
+      time: timeStr,
+      date: dateStr,
+      color: '#EA580C',
+      bgColor: '#FFF7ED',
+      borderColor: '#FDBA74',
+      urgent: false,
+      type: 'done_late' as const,
+      hideFromNode: false,
+    };
+  }
+
+  // 3. If deadline has already passed and student has NOT completed it (Past Due)
+  if (isPastDeadline && !lesson.done) {
+    const isToday = deadlineDate.toDateString() === now.toDateString();
+    return {
+      label: 'Past Due',
+      badgeText: isToday ? `Late • ${timeStr}` : `Late • ${dateStr}`,
+      time: timeStr,
+      date: dateStr,
+      color: '#EA580C',
+      bgColor: '#FFF7ED',
+      borderColor: '#FED7AA',
+      urgent: false,
+      type: 'overdue' as const,
+      hideFromNode: false,
+    };
+  }
+
+  // 4. Due Today: e.g. "Due Today : 11:59 PM"
+  if (isDueToday) {
+    return {
+      label: 'Due Today',
+      badgeText: `Due Today : ${timeStr}`,
+      time: timeStr,
+      date: dateStr,
+      color: '#D97706',
+      bgColor: '#FFFBEB',
+      borderColor: '#F59E0B',
+      urgent: true,
+      type: 'due_today' as const,
+      hideFromNode: false,
+    };
+  }
+
+  // 5. Due Tomorrow: e.g. "Due Tomorrow : 11:59 PM"
+  if (isDueTomorrow) {
+    return {
+      label: 'Due Tomorrow',
+      badgeText: `Due Tomorrow : ${timeStr}`,
+      time: timeStr,
+      date: dateStr,
+      color: '#D97706',
+      bgColor: '#FFFBEB',
+      borderColor: '#FBBF24',
+      urgent: true,
+      type: 'due_tomorrow' as const,
+      hideFromNode: false,
+    };
+  }
+
+  // 6. Upcoming deadline: e.g. "Due Oct 10 : 11:59 PM"
+  return {
+    label: `Due ${dateStr}`,
+    badgeText: `Due ${dateStr} : ${timeStr}`,
+    time: timeStr,
+    date: dateStr,
+    color: '#4F46E5',
+    bgColor: '#EEF2FF',
+    borderColor: '#A5B4FC',
+    urgent: false,
+    type: 'upcoming' as const,
+    hideFromNode: false,
+  };
+};
+
 // Animated Cloud Component
 function AnimatedCloud({ scale = 1, opacity = 0.5 }) {
   return (
@@ -308,7 +445,7 @@ interface Lesson {
   covered_skills?: WeakSkill[];  // What weak skills this lesson covers
   recommendation_type?: string;  // 'weak_skill_practice', 'new_skill', 'next_in_path'
   priority?: number;            // How many weak skills it covers
-  weakest_skill?: WeakSkill | null;  // 🆕
+  weakest_skill?: WeakSkill | null;
   is_checkpoint_exam?: boolean;
   exam_id?: number;
   total_points?: number;
@@ -323,6 +460,10 @@ interface Lesson {
   lock_reason_data?: {
     previous_lesson_title?: string;
   } | null;
+  // 🆕 DEADLINE FIELDS
+  deadline?: string | null;        // ISO8601 deadline string
+  has_deadline?: boolean;
+  is_late?: boolean;               // assignment-level late flag
 }
 
 interface WeakSkill {
@@ -357,19 +498,13 @@ export default function Lessons() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabBarClearance = 68 + (insets.bottom > 0 ? (Platform.OS === 'ios' ? Math.max(insets.bottom - 10, 0) : insets.bottom) : 10);
-  // Optional deep-link params: navigating here with ?tab=modules&moduleId=5
-  // (e.g. from a "Continue Learning" module card on the dashboard) opens
-  // straight to that module's lesson map instead of the default view.
-  const params = useLocalSearchParams<{ tab?: string; moduleId?: string }>();
-  // Tracks which param combo was last applied. Using a ref instead of a
-  // one-time "applied" boolean matters here: expo-router can reuse this
-  // same screen instance across navigations (no remount) when re-pushed
-  // with new params, so a once-only guard would apply the very first
-  // deep link and then silently ignore every later one — leaving the
-  // screen stuck wherever it was last, regardless of which module card
-  // was tapped. Comparing against the last-applied key re-syncs whenever
-  // the incoming params actually change.
+  // Optional deep-link params: navigating here with ?tab=modules&moduleId=5 or ?lessonId=12
+  // opens straight to that module's lesson map and selects the lesson.
+  const params = useLocalSearchParams<{ tab?: string; moduleId?: string; lessonId?: string }>();
+  // Tracks which param combo was last applied.
   const lastAppliedDeepLinkKeyRef = useRef<string | null>(null);
+  // Ref to the map ScrollView to auto-scroll to the targeted lesson
+  const mapScrollViewRef = useRef<ScrollView>(null);
   // Freshest lesson list, readable from effects without extra deps.
   const currentLessonsRef = useRef<Lesson[]>([]);
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -1002,6 +1137,10 @@ export default function Lessons() {
               best_score: Number(lesson.best_score ?? lesson.score ?? 0),
               attempts: Number(lesson.attempts ?? lesson.total_attempts ?? 0),
               stars: getStarsFromScore(lesson.best_score ?? lesson.score ?? 0),
+              // 🆕 Deadline fields
+              deadline: lesson.deadline ?? null,
+              has_deadline: !!lesson.has_deadline,
+              is_late: !!lesson.is_late,
             };
           });
 
@@ -1127,22 +1266,50 @@ export default function Lessons() {
   useEffect(() => {
     if (modules.length === 0) return;
 
-    const wantsModulesTab = params.tab === 'modules' || !!params.moduleId;
+    const wantsModulesTab = params.tab === 'modules' || !!params.moduleId || !!params.lessonId;
     if (!wantsModulesTab) return;
 
-    const key = `${params.tab ?? ''}|${params.moduleId ?? ''}`;
+    const key = `${params.tab ?? ''}|${params.moduleId ?? ''}|${params.lessonId ?? ''}`;
     if (lastAppliedDeepLinkKeyRef.current === key) return;
     lastAppliedDeepLinkKeyRef.current = key;
 
     setActiveTab(1);
 
+    let targetIndex = -1;
+    const targetLessonId = params.lessonId ? Number(params.lessonId) : null;
+
     if (params.moduleId) {
-      const targetIndex = modules.findIndex((m) => m.module_id === Number(params.moduleId));
-      if (targetIndex !== -1) {
-        setCurrentModuleIndex(targetIndex);
+      targetIndex = modules.findIndex((m) => m.module_id === Number(params.moduleId));
+    } else if (targetLessonId) {
+      // Find which module contains this lesson
+      targetIndex = modules.findIndex((m) =>
+        m.lessons?.some((l) => Number(l.id) === targetLessonId || Number(l.lesson_id) === targetLessonId)
+      );
+    }
+
+    if (targetIndex !== -1) {
+      setCurrentModuleIndex(targetIndex);
+    }
+
+    if (targetLessonId) {
+      setExpandedId(targetLessonId);
+
+      // Scroll directly to the lesson node so it's right in front of the student!
+      const targetMod = targetIndex !== -1 ? modules[targetIndex] : modules[currentModuleIndex];
+      const lessonIdx = targetMod?.lessons?.findIndex(
+        (l) => Number(l.id) === targetLessonId || Number(l.lesson_id) === targetLessonId
+      ) ?? -1;
+
+      if (lessonIdx !== -1) {
+        setTimeout(() => {
+          mapScrollViewRef.current?.scrollTo({
+            y: Math.max(0, lessonIdx * NODE_ROW_HEIGHT - 60),
+            animated: true,
+          });
+        }, 350);
       }
     }
-  }, [modules, params.tab, params.moduleId]);
+  }, [modules, params.tab, params.moduleId, params.lessonId]);
 
   // Compute current lessons based on active tab
   const getCurrentLessons = (): Lesson[] => {
@@ -1715,6 +1882,7 @@ export default function Lessons() {
             )
           ) : (
             <ScrollView
+              ref={mapScrollViewRef}
               contentContainerStyle={{ height: safeTotalNodes * NODE_ROW_HEIGHT + tabBarClearance + 160 }}
               showsVerticalScrollIndicator={false}
               scrollEnabled={!isDragging}
@@ -1824,6 +1992,7 @@ export default function Lessons() {
 
                 const nodeStars = getStarsFromScore(lesson.best_score ?? lesson.score);
                 const showNodeStars = !isLocked && (lesson.done || (lesson.attempts || 0) > 0);
+                const di = !isLocked ? getDeadlineInfo(lesson) : null;
 
                 return (
                   <View
@@ -1849,6 +2018,14 @@ export default function Lessons() {
                       />
                     )}
 
+                    {/* 🆕 Gentle highlight ring around the node for lessons due today */}
+                    {di?.type === 'due_today' && !lesson.done && !isLocked && (
+                      <View
+                        pointerEvents="none"
+                        style={styles.urgentNodeGlowRing}
+                      />
+                    )}
+
                     <Pressable
                       onPress={() => {
                         setExpandedId(isSelected ? null : lesson.id);
@@ -1859,6 +2036,11 @@ export default function Lessons() {
                           backgroundColor: nodeBg,
                           shadowColor: isLocked ? '#94A3B8' : lesson.color,
                           transform: [{ scale: pressed ? 0.95 : 1 }],
+                        },
+                        // Soft warm highlight if due today (friendly gold, not red)
+                        di?.type === 'due_today' && !lesson.done && !isLocked && {
+                          borderColor: '#F59E0B',
+                          borderWidth: 2.5,
                         },
                       ]}
                     >
@@ -1887,6 +2069,30 @@ export default function Lessons() {
                       </View>
                     )}
 
+                    {/* 🆕 SLEEK, COMPACT DEADLINE BADGE (Floating above node) */}
+                    {!isLocked && di && !di.hideFromNode && (
+                      <View
+                        style={[
+                          styles.deadlineBadge,
+                          { backgroundColor: di.bgColor, borderColor: di.borderColor },
+                          di.urgent && styles.deadlineBadgeUrgent,
+                        ]}
+                        pointerEvents="none"
+                      >
+                        <View style={[styles.deadlineIconCircle, { backgroundColor: di.color + '18' }]}>
+                          {di.type === 'done_late' || di.type === 'overdue'
+                            ? <LateIcon color={di.color} size={10} />
+                            : <CalendarIcon color={di.color} size={10} />}
+                        </View>
+                        <Text style={[styles.deadlineBadgeText, { color: di.color }]}>
+                          {di.badgeText}
+                        </Text>
+                        {di.urgent && (
+                          <View style={[styles.deadlinePulseDot, { backgroundColor: di.color }]} />
+                        )}
+                      </View>
+                    )}
+
                     <View style={styles.nodeLabelBox} pointerEvents="box-none">
                       {lesson.active && !isLocked && (
                         <View style={[styles.nextBadge, lesson.is_checkpoint_exam && { backgroundColor: '#F59E0B' }]}>
@@ -1903,6 +2109,11 @@ export default function Lessons() {
                           styles.nodeTitleCard,
                           lesson.active && !isLocked && { borderColor: lesson.color },
                           isLocked && styles.nodeTitleCardLocked,
+                          // Gentle accent border if due today
+                          di?.type === 'due_today' && !lesson.done && !isLocked && {
+                            borderColor: '#F59E0B',
+                            borderWidth: 1.5,
+                          },
                           pressed && { opacity: 0.85 },
                         ]}
                       >
@@ -1925,6 +2136,29 @@ export default function Lessons() {
                               {lesson.lock_reason === 'previous_lesson_required' && lesson.lock_reason_data?.previous_lesson_title
                                 ? `Complete "${lesson.lock_reason_data.previous_lesson_title}" first`
                                 : 'Locked'}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* 🆕 Done Late label inside title card */}
+                        {!isLocked && lesson.is_late && lesson.done && (
+                          <View style={styles.doneLateLabel}>
+                            <LateIcon color="#EA580C" size={10} />
+                            <Text style={styles.doneLateLabelText}>Done Late</Text>
+                          </View>
+                        )}
+
+                        {/* 🆕 Deadline status pill inside title card (for pending/overdue lessons) */}
+                        {!isLocked && di && !lesson.done && (
+                          <View style={[
+                            styles.nodeTitleDeadlinePill,
+                            { backgroundColor: di.bgColor, borderColor: di.borderColor }
+                          ]}>
+                            {di.type === 'overdue'
+                              ? <LateIcon color={di.color} size={10} />
+                              : <CalendarIcon color={di.color} size={10} />}
+                            <Text style={[styles.nodeTitleDeadlinePillText, { color: di.color }]}>
+                              {di.badgeText}
                             </Text>
                           </View>
                         )}
@@ -2041,6 +2275,48 @@ export default function Lessons() {
                     </View>
                   </View>
                 )}
+
+                {/* 🆕 Deadline info row in bottom card */}
+                {selectedLesson.has_deadline && (() => {
+                  const di = getDeadlineInfo(selectedLesson);
+                  if (!di) return null;
+                  return (
+                    <View style={[
+                      styles.deadlineCardBanner,
+                      { backgroundColor: di.bgColor, borderColor: di.borderColor }
+                    ]}>
+                      <View style={styles.deadlineCardBannerLeft}>
+                        <View style={[styles.deadlineCardIconCircle, { backgroundColor: di.color + '1A' }]}>
+                          {di.type === 'done_late' || di.type === 'overdue'
+                            ? <LateIcon color={di.color} size={15} />
+                            : <CalendarIcon color={di.color} size={15} />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.deadlineCardBannerTitle, { color: di.color }]}>
+                            {di.type === 'done_late' ? 'Submitted Late'
+                              : di.type === 'overdue' ? 'Past Deadline'
+                              : di.type === 'completed_on_time' ? 'Completed On Time'
+                              : di.label}
+                          </Text>
+                          <Text style={styles.deadlineCardBannerSub}>
+                            {di.type === 'done_late'
+                              ? `Great job finishing! Deadline was ${di.date} at ${di.time}.`
+                              : di.type === 'overdue'
+                                ? `Deadline was ${di.date} at ${di.time}. You can still complete it anytime!`
+                                : di.type === 'completed_on_time'
+                                  ? `You met the deadline on ${di.date} at ${di.time}!`
+                                  : `Due ${di.date} at ${di.time}`}
+                          </Text>
+                        </View>
+                      </View>
+                      {di.type === 'due_today' && (
+                        <View style={[styles.deadlineUrgentPill, { backgroundColor: di.color }]}>
+                          <Text style={styles.deadlineUrgentPillText}>!</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
 
                 <View style={styles.cardInfoRow}>
                   <View style={styles.cardInfoBadge}>
@@ -3130,6 +3406,165 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#94A3B8',
     letterSpacing: 0.3,
+  },
+
+  // ── Deadline badge (floating above node) ────────────────────────────────
+  deadlineBadge: {
+    position: 'absolute',
+    top: -29,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4.5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    zIndex: 30,
+    backgroundColor: '#fff',
+    shadowColor: '#0f3172',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  deadlineBadgeUrgent: {
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  deadlineIconCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deadlineBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  deadlinePulseDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  // Gentle highlight ring around node for lessons due today (soft gold, non-alarming)
+  urgentNodeGlowRing: {
+    position: 'absolute',
+    width: NODE_RADIUS * 2 + 10,
+    height: NODE_RADIUS * 2 + 10,
+    borderRadius: NODE_RADIUS + 5,
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+    borderStyle: 'dashed',
+    zIndex: 1,
+    opacity: 0.65,
+  },
+
+  // ── Done Late / Overdue labels inside title card ─────────────────────
+  doneLateLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  doneLateLabelText: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    color: '#EA580C',
+    letterSpacing: 0.2,
+  },
+  nodeTitleDeadlinePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  nodeTitleDeadlinePillText: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  overdueLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  overdueLabelText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#EF4444',
+    letterSpacing: 0.3,
+  },
+
+  // ── Deadline banner inside the bottom detail card ───────────────────────
+  deadlineCardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  deadlineCardBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  deadlineCardIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deadlineCardBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.1,
+  },
+  deadlineCardBannerSub: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  deadlineUrgentPill: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deadlineUrgentPillText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#fff',
   },
   // ── NEW: Locked Module Container styles ──────────────────────────────
   lockedModuleContainer: {

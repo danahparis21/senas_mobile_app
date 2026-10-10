@@ -128,6 +128,9 @@ interface Lesson {
   quiz: Quiz | null;
   total_steps: number;
   assignment_status: string;
+  deadline?: string | null;
+  has_deadline?: boolean;
+  is_late?: boolean;
   progress: {
     current_step: number;
     lesson_completed: boolean;
@@ -563,6 +566,8 @@ export default function LessonViewer() {
   const [quizResult, setQuizResult] = useState<{
     score: number; total: number; percentage: number;
     xpEarned: number; totalXp: number; level: number; streakDays: number;
+    isLate?: boolean; hasDeadline?: boolean; deadlineText?: string | null;
+    attemptNumber?: number;
   } | null>(null);
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [dragDropActive, setDragDropActive] = useState<boolean>(false);
@@ -1073,6 +1078,10 @@ export default function LessonViewer() {
           totalXp: response.total_xp || 0,
           level: response.level || 1,
           streakDays: response.streak_days || 0,
+          isLate: response.is_late ?? false,
+          hasDeadline: response.has_deadline ?? false,
+          deadlineText: response.deadline_text ?? null,
+          attemptNumber: response.attempt_number || 1,
         });
         // Show the results screen right away — the history/progress calls
         // below don't need to block that, so run them in the background
@@ -1625,6 +1634,23 @@ export default function LessonViewer() {
           <View style={s.xpEarnedBadge}>
             <Text style={s.xpEarnedText}>⚡ +{xpEarned} XP Earned!</Text>
           </View>
+
+          {/* 🆕 Done Late banner */}
+          {quizResult?.isLate && (
+            <View style={s.doneLateBanner}>
+              <Text style={s.doneLateBannerIcon}>⏰</Text>
+              <View style={s.doneLateBannerTextBox}>
+                <Text style={s.doneLateBannerTitle}>
+                  Done Late • Attempt #{quizResult.attemptNumber || 1}
+                </Text>
+                <Text style={s.doneLateBannerSub}>
+                  {quizResult.deadlineText
+                    ? `Deadline was ${quizResult.deadlineText}. Great effort practicing! Extra review always counts.`
+                    : 'Great effort practicing! Extra review always counts.'}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {userRank && (
             <View style={s.userRankBadge}>
@@ -2179,6 +2205,43 @@ export default function LessonViewer() {
               <Text style={s.exitBtnText}>✕ Exit</Text>
             </Pressable>
           </View>
+
+          {/* 🆕 In-Lesson Deadline Notice Banner */}
+          {lesson?.has_deadline && lesson?.deadline && (() => {
+            const dDate = new Date(lesson.deadline);
+            const now = new Date();
+            const isPast = dDate < now;
+            const isCompleted = lesson.assignment_status === 'completed';
+            const isLate = lesson.is_late || (isPast && !isCompleted);
+            const timeStr = dDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+            const dateStr = dDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+            if (isCompleted && !lesson.is_late) return null; // already completed on time
+
+            return (
+              <View style={[
+                s.inLessonDeadlineBanner,
+                isLate ? s.inLessonDeadlineBannerLate : s.inLessonDeadlineBannerPending
+              ]}>
+                <Text style={s.inLessonDeadlineIcon}>{isLate ? '⏰' : '📅'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.inLessonDeadlineTitle, isLate && { color: '#C2410C' }]}>
+                    {isLate
+                      ? (isCompleted ? 'Completed Late' : 'Past Deadline • Keep going!')
+                      : 'Assignment Deadline'}
+                  </Text>
+                  <Text style={[s.inLessonDeadlineSub, isLate && { color: '#9A3412' }]}>
+                    {isLate && !isCompleted
+                      ? `Deadline was ${dateStr} at ${timeStr}. Take your time and do your best!`
+                      : isCompleted
+                        ? `Great effort! Practice always builds your skills.`
+                        : `Due ${dateStr} at ${timeStr}`}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
+
           {!isQuizSlide ? renderContentSlides() : renderQuiz()}
         </ScrollView>
       )}
@@ -2411,6 +2474,50 @@ const s = StyleSheet.create({
   xpEarnedText: { fontSize: 14, fontWeight: '800', color: '#92400E' },
   userRankBadge: { marginTop: 6, backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 16 },
   userRankText: { fontSize: 14, fontWeight: '700', color: '#D97706' },
+
+  // Done Late banner on result screen
+  doneLateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#FED7AA',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    width: '100%',
+  },
+  doneLateBannerIcon: { fontSize: 22 },
+  doneLateBannerTextBox: { flex: 1 },
+  doneLateBannerTitle: { fontSize: 13, fontWeight: '800', color: '#C2410C' },
+  doneLateBannerSub: { fontSize: 11, fontWeight: '500', color: '#9A3412', marginTop: 1 },
+
+  // In-lesson deadline notice banner
+  inLessonDeadlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  inLessonDeadlineBannerLate: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+  },
+  inLessonDeadlineBannerPending: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  inLessonDeadlineIcon: { fontSize: 20 },
+  inLessonDeadlineTitle: { fontSize: 13, fontWeight: '800', color: '#1D4ED8' },
+  inLessonDeadlineSub: { fontSize: 11.5, fontWeight: '500', color: '#475569', marginTop: 1 },
 
   // Rankings / Leaderboard
   rankingsTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172', marginBottom: 10, marginTop: 4 },
