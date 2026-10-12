@@ -118,6 +118,29 @@ export function subscribeToNotificationResponses(onActionUrl: (url: string) => v
 }
 
 /**
+ * Listens for notifications received while the app is in the foreground.
+ * Safe to call even in Expo Go or web (graceful no-op).
+ */
+export function subscribeToNotificationReceived(onNotification: (notification: any) => void): () => void {
+  if (!Notifications || typeof Notifications.addNotificationReceivedListener !== 'function') {
+    return () => {};
+  }
+
+  try {
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+      onNotification(notification);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  } catch (error) {
+    console.warn('[PushNotifications] Failed to add notification received listener:', error);
+    return () => {};
+  }
+}
+
+/**
  * Returns any notification action url from a cold-launch notification tap.
  * Safe to call even in Expo Go or web (returns null).
  */

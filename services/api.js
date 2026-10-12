@@ -18,12 +18,12 @@ const _cache = {};
 const CACHE_TTL = {
     '/student/adaptive-lessons': 60_000,   // 60 s
     '/student/mastery': 60_000,   // 60 s
-    '/student/lessons': 30_000,   // 30 s
+    '/student/lessons': 15_000,   // 15 s
     '/student/learning-path': 30_000,   // 30 s
     '/student/achievements': 120_000,  // 2 min
     '/student/streak': 60_000,   // 60 s
     '/student/gesture-progress': 60_000,   // 60 s
-    '/student/notifications': 30_000,   // 30 s
+    '/student/notifications': 0,        // 0 ms (REAL-TIME: always fresh)
     '/student/promotion': 30_000,   // 30 s
     '/student/profile': 120_000,  // 2 min
 };
@@ -48,9 +48,10 @@ async function apiFetch(url, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
     const isGet = method === 'GET';
     const cacheKey = url;
+    const skipCache = !!(options.skipCache || options.forceRefresh);
 
     // ── Cache hit ──────────────────────────────────────────────────
-    if (isGet) {
+    if (isGet && !skipCache) {
         const hit = _cache[cacheKey];
         if (hit && Date.now() < hit.expiresAt) {
             return new Response(JSON.stringify(hit.data), {
@@ -371,7 +372,6 @@ export const api = {
             });
 
             const data = await response.json();
-            console.log('✅ Get learning path response:', data);
 
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to get learning path');
@@ -379,7 +379,9 @@ export const api = {
 
             return data;
         } catch (error) {
-            console.error('❌ Error getting learning path:', error);
+            if (!error?.message?.includes('token')) {
+                console.warn('⚠️ Error getting learning path:', error?.message || error);
+            }
             throw error;
         }
     },
@@ -387,19 +389,19 @@ export const api = {
     /**
      * @param {string|null} [schoolYear]
      */
-    getStudentLessons: async (schoolYear = null) => {
+    getStudentLessons: async (schoolYear = null, skipCache = false) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
 
             if (!token) {
-                throw new Error('No token found. Please login first.');
+                return { success: false, unauthenticated: true, modules: [] };
             }
 
             const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
-            console.log(`📚 Fetching student lessons${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
             const response = await apiFetch(`${API_URL}/student/lessons${query}`, {
                 method: 'GET',
+                skipCache,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
@@ -407,8 +409,11 @@ export const api = {
                 },
             });
 
+            if (response.status === 401) {
+                return { success: false, unauthenticated: true, modules: [] };
+            }
+
             const data = await response.json();
-            console.log('✅ Get lessons response:', data);
 
             if (!response.ok) {
                 throw new Error(data.message || data.error || 'Failed to fetch lessons');
@@ -416,7 +421,10 @@ export const api = {
 
             return data;
         } catch (error) {
-            console.error('❌ Error fetching lessons:', error);
+            if (error?.message?.includes('Unauthenticated') || error?.message?.includes('token')) {
+                return { success: false, unauthenticated: true, modules: [] };
+            }
+            console.warn('⚠️ Error fetching lessons:', error?.message || error);
             throw error;
         }
     },
@@ -429,11 +437,10 @@ export const api = {
             const token = await AsyncStorage.getItem('userToken');
 
             if (!token) {
-                throw new Error('No token found. Please login first.');
+                return { success: false, unauthenticated: true, lessons: [] };
             }
 
             const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
-            console.log(`🎯 Fetching My Learning Path lessons${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
             const response = await apiFetch(`${API_URL}/student/learning-path/lessons${query}`, {
                 method: 'GET',
@@ -444,8 +451,11 @@ export const api = {
                 },
             });
 
+            if (response.status === 401) {
+                return { success: false, unauthenticated: true, lessons: [] };
+            }
+
             const data = await response.json();
-            console.log('✅ Get learning path lessons response:', data);
 
             if (!response.ok) {
                 throw new Error(data.message || data.error || 'Failed to fetch learning path lessons');
@@ -453,7 +463,9 @@ export const api = {
 
             return data;
         } catch (error) {
-            console.error('❌ Error fetching learning path lessons:', error);
+            if (!error?.message?.includes('token')) {
+                console.warn('⚠️ Error fetching learning path lessons:', error?.message || error);
+            }
             throw error;
         }
     },
@@ -467,11 +479,10 @@ export const api = {
             const token = await AsyncStorage.getItem('userToken');
 
             if (!token) {
-                throw new Error('No token found. Please login first.');
+                return { success: false, unauthenticated: true, lessons: [] };
             }
 
             const query = schoolYear ? `?school_year=${encodeURIComponent(schoolYear)}` : '';
-            console.log(`📚 Fetching all lessons for dashboard${schoolYear ? ` for S.Y. ${schoolYear}` : ''}...`);
 
             const response = await fetch(`${API_URL}/student/all-lessons${query}`, {
                 method: 'GET',
@@ -482,8 +493,11 @@ export const api = {
                 },
             });
 
+            if (response.status === 401) {
+                return { success: false, unauthenticated: true, lessons: [] };
+            }
+
             const data = await response.json();
-            console.log('✅ Get all lessons response:', data);
 
             if (!response.ok) {
                 throw new Error(data.message || data.error || 'Failed to fetch lessons');
@@ -1622,17 +1636,16 @@ export const api = {
      * Get all notifications for the student
      * GET /api/student/notifications
      */
-    getNotifications: async () => {
+    getNotifications: async (skipCache = false) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) {
-                throw new Error('No token found. Please login first.');
+                return { success: false, unauthenticated: true, notifications: [], unread_count: 0 };
             }
-
-            console.log('📬 Fetching notifications...');
 
             const response = await apiFetch(`${API_URL}/student/notifications`, {
                 method: 'GET',
+                skipCache,
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
@@ -1640,8 +1653,11 @@ export const api = {
                 },
             });
 
+            if (response.status === 401) {
+                return { success: false, unauthenticated: true, notifications: [], unread_count: 0 };
+            }
+
             const data = await response.json();
-            console.log('📬 Notifications response:', data);
 
             if (!response.ok) {
                 throw new Error(data.message || data.error || 'Failed to fetch notifications');
@@ -1649,7 +1665,10 @@ export const api = {
 
             return data;
         } catch (error) {
-            console.error('❌ Error fetching notifications:', error);
+            if (error?.message?.includes('Unauthenticated') || error?.message?.includes('token')) {
+                return { success: false, unauthenticated: true, notifications: [], unread_count: 0 };
+            }
+            console.warn('⚠️ Error fetching notifications:', error?.message || error);
             throw error;
         }
     },
@@ -2580,5 +2599,18 @@ export const api = {
         }
     },
 
+    /**
+     * Clear client-side in-memory cache
+     * @param {string} [pattern] Optional URL substring to invalidate
+     */
+    clearCache: (pattern = '') => {
+        if (!pattern) {
+            Object.keys(_cache).forEach(k => delete _cache[k]);
+            return;
+        }
+        Object.keys(_cache).forEach(k => {
+            if (k.includes(pattern)) delete _cache[k];
+        });
+    },
 
 };

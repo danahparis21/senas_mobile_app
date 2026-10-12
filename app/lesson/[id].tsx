@@ -154,6 +154,59 @@ interface LeaderboardEntry {
   is_me: boolean;
   initials: string;
   xp_earned: number;
+  profile_photo?: string | null;
+  profile_picture?: string | null;
+}
+
+const CHARACTER_AVATARS: Record<string, number> = {
+  boy: require('../../assets/characters/boy.png'),
+  catto: require('../../assets/characters/catto.png'),
+  girl: require('../../assets/characters/girl.png'),
+  senya: require('../../assets/characters/senya.png'),
+};
+
+function getLeaderboardAvatarSource(entry: LeaderboardEntry) {
+  const photo = entry.profile_photo || entry.profile_picture;
+  if (!photo) return null;
+
+  const normalized = photo.trim().toLowerCase().replace(/\\/g, '/');
+  const characterName = normalized.split('/').pop()?.replace(/\.(png|jpe?g|webp)$/i, '');
+  if (characterName && CHARACTER_AVATARS[characterName]) {
+    return CHARACTER_AVATARS[characterName];
+  }
+
+  if (/^https?:\/\//i.test(photo)) return { uri: photo };
+  return { uri: `${IMAGE_BASE_URL}/storage/${normalized.replace(/^\//, '')}` };
+}
+
+function LeaderboardAvatar({
+  entry,
+  size,
+  style,
+  textStyle,
+}: {
+  entry: LeaderboardEntry;
+  size: number;
+  style: any;
+  textStyle: any;
+}) {
+  const source = getLeaderboardAvatarSource(entry);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  return (
+    <View style={[style, { overflow: 'hidden' }]}>
+      {source && !imageFailed ? (
+        <Image
+          source={source}
+          contentFit="cover"
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <Text style={textStyle}>{entry.initials}</Text>
+      )}
+    </View>
+  );
 }
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -498,9 +551,12 @@ function StudentDetailModal({
           </Pressable>
 
           {/* Avatar */}
-          <View style={[s.studentDetailAvatar, student.is_me && s.studentDetailAvatarMe]}>
-            <Text style={s.studentDetailAvatarText}>{student.initials}</Text>
-          </View>
+          <LeaderboardAvatar
+            entry={student}
+            size={72}
+            style={[s.studentDetailAvatar, student.is_me && s.studentDetailAvatarMe]}
+            textStyle={s.studentDetailAvatarText}
+          />
 
           {/* Name */}
           <Text style={s.studentDetailName}>
@@ -1760,9 +1816,7 @@ export default function LessonViewer() {
               <>
                 <View style={s.podiumAvatarContainer}>
                   <Pressable onPress={() => handleStudentPress(rank2)}>
-                    <View style={[s.podiumAvatar, { borderColor: '#E5E7EB', backgroundColor: '#9CA3AF' }]}>
-                      <Text style={s.podiumAvatarInitials}>{rank2.initials}</Text>
-                    </View>
+                    <LeaderboardAvatar entry={rank2} size={50} style={[s.podiumAvatar, { borderColor: '#E5E7EB', backgroundColor: '#9CA3AF' }]} textStyle={s.podiumAvatarInitials} />
                   </Pressable>
                   <Text style={s.podiumBadge}>🥈</Text>
                 </View>
@@ -1796,9 +1850,7 @@ export default function LessonViewer() {
                     <Text style={{ fontSize: 22 }}>👑</Text>
                   </View>
                   <Pressable onPress={() => handleStudentPress(rank1)}>
-                    <View style={[s.podiumAvatar, s.podiumAvatarFirst, { borderColor: '#FBBF24', backgroundColor: '#F59E0B' }]}>
-                      <Text style={s.podiumAvatarInitials}>{rank1.initials}</Text>
-                    </View>
+                    <LeaderboardAvatar entry={rank1} size={60} style={[s.podiumAvatar, s.podiumAvatarFirst, { borderColor: '#FBBF24', backgroundColor: '#F59E0B' }]} textStyle={s.podiumAvatarInitials} />
                   </Pressable>
                   <Text style={s.podiumBadge}>🥇</Text>
                 </View>
@@ -1829,9 +1881,7 @@ export default function LessonViewer() {
               <>
                 <View style={s.podiumAvatarContainer}>
                   <Pressable onPress={() => handleStudentPress(rank3)}>
-                    <View style={[s.podiumAvatar, { borderColor: '#F97316', backgroundColor: '#C2410C' }]}>
-                      <Text style={s.podiumAvatarInitials}>{rank3.initials}</Text>
-                    </View>
+                    <LeaderboardAvatar entry={rank3} size={50} style={[s.podiumAvatar, { borderColor: '#F97316', backgroundColor: '#C2410C' }]} textStyle={s.podiumAvatarInitials} />
                   </Pressable>
                   <Text style={s.podiumBadge}>🥉</Text>
                 </View>
@@ -1894,9 +1944,7 @@ export default function LessonViewer() {
                     <Text style={s.listRankText}>{itemRank}</Text>
                   </View>
 
-                  <View style={[s.listAvatar, r.is_me && { backgroundColor: '#1848c8' }]}>
-                    <Text style={s.listAvatarText}>{r.initials}</Text>
-                  </View>
+                  <LeaderboardAvatar entry={r} size={38} style={[s.listAvatar, r.is_me && { backgroundColor: '#1848c8' }]} textStyle={s.listAvatarText} />
 
                   <View style={s.listNameContainer}>
                     <Text style={[s.listName, r.is_me && s.listNameMe]}>

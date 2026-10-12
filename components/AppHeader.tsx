@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
+import { useLessonNotification } from '../contexts/LessonNotificationContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -63,15 +64,32 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
     const [isFirstLoad, setIsFirstLoad] = useState(true);
     const [currentStudentId, setCurrentStudentId] = useState<string | null>(null);
 
+    // Live notifications from real-time context
+    const {
+        notifications: liveNotifications,
+        unreadCount: liveUnreadCount,
+        refreshNotifications: refreshLiveNotifications
+    } = useLessonNotification();
+
     const lastFetchTimeRef = useRef<number>(0);
     const isFetchingRef = useRef<boolean>(false);
     const fetchErrorCountRef = useRef<number>(0);
     const MIN_FETCH_INTERVAL = 10000; // 10 seconds minimum between fetches
     const MAX_ERROR_COUNT = 3; // Max errors before backing off
 
-
     // Animation for notification badge
     const badgeScale = useRef(new Animated.Value(1)).current;
+
+    // Keep AppHeader state synced with real-time notifications
+    useEffect(() => {
+        if (liveNotifications) {
+            setNotifications(liveNotifications as any);
+            setUnreadCount(liveUnreadCount);
+            if (liveUnreadCount > 0) {
+                animateBadge();
+            }
+        }
+    }, [liveNotifications, liveUnreadCount]);
 
     // Determine header background color based on current route
     const getHeaderBackground = (): string => {

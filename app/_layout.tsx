@@ -4,7 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { NetworkAlertProvider } from '../contexts/NetworkAlertContext';
+import { LessonNotificationProvider } from '../contexts/LessonNotificationContext';
 import { OfflineBanner } from '../components/OfflineBanner';
+import { NewLessonBanner } from '../components/NewLessonBanner';
 import { CustomAlertModal } from '../components/CustomAlertModal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { initErrorHandler } from '../utils/errorHandler';
@@ -66,11 +68,13 @@ export default function RootLayout() {
     <ErrorBoundary>
       <SettingsProvider>
         <NetworkAlertProvider>
-          <StatusBar style="dark" />
-          <DeviceNotificationManager />
-          <OfflineBanner />
-          <CustomAlertModal />
-          <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+          <LessonNotificationProvider>
+            <StatusBar style="dark" />
+            <DeviceNotificationManager />
+            <OfflineBanner />
+            <NewLessonBanner />
+            <CustomAlertModal />
+            <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="role" />
@@ -88,6 +92,7 @@ export default function RootLayout() {
             <Stack.Screen name="gesture/level2-gestures" options={{ headerShown: false }} />
             <Stack.Screen name="gesture/level3-gestures" options={{ headerShown: false }} />
           </Stack>
+          </LessonNotificationProvider>
         </NetworkAlertProvider>
       </SettingsProvider>
     </ErrorBoundary>

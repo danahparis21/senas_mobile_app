@@ -117,6 +117,19 @@ interface LeaderboardEntry {
     is_me: boolean;
     initials: string;
     xp_earned: number;
+    profile_picture?: string;
+}
+
+// ─── Character avatar map ─────────────────────────────────────────────────────
+const CHARACTER_IMAGES: Record<string, any> = {
+    boy:   require('../../assets/characters/boy.png'),
+    girl:  require('../../assets/characters/girl.png'),
+    catto: require('../../assets/characters/catto.png'),
+    senya: require('../../assets/characters/senya.png'),
+};
+function getCharacterImage(key?: string | null) {
+    if (key && CHARACTER_IMAGES[key]) return CHARACTER_IMAGES[key];
+    return CHARACTER_IMAGES['senya'];
 }
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -1428,8 +1441,12 @@ export default function LessonViewer() {
                             <>
                                 <View style={s.podiumAvatarContainer}>
                                     <Pressable onPress={() => handleStudentPress(rank2)}>
-                                        <View style={[s.podiumAvatar, { borderColor: '#E5E7EB', backgroundColor: '#9CA3AF' }]}>
-                                            <Text style={s.podiumAvatarInitials}>{rank2.initials}</Text>
+                                        <View style={[s.podiumAvatar, { borderColor: '#C0C0C0', backgroundColor: 'rgba(0,0,0,0.08)' }]}>
+                                            <Image
+                                                source={getCharacterImage(rank2.profile_picture)}
+                                                style={{ width: '100%', height: '100%', borderRadius: 999 }}
+                                                contentFit="contain"
+                                            />
                                         </View>
                                     </Pressable>
                                     <Text style={s.podiumBadge}>🥈</Text>
@@ -1464,8 +1481,12 @@ export default function LessonViewer() {
                                         <Text style={{ fontSize: 22 }}>👑</Text>
                                     </View>
                                     <Pressable onPress={() => handleStudentPress(rank1)}>
-                                        <View style={[s.podiumAvatar, s.podiumAvatarFirst, { borderColor: '#FBBF24', backgroundColor: '#F59E0B' }]}>
-                                            <Text style={s.podiumAvatarInitials}>{rank1.initials}</Text>
+                                        <View style={[s.podiumAvatar, s.podiumAvatarFirst, { borderColor: '#FBBF24', backgroundColor: 'rgba(0,0,0,0.08)' }]}>
+                                            <Image
+                                                source={getCharacterImage(rank1.profile_picture)}
+                                                style={{ width: '100%', height: '100%', borderRadius: 999 }}
+                                                contentFit="contain"
+                                            />
                                         </View>
                                     </Pressable>
                                     <Text style={s.podiumBadge}>🥇</Text>
@@ -1497,8 +1518,12 @@ export default function LessonViewer() {
                             <>
                                 <View style={s.podiumAvatarContainer}>
                                     <Pressable onPress={() => handleStudentPress(rank3)}>
-                                        <View style={[s.podiumAvatar, { borderColor: '#F97316', backgroundColor: '#C2410C' }]}>
-                                            <Text style={s.podiumAvatarInitials}>{rank3.initials}</Text>
+                                        <View style={[s.podiumAvatar, { borderColor: '#CD7F32', backgroundColor: 'rgba(0,0,0,0.08)' }]}>
+                                            <Image
+                                                source={getCharacterImage(rank3.profile_picture)}
+                                                style={{ width: '100%', height: '100%', borderRadius: 999 }}
+                                                contentFit="contain"
+                                            />
                                         </View>
                                     </Pressable>
                                     <Text style={s.podiumBadge}>🥉</Text>
@@ -1555,8 +1580,12 @@ export default function LessonViewer() {
                                         <Text style={s.listRankText}>{itemRank}</Text>
                                     </View>
 
-                                    <View style={[s.listAvatar, r.is_me && { backgroundColor: '#1848c8' }]}>
-                                        <Text style={s.listAvatarText}>{r.initials}</Text>
+                                    <View style={[s.listAvatar, r.is_me && { borderColor: '#1848c8', borderWidth: 2 }]}>
+                                        <Image
+                                            source={getCharacterImage(r.profile_picture)}
+                                            style={{ width: '100%', height: '100%', borderRadius: 999 }}
+                                            contentFit="contain"
+                                        />
                                     </View>
 
                                     <View style={s.listNameContainer}>
@@ -2175,12 +2204,14 @@ const s = StyleSheet.create({
         borderWidth: 2.5,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
     },
     podiumAvatarFirst: {
         width: 60,
         height: 60,
         borderRadius: 30,
         borderWidth: 3,
+        overflow: 'hidden',
     },
     podiumAvatarInitials: {
         fontSize: 14,
@@ -2330,10 +2361,11 @@ const s = StyleSheet.create({
         width: 38,
         height: 38,
         borderRadius: 19,
-        backgroundColor: '#9CA3AF',
+        backgroundColor: 'rgba(156,163,175,0.2)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 12,
+        overflow: 'hidden',
     },
     listAvatarText: {
         fontSize: 13,

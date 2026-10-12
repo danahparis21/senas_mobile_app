@@ -24,6 +24,7 @@ import { api } from '../../services/api';
 import PromotionModal from '../../components/PromotionModal';
 import AchievementModal from '../../components/AchievementModal';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
+import { useLessonNotification } from '../../contexts/LessonNotificationContext';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -268,6 +269,7 @@ const getStatusTag = (status: string, progress: any): string => {
 
 export default function Dashboard() {
   const router = useRouter();
+  const { refreshNotifications } = useLessonNotification();
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [studentName, setStudentName] = useState<string>('Student');
@@ -570,7 +572,8 @@ export default function Dashboard() {
         fetchTeacherModules(),
         fetchDailyChallenge(), // ← ADD THIS
         checkForPromotion(),
-        checkForNewAchievements()
+        checkForNewAchievements(),
+        refreshNotifications(true), // 🔥 Real-time new lesson notification & badges
       ]);
     } catch (error) {
       console.error('Error refreshing data:', error);

@@ -6,10 +6,12 @@ import {
     StyleSheet,
     SafeAreaView,
     Pressable,
+    TouchableOpacity,
     ActivityIndicator,
     Dimensions,
     Animated,
     Platform,
+    Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import WebView from 'react-native-webview';
@@ -82,6 +84,51 @@ export default function GesturePractice({
     const [loading, setLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(false);
     const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
+
+    // ─── MODEL LOADING TIMEOUT & REFRESH ──────────────────────────────────────
+    const [webViewKey, setWebViewKey] = useState(0);
+    const [showTimeoutModal, setShowTimeoutModal] = useState(false);
+    const [loadingSeconds, setLoadingSeconds] = useState(0);
+
+    const handleRefreshWebView = () => {
+        console.log('🔄 Refreshing WebView and reloading models in GesturePractice...');
+        setShowTimeoutModal(false);
+        setLoading(true);
+        setShowLoadingOverlay(true);
+        setIsConnected(false);
+        setLiveLetter('—');
+        setLiveConfidence(0);
+        setLoadingSeconds(0);
+        // Force complete WebView recreation to reset MediaPipe and camera
+        setWebViewKey(prev => prev + 1);
+        try {
+            webViewRef.current?.reload();
+        } catch (e) {
+            console.log('WebView reload caught:', e);
+        }
+    };
+
+    // Auto-detect if model takes too long to load (almost 30s)
+    useEffect(() => {
+        let timer: any = null;
+        if (showLoadingOverlay) {
+            timer = setInterval(() => {
+                setLoadingSeconds(prev => {
+                    const next = prev + 1;
+                    if (next >= 28) {
+                        setShowTimeoutModal(true);
+                    }
+                    return next;
+                });
+            }, 1000);
+        } else {
+            setLoadingSeconds(0);
+            setShowTimeoutModal(false);
+        }
+        return () => {
+            if (timer) clearInterval(timer);
+        };
+    }, [showLoadingOverlay, webViewKey]);
 
     // ─── CAMERA PERMISSIONS ──────────────────────────────────────────────────
     const [permission, requestPermission] = useCameraPermissions();
@@ -345,6 +392,8 @@ export default function GesturePractice({
             if (data.type === 'model_status' || data.type === 'model_ready' || data.status === 'all_loaded') {
                 setIsConnected(true);
                 setLoading(false);
+                setShowTimeoutModal(false);
+                setLoadingSeconds(0);
                 // Keep loading overlay for 5 seconds minimum after model is ready
                 setTimeout(() => {
                     setShowLoadingOverlay(false);
@@ -355,6 +404,8 @@ export default function GesturePractice({
             if (data.test) {
                 setIsConnected(true);
                 setLoading(false);
+                setShowTimeoutModal(false);
+                setLoadingSeconds(0);
                 setTimeout(() => {
                     setShowLoadingOverlay(false);
                 }, 5000);
@@ -700,13 +751,19 @@ export default function GesturePractice({
         <SafeAreaView style={styles.container}>
             {/* ─── HEADER ────────────────────────────────────────────────── */}
             <View style={styles.header}>
-                <Pressable onPress={onBack} style={styles.backBtn} hitSlop={8}>
-                    <Ionicons name="arrow-back" size={20} color="#0f3172" />
-                </Pressable>
-                <Text style={styles.headerTitle}>
-                    Question {questionIndex + 1} of {totalQuestions}
-                </Text>
-                <View style={styles.headerRight}>
+                {/* Row 1: Back + Title */}
+                <View style={styles.headerTopRow}>
+                    <Pressable onPress={onBack} style={styles.backBtn} hitSlop={8}>
+                        <Ionicons name="arrow-back" size={20} color="#0f3172" />
+                    </Pressable>
+                    <Text style={styles.headerTitle}>
+                        Question {questionIndex + 1} of {totalQuestions}
+                    </Text>
+                    {/* Spacer to visually balance the back button */}
+                    <View style={{ width: 38 }} />
+                </View>
+                {/* Row 2: Action buttons */}
+                <View style={styles.headerActionsRow}>
                     <Pressable
                         onPress={handleSkip}
                         style={styles.skipQuestionBtn}
@@ -714,6 +771,14 @@ export default function GesturePractice({
                     >
                         <Text style={styles.skipQuestionText}>Skip</Text>
                         <Ionicons name="arrow-forward" size={14} color="#EF4444" />
+                    </Pressable>
+                    <Pressable
+                        onPress={handleRefreshWebView}
+                        style={styles.headerReloadBtn}
+                        hitSlop={8}
+                    >
+                        <Ionicons name="refresh" size={13} color="#0f3172" />
+                        <Text style={styles.headerReloadText}>Reload</Text>
                     </Pressable>
                     <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                         <View style={[styles.statusDot, isConnected && styles.statusDotActive]} />
@@ -741,6 +806,7 @@ export default function GesturePractice({
             {/* ─── FULL-BLEED WEBCAM ────────────────────────────────────── */}
             <View style={styles.webviewContainer}>
                 <WebView
+                    key={webViewKey}
                     ref={webViewRef}
                     source={{
                         uri: gestureUrl,
@@ -935,9 +1001,23 @@ export default function GesturePractice({
                         <Text style={styles.loadingOverlayText}>Starting camera…</Text>
                         <Text style={styles.loadingSubtext}>Loading SENAS model…</Text>
                         <View style={styles.loadingProgressBar}>
-                            <View style={[styles.loadingProgressFill, { width: '60%' }]} />
+                            <View style={[styles.loadingProgressFill, { width: `${Math.min(95, Math.max(12, (loadingSeconds / 28) * 100))}%` }]} />
                         </View>
-                        <Text style={styles.loadingSubtextSmall}>Please wait a moment</Text>
+                        <Text style={styles.loadingSubtextSmall}>
+                            {loadingSeconds >= 12
+                                ? `Taking longer than usual (${loadingSeconds}s)…`
+                                : 'Please wait a moment'}
+                        </Text>
+                        {loadingSeconds >= 10 && (
+                            <TouchableOpacity
+                                style={styles.overlayReloadBtn}
+                                onPress={handleRefreshWebView}
+                                activeOpacity={0.8}
+                            >
+                                <Ionicons name="refresh" size={14} color="#0F3172" style={{ marginRight: 6 }} />
+                                <Text style={styles.overlayReloadText}>Taking long? Tap to reload camera</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 )}
 
@@ -1013,6 +1093,43 @@ export default function GesturePractice({
                     </Animated.View>
                 </View>
             )}
+
+            {/* ─── SLOW MODEL / CONNECTION TIMEOUT MODAL ───────────── */}
+            <Modal
+                visible={showTimeoutModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowTimeoutModal(false)}
+            >
+                <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                        <View style={styles.modalIconWrap}>
+                            <Ionicons name="wifi-outline" size={32} color="#F59E0B" />
+                        </View>
+                        <Text style={styles.modalTitle}>Models Taking Too Long?</Text>
+                        <Text style={styles.modalBody}>
+                            The gesture recognition models might not be loading properly due to internet connection or slow model initialization. Would you like to refresh the camera and reload the models?
+                        </Text>
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={styles.modalPrimaryBtn}
+                                onPress={handleRefreshWebView}
+                                activeOpacity={0.8}
+                            >
+                                <Ionicons name="refresh" size={17} color="#FFFFFF" style={{ marginRight: 6 }} />
+                                <Text style={styles.modalPrimaryBtnText}>Refresh Camera & Models</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.modalSecondaryBtn}
+                                onPress={() => setShowTimeoutModal(false)}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.modalSecondaryBtnText}>Keep Waiting</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -1064,12 +1181,22 @@ const styles = StyleSheet.create({
     },
 
     header: {
+        flexDirection: 'column',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 6,
+        gap: 6,
+    },
+    headerTopRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        gap: 10,
+    },
+    headerActionsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 8,
     },
     backBtn: {
         width: 38, height: 38, borderRadius: 19,
@@ -1081,7 +1208,7 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         flex: 1,
-        fontSize: 14, fontWeight: '800', color: '#0f3172',
+        fontSize: 15, fontWeight: '800', color: '#0f3172',
         textAlign: 'center', letterSpacing: 0.2,
     },
     statusBadge: {
@@ -1434,7 +1561,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-    },
+    }, // kept for backward-compat but no longer used in JSX
     skipQuestionBtn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1487,5 +1614,119 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: 'rgba(16,185,129,0.2)',
+    },
+    headerReloadBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(15, 49, 114, 0.08)',
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 16,
+        gap: 4,
+    },
+    headerReloadText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#0f3172',
+    },
+    overlayReloadBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFD700',
+        paddingHorizontal: 16,
+        paddingVertical: 9,
+        borderRadius: 20,
+        marginTop: 14,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    overlayReloadText: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#0F3172',
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.65)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    modalCard: {
+        width: '100%',
+        maxWidth: 340,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        paddingVertical: 24,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        elevation: 12,
+    },
+    modalIconWrap: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#0F3172',
+        textAlign: 'center',
+        marginBottom: 8,
+        fontFamily: FONT_FAMILY,
+    },
+    modalBody: {
+        fontSize: 13,
+        lineHeight: 19,
+        color: '#4B5563',
+        textAlign: 'center',
+        marginBottom: 20,
+        fontFamily: FONT_FAMILY,
+    },
+    modalActions: {
+        width: '100%',
+        gap: 10,
+    },
+    modalPrimaryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#2563EB',
+        paddingVertical: 13,
+        borderRadius: 14,
+        shadowColor: '#2563EB',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 4,
+    },
+    modalPrimaryBtnText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '800',
+        fontFamily: FONT_FAMILY,
+    },
+    modalSecondaryBtn: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        borderRadius: 12,
+    },
+    modalSecondaryBtnText: {
+        color: '#6B7280',
+        fontSize: 13,
+        fontWeight: '600',
+        fontFamily: FONT_FAMILY,
     },
 });
