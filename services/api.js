@@ -2316,6 +2316,42 @@ export const api = {
     },
 
     /**
+     * 🏫 Get classroom details by ID
+     * GET /api/classroom/{classroomId}
+     */
+    getClassroom: async (classroomId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) {
+                throw new Error('No token found. Please login first.');
+            }
+
+            console.log(`🏫 Fetching classroom ${classroomId}...`);
+
+            const response = await fetch(`${API_URL}/classroom/${classroomId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+            });
+
+            const data = await response.json();
+            console.log('🏫 Classroom response:', data);
+
+            if (!response.ok) {
+                throw new Error(data.message || data.error || 'Failed to fetch classroom');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching classroom:', error);
+            throw error;
+        }
+    },
+
+    /**
      * ⭐ Submit or update the student's app rating
      * POST /api/student/rating
      */

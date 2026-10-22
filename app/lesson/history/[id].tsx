@@ -179,20 +179,20 @@ function AttemptCard({ attempt, index, total }: { attempt: any; index: number; t
             </Text>
           </View>
 
-          {/* 🆕 Done Late tag */}
-          {attempt.is_late && (
+          {/* Done Late tag */}
+          {Boolean(attempt.is_late) ? (
             <View style={cardStyles.latePill}>
               <LateClockIcon size={11} />
               <Text style={cardStyles.latePillText}>Done Late</Text>
             </View>
-          )}
+          ) : null}
 
-          {attempt.xp_earned > 0 && (
+          {Number(attempt.xp_earned) > 0 ? (
             <View style={cardStyles.xpPill}>
               <ZapIcon color="#D97706" size={11} />
               <Text style={cardStyles.xpText}>+{attempt.xp_earned} XP</Text>
             </View>
-          )}
+          ) : null}
         </View>
       </View>
     </Animated.View>
@@ -363,17 +363,17 @@ export default function AttemptHistoryPage() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {/* ─── Summary Stats Card ───────────────────────────────────────── */}
-        {totalAttempts > 0 && (
+        {totalAttempts > 0 ? (
           <Animated.View style={[styles.summaryCard, { opacity: headerAnim }]}>
 
             {/* 🆕 Deadline context banner */}
-            {lessonDeadline && (() => {
-              const deadlineDate = new Date(lessonDeadline);
+            {Boolean(lessonDeadline) ? (() => {
+              const deadlineDate = new Date(lessonDeadline!);
               const now = new Date();
               const isPast = deadlineDate < now;
               const timeStr = deadlineDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
               const dateStr = deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-              const isLateOverall = lessonIsLate || attempts.some(a => a.is_late);
+              const isLateOverall = lessonIsLate || attempts.some(a => Boolean(a.is_late));
               return (
                 <View style={[
                   styles.deadlineBanner,
@@ -392,7 +392,7 @@ export default function AttemptHistoryPage() {
                   </View>
                 </View>
               );
-            })()}
+            })() : null}
 
             <View style={styles.summaryHeader}>
               <BarChartIcon color="#2563EB" size={18} />
@@ -452,7 +452,7 @@ export default function AttemptHistoryPage() {
               </View>
             </View>
           </Animated.View>
-        )}
+        ) : null}
 
         {/* ─── Attempt List ─────────────────────────────────────────────── */}
         <View style={styles.listSection}>
@@ -495,7 +495,7 @@ export default function AttemptHistoryPage() {
         </View>
 
         {/* ─── Back to Lesson button ────────────────────────────────────── */}
-        {totalAttempts > 0 && (
+        {totalAttempts > 0 ? (
           <Pressable
             style={styles.goToLessonBtn}
             onPress={() => router.push(`/lesson/${id}` as any)}
@@ -505,7 +505,7 @@ export default function AttemptHistoryPage() {
               <Path d="M5 12h14" /><Path d="M12 5l7 7-7 7" />
             </Svg>
           </Pressable>
-        )}
+        ) : null}
 
       </ScrollView>
     </SafeAreaView>

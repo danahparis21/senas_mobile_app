@@ -429,6 +429,8 @@ interface SchoolYearItem {
   program_type?: string;
   grade_level?: string;
   section?: string;
+  classroom_id?: number;
+  classroom_name?: string;
   is_active: boolean;
   is_enrolled: boolean;
   enrolled_at?: string;
@@ -506,7 +508,7 @@ function SchoolYearPickerModal({
                         )}
                       </View>
                       <Text style={styles.syOptionSub}>
-                        {[sy.program_type, sy.grade_level ? `${sy.grade_level}${sy.section ? ` - ${sy.section}` : ''}` : '']
+                        {[sy.classroom_name ? `Class: ${sy.classroom_name}` : '', sy.program_type, sy.grade_level ? `${sy.grade_level}${sy.section ? ` - ${sy.section}` : ''}` : '']
                           .filter(Boolean)
                           .join(' • ') || 'Enrolled Academic Year'}
                       </Text>
@@ -539,6 +541,8 @@ interface AcademicCardProps {
     grade_level?: string;
     section?: string;
     lrn?: string;
+    classroom_id?: number;
+    classroom_name?: string;
   };
   onPickSY: () => void;
   onReturnToActive: () => void;
@@ -621,14 +625,31 @@ function IosAcademicCard({
       {/* ── Expandable Content ── */}
       <Animated.View style={[{ overflow: 'hidden' }, { maxHeight: contentMaxHeight }]}>
         <View style={styles.syIosExpandedContent}>
-          {/* Status Pill */}
-          <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border, marginTop: 4, marginBottom: 12 }]}>
-            <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
-            <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
+          {/* Status Pill & Class Pill */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 12 }}>
+            <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
+              <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
+              <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
+            </View>
+            {studentAcademicInfo.classroom_name ? (
+              <View style={styles.syClassPill}>
+                <Ionicons name="school" size={12} color="#1D4ED8" />
+                <Text style={styles.syClassPillText} numberOfLines={1}>
+                  {studentAcademicInfo.classroom_name}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Academic Info Grid with Glassmorphic styling */}
           <View style={styles.syAcademicGrid}>
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>Class</Text>
+              <Text style={[styles.syAcademicVal, { color: '#1E40AF' }]} numberOfLines={1}>
+                {studentAcademicInfo.classroom_name || 'Assigned'}
+              </Text>
+            </View>
+            <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
               <Text style={styles.syAcademicLabel}>Program</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
@@ -637,7 +658,7 @@ function IosAcademicCard({
             </View>
             <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
-              <Text style={styles.syAcademicLabel}>Grade & Section</Text>
+              <Text style={styles.syAcademicLabel}>Grade & Sec</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
                 {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
               </Text>
@@ -744,14 +765,31 @@ function AndroidAcademicCard({
       {/* ── Expandable Content ── */}
       <Animated.View style={[{ overflow: 'hidden' }, { maxHeight: contentMaxHeight }]}>
         <View style={styles.syAndroidExpandedContent}>
-          {/* Status Pill */}
-          <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border, marginBottom: 12 }]}>
-            <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
-            <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
+          {/* Status Pill & Class Pill */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+            <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
+              <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
+              <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
+            </View>
+            {studentAcademicInfo.classroom_name ? (
+              <View style={styles.syClassPill}>
+                <Ionicons name="school" size={12} color="#1D4ED8" />
+                <Text style={styles.syClassPillText} numberOfLines={1}>
+                  {studentAcademicInfo.classroom_name}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Academic Info Grid */}
           <View style={[styles.syAcademicGrid, { backgroundColor: '#F9FAFB' }]}>
+            <View style={styles.syAcademicCol}>
+              <Text style={styles.syAcademicLabel}>Class</Text>
+              <Text style={[styles.syAcademicVal, { color: '#1E40AF' }]} numberOfLines={1}>
+                {studentAcademicInfo.classroom_name || 'Assigned'}
+              </Text>
+            </View>
+            <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
               <Text style={styles.syAcademicLabel}>Program</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
@@ -760,7 +798,7 @@ function AndroidAcademicCard({
             </View>
             <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
-              <Text style={styles.syAcademicLabel}>Grade & Section</Text>
+              <Text style={styles.syAcademicLabel}>Grade & Sec</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
                 {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
               </Text>
@@ -820,7 +858,13 @@ export default function Profile() {
     grade_level?: string;
     section?: string;
     lrn?: string;
+    classroom_id?: number;
+    classroom_name?: string;
   }>({});
+
+  // ── Classroom Info ──
+  const [classroomName, setClassroomName] = useState<string | null>(null);
+  const [classroomId, setClassroomId] = useState<number | null>(null);
 
   // ── Teacher Info ──
   const [teacherName, setTeacherName] = useState<string | null>(null);
@@ -1008,11 +1052,35 @@ export default function Profile() {
           if (st.total_xp !== undefined) setTotalXp(st.total_xp);
           if (st.streak_days !== undefined) setStreakDays(st.streak_days);
 
+          const cName = st.classroom_name || st.classroom?.name || null;
+          const cId = st.classroom_id || st.classroom?.id || null;
+
+          if (cName) {
+            setClassroomName(cName);
+          }
+          if (cId) {
+            setClassroomId(cId);
+            if (!cName) {
+              api.getClassroom(cId).then(res => {
+                if (res?.classroom?.name) {
+                  setClassroomName(res.classroom.name);
+                  setStudentAcademicInfo(prev => ({
+                    ...prev,
+                    classroom_id: cId,
+                    classroom_name: res.classroom.name,
+                  }));
+                }
+              }).catch(() => {});
+            }
+          }
+
           setStudentAcademicInfo({
             program_type: st.program_type,
             grade_level: st.grade_level,
             section: st.section,
             lrn: st.lrn,
+            classroom_id: cId,
+            classroom_name: cName,
           });
         }
         if (profileRes && profileRes.school_year_info) {
@@ -1423,8 +1491,8 @@ export default function Profile() {
           </GlassCard>
         </View>
 
-        {/* ── Teacher Info ── */}
-        {teacherName && (
+        {/* ── Teacher & Class Info ── */}
+        {(teacherName || classroomName) && (
           <View style={styles.section}>
             <GlassCard style={styles.teacherCard}>
               <View style={styles.teacherRow}>
@@ -1443,7 +1511,13 @@ export default function Profile() {
                 </View>
                 <View style={styles.teacherInfo}>
                   <Text style={styles.teacherLabel}>Teacher</Text>
-                  <Text style={styles.teacherName}>{teacherName}</Text>
+                  <Text style={styles.teacherName}>{teacherName || 'Assigned Teacher'}</Text>
+                  {classroomName && (
+                    <View style={styles.teacherClassBadge}>
+                      <Ionicons name="school" size={13} color="#2563EB" />
+                      <Text style={styles.teacherClassText}>Class: {classroomName}</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </GlassCard>
@@ -1818,6 +1892,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f3172',
     marginTop: 2,
+  },
+  teacherClassBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  teacherClassText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   teacherIconBox: {
     width: 44,
@@ -2272,6 +2364,23 @@ const styles = StyleSheet.create({
   syStatusPillText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  syClassPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  syClassPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1D4ED8',
+    maxWidth: 160,
   },
   syAcademicGrid: {
     flexDirection: 'row',

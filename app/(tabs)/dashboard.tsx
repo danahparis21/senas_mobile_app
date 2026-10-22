@@ -25,6 +25,7 @@ import PromotionModal from '../../components/PromotionModal';
 import AchievementModal from '../../components/AchievementModal';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { useLessonNotification } from '../../contexts/LessonNotificationContext';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -274,6 +275,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [studentName, setStudentName] = useState<string>('Student');
   const [studentLevel, setStudentLevel] = useState<string>('Beginner');
+  const [classroomName, setClassroomName] = useState<string | null>(null);
   const [xp, setXp] = useState<number>(0);
   const [todayXp, setTodayXp] = useState<number>(0);
   const [streak, setStreak] = useState<number>(0);
@@ -752,8 +754,10 @@ export default function Dashboard() {
       }
 
       if (studentDataObj) {
-        const fullName = `${studentDataObj?.first_name || ''} ${studentDataObj?.last_name || ''}`.trim();
-        setStudentName(fullName || 'Student');
+        // Display only first name on dashboard so long names don't crowd the screen (e.g. "Juan", "Mica Danah")
+        const firstName = (studentDataObj?.first_name || '').trim();
+        const displayName = firstName || (studentDataObj?.name || '').trim().split(' ')[0] || 'Student';
+        setStudentName(displayName);
         setStudentLevel(studentDataObj?.fsl_mastery_level || 'Beginner');
 
         if (studentDataObj?.total_xp !== undefined && studentDataObj?.total_xp !== null) {
@@ -768,6 +772,17 @@ export default function Dashboard() {
         }
         if (studentDataObj?.level_name) {
           setLevelName(studentDataObj.level_name);
+        }
+
+        const cName = studentDataObj?.classroom_name || studentDataObj?.classroom?.name || null;
+        if (cName) {
+          setClassroomName(cName);
+        } else if (studentDataObj?.classroom_id) {
+          api.getClassroom(studentDataObj.classroom_id).then(res => {
+            if (res?.classroom?.name) {
+              setClassroomName(res.classroom.name);
+            }
+          }).catch(() => {});
         }
       }
     } catch (error) {
@@ -1213,6 +1228,12 @@ export default function Dashboard() {
             <View style={styles.heroText}>
               <Text style={styles.greetingText}>{getGreeting()}</Text>
               <Text style={styles.nameText} numberOfLines={2}>{studentName}! 👋</Text>
+              {classroomName ? (
+                <View style={styles.heroClassPill}>
+                  <Ionicons name="school" size={12} color="#0284C7" />
+                  <Text style={styles.heroClassText}>{classroomName}</Text>
+                </View>
+              ) : null}
               <Text style={styles.heroSub}>You've got this. Let's{"\n"}make it a signing day!</Text>
             </View>
             <Image
@@ -1684,9 +1705,27 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     zIndex: 1
   },
-  heroText: { flex: 1, paddingRight: 2 },
-  greetingText: { color: C.ink, fontSize: 24, fontWeight: '800', lineHeight: 30 },
-  nameText: { color: C.blueDeep, fontSize: 24, fontWeight: '900', lineHeight: 30, marginBottom: 8 },
+  heroText: { flex: 1, paddingRight: 4 },
+  greetingText: { color: C.ink, fontSize: 23, fontWeight: '800', lineHeight: 28 },
+  nameText: { color: C.blueDeep, fontSize: 29, fontWeight: '900', lineHeight: 35, marginBottom: 8 },
+  heroClassPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 11,
+    marginBottom: 8,
+  },
+  heroClassText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
   heroSub: { color: C.inkSoft, fontSize: 13.5, fontWeight: '600', lineHeight: 20 },
   senyaHero: {
     width: 170,
