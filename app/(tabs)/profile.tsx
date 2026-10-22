@@ -508,7 +508,7 @@ function SchoolYearPickerModal({
                         )}
                       </View>
                       <Text style={styles.syOptionSub}>
-                        {[sy.classroom_name ? `Class: ${sy.classroom_name}` : '', sy.program_type, sy.grade_level ? `${sy.grade_level}${sy.section ? ` - ${sy.section}` : ''}` : '']
+                        {[sy.program_type, sy.grade_level ? `${sy.grade_level}${sy.section ? ` - ${sy.section}` : ''}` : '']
                           .filter(Boolean)
                           .join(' • ') || 'Enrolled Academic Year'}
                       </Text>
@@ -625,31 +625,14 @@ function IosAcademicCard({
       {/* ── Expandable Content ── */}
       <Animated.View style={[{ overflow: 'hidden' }, { maxHeight: contentMaxHeight }]}>
         <View style={styles.syIosExpandedContent}>
-          {/* Status Pill & Class Pill */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 12 }}>
-            <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
-              <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
-              <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
-            </View>
-            {studentAcademicInfo.classroom_name ? (
-              <View style={styles.syClassPill}>
-                <Ionicons name="school" size={12} color="#1D4ED8" />
-                <Text style={styles.syClassPillText} numberOfLines={1}>
-                  {studentAcademicInfo.classroom_name}
-                </Text>
-              </View>
-            ) : null}
+          {/* Status Pill */}
+          <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border, marginTop: 4, marginBottom: 12 }]}>
+            <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
+            <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
           </View>
 
           {/* Academic Info Grid with Glassmorphic styling */}
           <View style={styles.syAcademicGrid}>
-            <View style={styles.syAcademicCol}>
-              <Text style={styles.syAcademicLabel}>Class</Text>
-              <Text style={[styles.syAcademicVal, { color: '#1E40AF' }]} numberOfLines={1}>
-                {studentAcademicInfo.classroom_name || 'Assigned'}
-              </Text>
-            </View>
-            <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
               <Text style={styles.syAcademicLabel}>Program</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
@@ -658,7 +641,7 @@ function IosAcademicCard({
             </View>
             <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
-              <Text style={styles.syAcademicLabel}>Grade & Sec</Text>
+              <Text style={styles.syAcademicLabel}>Grade & Section</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
                 {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
               </Text>
@@ -765,31 +748,14 @@ function AndroidAcademicCard({
       {/* ── Expandable Content ── */}
       <Animated.View style={[{ overflow: 'hidden' }, { maxHeight: contentMaxHeight }]}>
         <View style={styles.syAndroidExpandedContent}>
-          {/* Status Pill & Class Pill */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-            <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
-              <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
-              <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
-            </View>
-            {studentAcademicInfo.classroom_name ? (
-              <View style={styles.syClassPill}>
-                <Ionicons name="school" size={12} color="#1D4ED8" />
-                <Text style={styles.syClassPillText} numberOfLines={1}>
-                  {studentAcademicInfo.classroom_name}
-                </Text>
-              </View>
-            ) : null}
+          {/* Status Pill */}
+          <View style={[styles.syStatusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border, marginBottom: 12 }]}>
+            <View style={[styles.syStatusDot, { backgroundColor: statusConfig.dotColor }]} />
+            <Text style={[styles.syStatusPillText, { color: statusConfig.textColor }]}>{statusConfig.label}</Text>
           </View>
 
           {/* Academic Info Grid */}
           <View style={[styles.syAcademicGrid, { backgroundColor: '#F9FAFB' }]}>
-            <View style={styles.syAcademicCol}>
-              <Text style={styles.syAcademicLabel}>Class</Text>
-              <Text style={[styles.syAcademicVal, { color: '#1E40AF' }]} numberOfLines={1}>
-                {studentAcademicInfo.classroom_name || 'Assigned'}
-              </Text>
-            </View>
-            <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
               <Text style={styles.syAcademicLabel}>Program</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
@@ -798,7 +764,7 @@ function AndroidAcademicCard({
             </View>
             <View style={styles.syAcademicDividerVertical} />
             <View style={styles.syAcademicCol}>
-              <Text style={styles.syAcademicLabel}>Grade & Sec</Text>
+              <Text style={styles.syAcademicLabel}>Grade & Section</Text>
               <Text style={styles.syAcademicVal} numberOfLines={1}>
                 {[studentAcademicInfo.grade_level, studentAcademicInfo.section].filter(Boolean).join(' - ') || 'Grade 1'}
               </Text>
