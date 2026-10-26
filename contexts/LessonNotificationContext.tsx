@@ -3,12 +3,13 @@ import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
 import { subscribeToNotificationReceived } from '../services/pushNotifications';
+import { AnnouncementModal } from '../components/AnnouncementModal';
 
 export interface NotificationItem {
   id: string;
   title: string;
   message: string;
-  type: 'achievement' | 'promotion' | 'lesson' | 'streak' | 'system';
+  type: 'achievement' | 'promotion' | 'lesson' | 'streak' | 'system' | 'announcement';
   is_read: boolean;
   created_at: string;
   data?: any;
@@ -23,11 +24,103 @@ export interface NewLessonAlert {
   moduleId?: string;
 }
 
+// ── PHILIPPINE TIME HELPERS ──────────────────────────────────────────
+export function isPhilippineToday(dateInput?: string | number | Date | null): boolean {
+  if (!dateInput) return false;
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return false;
+
+  const getPhDateStr = (date: Date) => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(date);
+    } catch {
+      const ph = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+      return ph.toISOString().slice(0, 10);
+    }
+  };
+
+  return getPhDateStr(d) === getPhDateStr(new Date());
+}
+
+export function formatPhilippineDate(dateInput?: string | number | Date | null): string {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(d);
+  } catch {
+    return d.toLocaleDateString();
+  }
+}
+
+// ── ANNOUNCEMENT HELPERS ─────────────────────────────────────────────
+export function extractAnnouncementLessonIds(notification: NotificationItem): number[] {
+  let data = notification.data;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {}
+  }
+  const ids: number[] = [];
+  if (data?.lesson_ids && Array.isArray(data.lesson_ids)) {
+    data.lesson_ids.forEach((id: any) => {
+      const n = Number(id);
+      if (!isNaN(n) && n > 0 && !ids.includes(n)) ids.push(n);
+    });
+  }
+  if (data?.lesson_id) {
+    const n = Number(data.lesson_id);
+    if (!isNaN(n) && n > 0 && !ids.includes(n)) ids.push(n);
+  }
+  if (data?.lessons && Array.isArray(data.lessons)) {
+    data.lessons.forEach((l: any) => {
+      const n = Number(l.id || l.lesson_id);
+      if (!isNaN(n) && n > 0 && !ids.includes(n)) ids.push(n);
+    });
+  }
+  return ids;
+}
+
+export function isAnnouncementNotification(n: NotificationItem): boolean {
+  if (n.type === 'announcement') return true;
+  let data = n.data;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {}
+  }
+  return Boolean(
+    data?.announcement_id ||
+    (data?.lesson_ids && data?.lesson_ids?.length > 0) ||
+    (n.title && n.title.toLowerCase().includes('announcement'))
+  );
+}
+
+export function isTodayAnnouncement(n: NotificationItem): boolean {
+  return isAnnouncementNotification(n) && isPhilippineToday(n.created_at);
+}
+
 interface LessonNotificationContextType {
   notifications: NotificationItem[];
   unreadCount: number;
   activeLessonAlert: NewLessonAlert | null;
+  todayAnnouncements: NotificationItem[];
+  todayAnnouncedLessonIds: Set<number>;
+  activeAnnouncementModal: NotificationItem | null;
+  allLessonsMap: Record<number, any>;
   dismissLessonAlert: () => void;
+  openAnnouncementModal: (announcement?: NotificationItem) => void;
+  closeAnnouncementModal: () => void;
   refreshNotifications: (forceRefresh?: boolean) => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -37,7 +130,13 @@ const LessonNotificationContext = createContext<LessonNotificationContextType>({
   notifications: [],
   unreadCount: 0,
   activeLessonAlert: null,
+  todayAnnouncements: [],
+  todayAnnouncedLessonIds: new Set<number>(),
+  activeAnnouncementModal: null,
+  allLessonsMap: {},
   dismissLessonAlert: () => {},
+  openAnnouncementModal: () => {},
+  closeAnnouncementModal: () => {},
   refreshNotifications: async () => {},
   markAsRead: async () => {},
   markAllAsRead: async () => {},
@@ -56,6 +155,8 @@ export const LessonNotificationProvider: React.FC<{ children: ReactNode }> = ({ 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [activeLessonAlert, setActiveLessonAlert] = useState<NewLessonAlert | null>(null);
+  const [activeAnnouncementModal, setActiveAnnouncementModal] = useState<NotificationItem | null>(null);
+  const [allLessonsMap, setAllLessonsMap] = useState<Record<number, any>>({});
 
   const isFetchingRef = useRef(false);
   const isInitializedRef = useRef(false);
@@ -183,29 +284,39 @@ export const LessonNotificationProvider: React.FC<{ children: ReactNode }> = ({ 
         }
       }
 
-      // 2. Check student lessons for newly published lessons
+      // 2. Check student lessons for newly published lessons and build allLessonsMap
       const lessonsResponse = await api.getStudentLessons(null, forceRefresh);
       if (lessonsResponse && !lessonsResponse.unauthenticated && lessonsResponse.success && lessonsResponse.modules) {
         const allLessonList: any[] = [];
+        const newLessonsMap: Record<number, any> = {};
+
         for (const mod of lessonsResponse.modules) {
           if (Array.isArray(mod.lessons)) {
             for (const l of mod.lessons) {
-              allLessonList.push({ ...l, module_id: l.module_id || mod.module_id });
+              const enriched = {
+                ...l,
+                module_id: l.module_id || mod.module_id,
+                module_title: mod.title,
+              };
+              allLessonList.push(enriched);
+              const lid = Number(l.id || l.lesson_id);
+              if (!isNaN(lid) && lid > 0) {
+                newLessonsMap[lid] = enriched;
+              }
             }
           }
         }
 
+        setAllLessonsMap(newLessonsMap);
+
         if (!isInitializedRef.current) {
-          // On first launch, mark all current lessons as known so we don't alert for existing ones
           allLessonList.forEach((l) => knownLessonIdsRef.current.add(String(l.lesson_id)));
           isInitializedRef.current = true;
           await persistKnownIds(studentId);
         } else {
-          // Subsequent checks: alert if a brand new pending lesson was added by teacher
           const newlyPublished = allLessonList.filter((l) => {
             const lid = String(l.lesson_id);
             const isUnseen = lid && !knownLessonIdsRef.current.has(lid);
-            // Skip if student already started or completed this lesson
             const isAlreadyDone = l.status === 'completed' || (l.progress && l.progress.current_step > 0);
             return isUnseen && !isAlreadyDone;
           });
@@ -237,6 +348,22 @@ export const LessonNotificationProvider: React.FC<{ children: ReactNode }> = ({ 
 
   const dismissLessonAlert = useCallback(() => {
     setActiveLessonAlert(null);
+  }, []);
+
+  const openAnnouncementModal = useCallback((announcement?: NotificationItem) => {
+    if (announcement) {
+      setActiveAnnouncementModal(announcement);
+    } else {
+      // Find the most recent announcement from today
+      const today = notifications.find(isTodayAnnouncement);
+      if (today) {
+        setActiveAnnouncementModal(today);
+      }
+    }
+  }, [notifications]);
+
+  const closeAnnouncementModal = useCallback(() => {
+    setActiveAnnouncementModal(null);
   }, []);
 
   const refreshNotifications = useCallback(
@@ -271,12 +398,20 @@ export const LessonNotificationProvider: React.FC<{ children: ReactNode }> = ({ 
     }
   }, []);
 
+  // Compute today's announcements and today's announced lesson IDs
+  const todayAnnouncements = notifications.filter(isTodayAnnouncement);
+  const todayAnnouncedLessonIds = new Set<number>();
+  todayAnnouncements.forEach((ann) => {
+    const ids = extractAnnouncementLessonIds(ann);
+    ids.forEach((id) => todayAnnouncedLessonIds.add(id));
+  });
+
   // Set up periodic polling & foreground listeners
   useEffect(() => {
     // Initial fetch
     checkNewLessonsAndNotifications(false);
 
-    // ── Background poller: runs every 20 seconds when active (lightweight & clean) ──
+    // ── Background poller: runs every 20 seconds when active ──
     const interval = setInterval(() => {
       checkNewLessonsAndNotifications(true);
     }, 20000);
@@ -306,13 +441,26 @@ export const LessonNotificationProvider: React.FC<{ children: ReactNode }> = ({ 
         notifications,
         unreadCount,
         activeLessonAlert,
+        todayAnnouncements,
+        todayAnnouncedLessonIds,
+        activeAnnouncementModal,
+        allLessonsMap,
         dismissLessonAlert,
+        openAnnouncementModal,
+        closeAnnouncementModal,
         refreshNotifications,
         markAsRead,
         markAllAsRead,
       }}
     >
       {children}
+
+      {/* Global Announcement Modal */}
+      <AnnouncementModal
+        visible={!!activeAnnouncementModal}
+        announcement={activeAnnouncementModal}
+        onClose={closeAnnouncementModal}
+      />
     </LessonNotificationContext.Provider>
   );
 };

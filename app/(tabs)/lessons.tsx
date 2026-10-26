@@ -15,13 +15,16 @@ import {
   RefreshControl,
   Modal,
   PanResponder,
-  TouchableOpacity
+  TouchableOpacity,
+  Alert
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../../services/api';
+import { useLessonNotification } from '../../contexts/LessonNotificationContext';
 import {
   CheckIcon,
   LockIcon,
@@ -500,7 +503,8 @@ export default function Lessons() {
   const tabBarClearance = 68 + (insets.bottom > 0 ? (Platform.OS === 'ios' ? Math.max(insets.bottom - 10, 0) : insets.bottom) : 10);
   // Optional deep-link params: navigating here with ?tab=modules&moduleId=5 or ?lessonId=12
   // opens straight to that module's lesson map and selects the lesson.
-  const params = useLocalSearchParams<{ tab?: string; moduleId?: string; lessonId?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; moduleId?: string; lessonId?: string; highlightToday?: string }>();
+  const { todayAnnouncedLessonIds } = useLessonNotification();
   // Tracks which param combo was last applied.
   const lastAppliedDeepLinkKeyRef = useRef<string | null>(null);
   // Ref to the map ScrollView to auto-scroll to the targeted lesson
@@ -1269,7 +1273,7 @@ export default function Lessons() {
     const wantsModulesTab = params.tab === 'modules' || !!params.moduleId || !!params.lessonId;
     if (!wantsModulesTab) return;
 
-    const key = `${params.tab ?? ''}|${params.moduleId ?? ''}|${params.lessonId ?? ''}`;
+    const key = `${params.tab ?? ''}|${params.moduleId ?? ''}|${params.lessonId ?? ''}|${params.highlightToday ?? ''}`;
     if (lastAppliedDeepLinkKeyRef.current === key) return;
     lastAppliedDeepLinkKeyRef.current = key;
 
@@ -1984,6 +1988,7 @@ export default function Lessons() {
                 let iconColor = '#fff';
 
                 const isLocked = lesson.locked;
+                const isAnnouncedToday = todayAnnouncedLessonIds.has(Number(lesson.id)) || todayAnnouncedLessonIds.has(Number(lesson.lesson_id));
 
                 if (isLocked) {
                   nodeBg = '#CBD5E1';
@@ -2018,6 +2023,14 @@ export default function Lessons() {
                       />
                     )}
 
+                    {/* 🎯 Highlight ring for lessons announced today */}
+                    {isAnnouncedToday && (
+                      <View
+                        pointerEvents="none"
+                        style={styles.todayAssignedGlowRing}
+                      />
+                    )}
+
                     {/* 🆕 Gentle highlight ring around the node for lessons due today */}
                     {di?.type === 'due_today' && !lesson.done && !isLocked && (
                       <View
@@ -2037,8 +2050,16 @@ export default function Lessons() {
                           shadowColor: isLocked ? '#94A3B8' : lesson.color,
                           transform: [{ scale: pressed ? 0.95 : 1 }],
                         },
+                        // High-visibility highlight if assigned today by teacher announcement
+                        isAnnouncedToday && {
+                          borderColor: '#2563EB',
+                          borderWidth: 3,
+                          shadowColor: '#2563EB',
+                          shadowOpacity: 0.5,
+                          shadowRadius: 8,
+                        },
                         // Soft warm highlight if due today (friendly gold, not red)
-                        di?.type === 'due_today' && !lesson.done && !isLocked && {
+                        di?.type === 'due_today' && !lesson.done && !isLocked && !isAnnouncedToday && {
                           borderColor: '#F59E0B',
                           borderWidth: 2.5,
                         },
@@ -2133,10 +2154,20 @@ export default function Lessons() {
                           <View style={styles.lockedLabelContainer}>
                             <LockIcon size={10} color="#94A3B8" />
                             <Text style={styles.lockedLabelText}>
-                              {lesson.lock_reason === 'previous_lesson_required' && lesson.lock_reason_data?.previous_lesson_title
+                              {isAnnouncedToday
+                                ? "Complete first lessons to unlock today's assignment!"
+                                : lesson.lock_reason === 'previous_lesson_required' && lesson.lock_reason_data?.previous_lesson_title
                                 ? `Complete "${lesson.lock_reason_data.previous_lesson_title}" first`
                                 : 'Locked'}
                             </Text>
+                          </View>
+                        )}
+
+                        {/* 🎯 Today's Assigned pill inside title card */}
+                        {isAnnouncedToday && (
+                          <View style={styles.todayAssignedTitlePill}>
+                            <Ionicons name="sparkles" size={10} color="#D97706" />
+                            <Text style={styles.todayAssignedTitlePillText}>Assigned for Today</Text>
                           </View>
                         )}
 
@@ -2204,6 +2235,25 @@ export default function Lessons() {
                 showsVerticalScrollIndicator
                 nestedScrollEnabled
               >
+                {/* 📢 Today's Announcement Assignment Banner inside bottom card */}
+                {selectedLesson && (todayAnnouncedLessonIds.has(Number(selectedLesson.id)) || todayAnnouncedLessonIds.has(Number(selectedLesson.lesson_id))) && (
+                  <View style={styles.todayAssignedCardBanner}>
+                    <View style={styles.todayAssignedCardBannerIconWrap}>
+                      <Ionicons name="megaphone" size={18} color="#0D326B" />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.todayAssignedCardBannerTitle}>
+                        Teacher's Assignment for Today! 🎯
+                      </Text>
+                      <Text style={styles.todayAssignedCardBannerSub}>
+                        {selectedLesson.locked
+                          ? "This lesson is locked! Complete preceding lessons first to unlock today's assignment."
+                          : "Your teacher assigned this lesson for you to complete today!"}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 <Text style={styles.cardDescText}>{selectedLesson.desc}</Text>
 
                 {/* ALWAYS show the "Why this lesson?" section if there's a recommendation reason, regardless of completion status */}
@@ -2349,6 +2399,17 @@ export default function Lessons() {
               <View style={styles.sheetFooter}>
                 <Pressable
                   onPress={() => {
+                    const isTodayAnn = todayAnnouncedLessonIds.has(Number(selectedLesson.id)) || todayAnnouncedLessonIds.has(Number(selectedLesson.lesson_id));
+                    if (selectedLesson.locked) {
+                      if (isTodayAnn) {
+                        Alert.alert(
+                          '🔒 Assignment Locked',
+                          "Please complete preceding lessons first to unlock today's assignment!",
+                          [{ text: 'Got It' }]
+                        );
+                      }
+                      return;
+                    }
                     setExpandedId(null);
                     if (selectedLesson.is_checkpoint_exam) {
                       router.push(`/checkpoint-exam/${selectedLesson.exam_id}` as any);
@@ -2360,7 +2421,7 @@ export default function Lessons() {
                     styles.cardActionBtn,
                     { backgroundColor: selectedLesson.locked ? '#CBD5E1' : selectedLesson.color },
                   ]}
-                  disabled={selectedLesson.locked}
+                  disabled={selectedLesson.locked && !(todayAnnouncedLessonIds.has(Number(selectedLesson.id)) || todayAnnouncedLessonIds.has(Number(selectedLesson.lesson_id)))}
                 >
                   {selectedLesson.locked ? (
                     <LockIcon size={16} color="#fff" />
@@ -2373,7 +2434,9 @@ export default function Lessons() {
                   )}
                   <Text style={styles.cardActionBtnText}>
                     {selectedLesson.locked
-                      ? "LOCKED"
+                      ? ((todayAnnouncedLessonIds.has(Number(selectedLesson.id)) || todayAnnouncedLessonIds.has(Number(selectedLesson.lesson_id)))
+                          ? "LOCKED (DO FIRST LESSONS TO UNLOCK)"
+                          : "LOCKED")
                       : selectedLesson.is_checkpoint_exam
                         ? (selectedLesson.done ? "RETAKE EXAM" : "START EXAM")
                         : (selectedLesson.done ? "REVIEW LESSON" : "START LESSON")}
@@ -3591,4 +3654,94 @@ const styles = StyleSheet.create({
     color: '#2563EB',
   },
 
+  // 🎯 Highlight ring around node for lessons assigned today by teacher announcement
+  todayAssignedGlowRing: {
+    position: 'absolute',
+    width: NODE_RADIUS * 2 + 14,
+    height: NODE_RADIUS * 2 + 14,
+    borderRadius: NODE_RADIUS + 7,
+    borderWidth: 2.5,
+    borderColor: '#2563EB',
+    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+    zIndex: 1,
+  },
+  todayAssignedFloatingBadge: {
+    position: 'absolute',
+    top: -28,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: '#0D326B',
+    borderWidth: 1.5,
+    borderColor: '#FBBF24',
+    zIndex: 35,
+    shadowColor: '#0D326B',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 6,
+  },
+  todayAssignedBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FBBF24',
+  },
+  todayAssignedBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.4,
+  },
+  todayAssignedTitlePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  todayAssignedTitlePillText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  todayAssignedCardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+  },
+  todayAssignedCardBannerIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayAssignedCardBannerTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0D326B',
+  },
+  todayAssignedCardBannerSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1E40AF',
+    marginTop: 2,
+    lineHeight: 15,
+  },
 });

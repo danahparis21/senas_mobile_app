@@ -24,7 +24,11 @@ import { api } from '../../services/api';
 import PromotionModal from '../../components/PromotionModal';
 import AchievementModal from '../../components/AchievementModal';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
-import { useLessonNotification } from '../../contexts/LessonNotificationContext';
+import {
+  useLessonNotification,
+  extractAnnouncementLessonIds,
+  isPhilippineToday,
+} from '../../contexts/LessonNotificationContext';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -270,7 +274,11 @@ const getStatusTag = (status: string, progress: any): string => {
 
 export default function Dashboard() {
   const router = useRouter();
-  const { refreshNotifications } = useLessonNotification();
+  const {
+    refreshNotifications,
+    todayAnnouncements,
+    openAnnouncementModal,
+  } = useLessonNotification();
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [studentName, setStudentName] = useState<string>('Student');
@@ -335,6 +343,39 @@ export default function Dashboard() {
   const [newAchievements, setNewAchievements] = useState<any[]>([]);
   const [achievementModalVisible, setAchievementModalVisible] = useState(false);
   const [checkingAchievements, setCheckingAchievements] = useState(false);
+
+  // ── AUTO-POP TODAY'S ANNOUNCEMENT ON DASHBOARD OPEN ──
+  const autoPoppedAnnouncementRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!todayAnnouncements || todayAnnouncements.length === 0) return;
+
+    const checkAndAutoPop = async () => {
+      try {
+        const latestToday = todayAnnouncements[0];
+        const notifId = String(latestToday.id);
+
+        if (autoPoppedAnnouncementRef.current === notifId) return;
+
+        const phDateStr = isPhilippineToday(latestToday.created_at) ? new Date().toISOString().slice(0, 10) : '';
+        const storageKey = `announcement_popped_${notifId}_${phDateStr}`;
+        const alreadyPopped = await AsyncStorage.getItem(storageKey);
+
+        if (!alreadyPopped) {
+          autoPoppedAnnouncementRef.current = notifId;
+          await AsyncStorage.setItem(storageKey, 'true');
+          // Short delay so screen mounts smoothly first
+          setTimeout(() => {
+            openAnnouncementModal(latestToday);
+          }, 700);
+        }
+      } catch (e) {
+        console.warn('Could not check announcement auto-pop:', e);
+      }
+    };
+
+    checkAndAutoPop();
+  }, [todayAnnouncements, openAnnouncementModal]);
 
   // ── Cloud Animations ──
   const cloud1Anim = useRef(new Animated.Value(-200)).current;
@@ -1299,6 +1340,53 @@ export default function Dashboard() {
               </View>
             </View>
           </View>
+
+          {/* ── Today's Teacher Announcement Banner ── */}
+          {todayAnnouncements.length > 0 && (() => {
+            const latestAnnouncement = todayAnnouncements[0];
+            const lessonIds = extractAnnouncementLessonIds(latestAnnouncement);
+            return (
+              <View style={styles.section}>
+                <Pressable
+                  onPress={() => openAnnouncementModal(latestAnnouncement)}
+                  style={({ pressed }) => [
+                    styles.announcementBannerCard,
+                    pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+                  ]}
+                >
+                  <ExpoLinearGradient
+                    colors={['#0D326B', '#154B94', '#1E63B8'] as const}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View style={styles.announcementBannerContent}>
+                    <View style={styles.announcementBannerIconCircle}>
+                      <Ionicons name="megaphone" size={22} color="#FBBF24" />
+                    </View>
+                    <View style={styles.announcementBannerTextCol}>
+                      <View style={styles.announcementBannerHeaderRow}>
+                        <Text style={styles.announcementBannerTag}>TEACHER'S ANNOUNCEMENT</Text>
+                        <View style={styles.announcementTodayChip}>
+                          <Text style={styles.announcementTodayChipText}>TODAY</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.announcementBannerMessage} numberOfLines={2}>
+                        "{latestAnnouncement.message || 'Do this lesson today!'}"
+                      </Text>
+                      <Text style={styles.announcementBannerActionText}>
+                        {lessonIds.length > 0
+                          ? `${lessonIds.length} lesson${lessonIds.length > 1 ? 's' : ''} assigned · Tap to view list →`
+                          : 'Tap to view announcement →'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+                  </View>
+                </Pressable>
+              </View>
+            );
+          })()}
+
           {/* ── Promotion Banner Card ── */}
           {promotionData && showEnvelope && (
             <Animated.View style={[
@@ -2175,5 +2263,70 @@ const styles = StyleSheet.create({
     top: 0,
     marginLeft: -8,
     marginTop: -8,
+  },
+
+  // ── Announcement Banner Card ──
+  announcementBannerCard: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    shadowColor: '#0D326B',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
+    marginBottom: 8,
+  },
+  announcementBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  announcementBannerIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementBannerTextCol: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 6,
+  },
+  announcementBannerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
+  },
+  announcementBannerTag: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#FBBF24',
+    letterSpacing: 0.6,
+  },
+  announcementTodayChip: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  announcementTodayChipText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  announcementBannerMessage: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 18,
+  },
+  announcementBannerActionText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#93C5FD',
+    marginTop: 4,
   },
 });

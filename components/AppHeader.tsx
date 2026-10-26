@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
-import { useLessonNotification } from '../contexts/LessonNotificationContext';
+import { useLessonNotification, isAnnouncementNotification } from '../contexts/LessonNotificationContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -25,7 +25,7 @@ interface Notification {
     id: string;
     title: string;
     message: string;
-    type: 'achievement' | 'promotion' | 'lesson' | 'streak' | 'system';
+    type: 'achievement' | 'promotion' | 'lesson' | 'streak' | 'system' | 'announcement';
     is_read: boolean;
     created_at: string;
     data?: any;
@@ -68,7 +68,8 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
     const {
         notifications: liveNotifications,
         unreadCount: liveUnreadCount,
-        refreshNotifications: refreshLiveNotifications
+        refreshNotifications: refreshLiveNotifications,
+        openAnnouncementModal,
     } = useLessonNotification();
 
     const lastFetchTimeRef = useRef<number>(0);
@@ -475,6 +476,12 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
         markAsRead(notification.id);
         setModalVisible(false);
 
+        // Teacher Announcements -> Open full modal with assigned lessons
+        if (notification.type === 'announcement' || isAnnouncementNotification(notification as any)) {
+            openAnnouncementModal(notification as any);
+            return;
+        }
+
         let data = notification.data;
         if (typeof data === 'string') {
             try { data = JSON.parse(data); } catch (e) {}
@@ -528,6 +535,7 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
 
     const getNotificationIcon = (type: string) => {
         switch (type) {
+            case 'announcement': return 'megaphone';
             case 'achievement': return 'trophy';
             case 'promotion': return 'star';
             case 'lesson': return 'book';
@@ -538,6 +546,7 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
 
     const getNotificationColor = (type: string) => {
         switch (type) {
+            case 'announcement': return '#1A6FD4';
             case 'achievement': return '#F59E0B';
             case 'promotion': return '#8B5CF6';
             case 'lesson': return '#3B82F6';
