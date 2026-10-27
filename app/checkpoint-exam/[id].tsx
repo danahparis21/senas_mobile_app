@@ -356,6 +356,7 @@ export default function CheckpointExamScreen() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userRank, setUserRank] = useState<number | null>(null);
   const [leaderboardSy, setLeaderboardSy] = useState<string | null>(null);
+  const [leaderboardClass, setLeaderboardClass] = useState<string | null>(null);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<LeaderboardEntry | null>(null);
   const [showStudentDetail, setShowStudentDetail] = useState(false);
@@ -509,6 +510,9 @@ export default function CheckpointExamScreen() {
         setUserRank(response.user_rank);
         if (response.school_year) {
           setLeaderboardSy(response.school_year);
+        }
+        if (response.classroom_name) {
+          setLeaderboardClass(response.classroom_name);
         }
       }
     } catch (error) {
@@ -964,7 +968,8 @@ export default function CheckpointExamScreen() {
       rankNumText = `#${userRank}`;
       const peopleBelow = rankings.length - userRank;
       const percentile = Math.round((peopleBelow / rankings.length) * 100);
-      if (userRank === 1) rankPercentileText = `🥇 You're #1! You outscored everyone else!`;
+      if (rankings.length === 1 && userRank === 1) rankPercentileText = `🥇 You're #1 in your class!`;
+      else if (userRank === 1) rankPercentileText = `🥇 You're #1! You outscored everyone in your class!`;
       else if (userRank === 2) rankPercentileText = `🥈 You're #2! You're in the top tier!`;
       else if (userRank === 3) rankPercentileText = `🥉 You're #3! Amazing performance!`;
       else {
@@ -981,11 +986,6 @@ export default function CheckpointExamScreen() {
       <View style={s.leaderboardContainer}>
         <View style={s.leaderboardHeader}>
           <Text style={s.leaderboardHeaderTitle}>🏆 Checkpoint Leaderboard</Text>
-          {leaderboardSy && (
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginLeft: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff' }}>S.Y. {leaderboardSy}</Text>
-            </View>
-          )}
         </View>
 
         {userRank ? (

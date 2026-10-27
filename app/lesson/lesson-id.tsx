@@ -405,6 +405,7 @@ export default function LessonViewer() {
     // Leaderboard state
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [userRank, setUserRank] = useState<number | null>(null);
+    const [leaderboardClass, setLeaderboardClass] = useState<string | null>(null);
     const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
 
     // Student detail modal state
@@ -622,6 +623,9 @@ export default function LessonViewer() {
             if (response.success) {
                 setLeaderboard(response.rankings);
                 setUserRank(response.user_rank);
+                if (response.classroom_name) {
+                    setLeaderboardClass(response.classroom_name);
+                }
             }
         } catch (error) {
             console.error('Error fetching leaderboard:', error);
@@ -1384,8 +1388,10 @@ export default function LessonViewer() {
             const peopleBelow = rankings.length - userRank;
             const percentile = Math.round((peopleBelow / rankings.length) * 100);
 
-            if (userRank === 1) {
-                rankPercentileText = `🥇 You're #1! You outscored everyone else!`;
+            if (rankings.length === 1 && userRank === 1) {
+                rankPercentileText = `🥇 You're #1 in your class!`;
+            } else if (userRank === 1) {
+                rankPercentileText = `🥇 You're #1! You outscored everyone in your class!`;
             } else if (userRank === 2) {
                 rankPercentileText = `🥈 You're #2! You're in the top tier!`;
             } else if (userRank === 3) {
