@@ -341,7 +341,7 @@ Leaderboard Ranking         Completion Certificates
 
 ---
 
-## 👩‍💻 Development Notes
+## Development Notes
 
 - **New Architecture** is fully enabled (`newArchEnabled: true`) with React Native Nitro Modules and the React Compiler experiment active
 - **TFLite** runs on-device with **CoreML delegate** on iOS and **GPU delegate** on Android for accelerated inference
@@ -351,7 +351,7 @@ Leaderboard Ranking         Completion Certificates
 
 ---
 
-## 📄 License
+## License
 
 This project is private and proprietary. All rights reserved © SEÑAS Team.
 
@@ -359,7 +359,7 @@ This project is private and proprietary. All rights reserved © SEÑAS Team.
 
 <div align="center">
 
-Made with 🤟 for the Filipino Deaf Community
+Made with Love for the Filipino Deaf Community
 
 **SEÑAS** — *Salamat, mahal namin kayo!*
 
