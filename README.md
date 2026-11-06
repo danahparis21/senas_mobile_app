@@ -1,376 +1,456 @@
-# 📱 Mobile App Development Setup
+<div align="center">
 
-## 📋 Prerequisites
+<img src="./assets/images/AppIcon~ios-marketing.png" alt="SEÑAS Logo" width="120" height="120" style="border-radius: 24px;" />
 
-Before starting, make sure the following tools are installed:
+# SEÑAS — Filipino Sign Language Learning Platform
 
-- Node.js & npm
-- Expo CLI
-- PHP 8.0+ with Composer
-- ngrok (for HTTPS tunneling)
-- iOS Simulator (macOS only) or Android Emulator (optional)
-- Physical iOS/Android device with Expo Go (recommended)
+**An interactive mobile application for learning Philippine Sign Language (FSL)**  
+powered by real-time AI hand gesture recognition
 
----
+[![React Native](https://img.shields.io/badge/React_Native-0.81.5-61DAFB?style=flat-square&logo=react)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-54.0.37-000020?style=flat-square&logo=expo)](https://expo.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20Android-lightgrey?style=flat-square)]()
+[![License](https://img.shields.io/badge/License-Private-red?style=flat-square)]()
 
-# ⚙️ Environment Setup
-
-## 1. Clone the Repository
-
-```bash
-git clone https://github.com/danahparis21/senas_mobile_app.git
-cd senas_mobile_app
-```
+</div>
 
 ---
 
-## 2. Install Dependencies
+## 📖 About SEÑAS
 
-```bash
-npm install
-```
+**SEÑAS** (derived from the Filipino word for *signs*) is a gamified, AI-powered mobile learning platform that makes Philippine Sign Language (FSL) accessible to everyone. Whether you are a beginner exploring FSL for the first time or a student building fluency, SEÑAS guides you through structured lessons, real-time gesture feedback, challenges, and adaptive learning — all from your smartphone.
 
-Install the required Expo packages:
-
-```bash
-npx expo install react-native-webview expo-web-browser expo-camera
-```
+> 🤟 *Bridging the communication gap between the hearing and Deaf communities in the Philippines.*
 
 ---
 
-# 🖥️ Running the Laravel Backend
+## ✨ Key Features
 
-Navigate to the Laravel backend:
-
-```bash
-cd ../Senas_TeacherWebDashboard
-```
-
-Install PHP dependencies:
-
-```bash
-composer install
-```
-
-Create the environment file and generate the application key:
-
-```bash
-cp .env.example .env
-php artisan key:generate
-```
-
-Run the Laravel server:
-
-```bash
-php artisan serve --host=0.0.0.0 --port=8000
-```
+| Feature | Description |
+|---|---|
+| 🤖 **Real-Time Gesture Detection** | Live hand recognition via MediaPipe + TFLite model — camera overlay checks your signs instantly |
+| 📚 **Structured Lessons** | Curriculum-based modules: Alphabet, Numbers, Greetings, Survival Signs |
+| 🧩 **Adaptive Learning** | Personalized review paths based on mastery scores and weak skill detection |
+| 🏆 **Achievements & XP** | Earn experience points, badges, and certificates as you progress |
+| 🔥 **Daily Streaks & Challenges** | Daily login streaks and time-limited challenges to keep learners engaged |
+| 🃏 **Drag & Drop Quizzes** | Interactive drag-and-drop sign matching exercises |
+| 🌟 **Master Mode** | High-difficulty challenge mode unlocked after completing all standard levels |
+| 📸 **Sign Reference Images** | Built-in visual sign reference gallery (Alphabet, Greetings, Survival) |
+| 🏅 **Leaderboard** | Competitive rankings among learners |
+| 🎓 **Certificates** | Downloadable completion certificates upon module mastery |
+| 📢 **Push Notifications** | Lesson reminders and streak alerts via Expo Notifications |
+| 🌙 **Dark / Light Mode** | Full theme support with system-preference detection |
+| 📶 **Offline Awareness** | Network detection banner to handle connectivity gracefully |
 
 ---
 
-# 🌐 Configure API URL
+## 📱 App Demo
 
-## Option A: Local IP Address (Recommended for Physical Devices)
+### 🚀 Startup Screen
+The first screen users see — introducing SEÑAS with its brand identity and entry point to login or onboarding.
 
-Find your local IP address.
-
-### macOS / Linux
-
-```bash
-ipconfig getifaddr en0
-
-# or
-
-ifconfig | grep "inet " | grep -v 127.0.0.1
-```
-
-### Windows
-
-```bash
-ipconfig | findstr "IPv4"
-```
-
-Update `app.json`:
-
-```json
-{
-  "expo": {
-    "extra": {
-      "apiUrl": "http://YOUR_IP_ADDRESS:8000/api"
-    }
-  }
-}
-```
+<div align="center">
+<img src="./assets/images/img/demo/Startup.PNG" alt="Startup Screen" width="260"/>
+</div>
 
 ---
 
-## Option B: Localhost (Simulator/Emulator)
+### 🏠 Dashboard
+The learner's home hub — shows daily streak, XP progress, quick-access lesson cards, and upcoming challenges.
 
-```json
-{
-  "expo": {
-    "extra": {
-      "apiUrl": "http://localhost:8000/api"
-    }
-  }
-}
-```
+<div align="center">
+<img src="./assets/images/img/demo/dashboard.PNG" alt="Dashboard" width="260"/>
+</div>
 
 ---
 
-## Option C: ngrok (Recommended for Gesture Recognition)
+### 📚 Lessons
+Browse the full lesson library organized by module. Track your completion progress and jump into any lesson.
 
-Since the gesture recognition feature uses a WebView with camera access, HTTPS is required (especially on iOS).
-
-Start ngrok:
-
-```bash
-ngrok http 8000 --host-header=rewrite
-```
-
-Copy the generated HTTPS URL, for example:
-
-```
-https://abc123.ngrok-free.app
-```
-
-Update:
-
-- `GESTURE_URL` in `app/gesture/webview-camera.tsx`
-
-or your API URL if necessary.
+<div align="center">
+<img src="./assets/images/img/demo/lessons.PNG" alt="Lessons" width="260"/>
+</div>
 
 ---
 
-# 🚀 Running the Mobile App
+### 🤟 Performing a Sign
+When a lesson requires you to demonstrate a sign, the camera activates and waits for your gesture. The AI model evaluates your hand shape in real time.
 
-Start the Expo development server:
-
-```bash
-npx expo start -c
-```
-
-Then:
-
-- Open **Expo Go**
-- Scan the QR Code
-- Ensure your phone and computer are connected to the same Wi-Fi network
+<div align="center">
+<img src="./assets/images/img/demo/perform_sign.jpg" alt="Perform Sign" width="260"/>
+</div>
 
 ---
 
-## iOS Simulator
+### ✋ Hand-in-Frame Detection
+If the camera cannot detect a hand, SEÑAS shows a friendly overlay prompting the user to show their hands before recognition begins. No false positives — the model only scores when a hand is properly detected.
 
-```bash
-npx expo start --ios
-```
-
-or press **i** inside the Expo terminal.
-
----
-
-## Android Emulator
-
-```bash
-npx expo start --android
-```
-
-or press **a** inside the Expo terminal.
+<div align="center">
+<img src="./assets/images/img/demo/hand_in_frame.PNG" alt="Hand in Frame Detection" width="260"/>
+&nbsp;&nbsp;&nbsp;
+<img src="./assets/images/img/demo/hand_face.PNG" alt="Hand and Face Detection" width="260"/>
+</div>
 
 ---
 
-# 🔄 Recommended Development Workflow
+### 🧩 Drag & Drop Quiz
+An engaging drag-and-drop interaction where learners match signs to their meaning — reinforcing vocabulary in a playful way.
 
-1. Start the Laravel backend.
-2. Start ngrok.
-3. Copy the ngrok HTTPS URL.
-4. Update `GESTURE_URL` inside `app/gesture/webview-camera.tsx`.
-5. Start Expo.
-6. Test the application using Expo Go.
+<div align="center">
+<img src="./assets/images/img/demo/drag_drop.PNG" alt="Drag and Drop Quiz" width="260"/>
+</div>
 
 ---
 
-# 🔑 Important Notes
+### 📸 Sign Reference Images
+Built-in visual sign galleries let learners study hand shapes before attempting them. Covers **Alphabet**, **Greetings**, and **Survival** signs.
 
-## Camera Access
-
-- **iOS Safari:** HTTPS is required for camera access.
-- **Android:** HTTP works, but HTTPS is recommended.
-- **Development:** Use ngrok for HTTPS tunneling.
-
----
-
-## Gesture Recognition
-
-- **A–Y:** TensorFlow Lite model
-- **J & Z:** Heuristic detection (ported from the Python implementation)
-- **Real-time detection:** MediaPipe.js running inside a WebView
+<div align="center">
+<img src="./assets/images/img/demo/sign_alphabets.PNG" alt="Sign Alphabets Reference" width="260"/>
+&nbsp;&nbsp;&nbsp;
+<img src="./assets/images/img/demo/sign_greetings.JPG" alt="Sign Greetings Reference" width="260"/>
+&nbsp;&nbsp;&nbsp;
+<img src="./assets/images/img/demo/sign_survival.jpg" alt="Sign Survival Reference" width="260"/>
+</div>
 
 ---
 
-## Why WebView Instead of Native Camera?
+### 🌟 Challenge Modes & Master Mode
+Multiple challenge modes push learners beyond structured lessons. **Master Mode** is a high-difficulty endurance challenge unlocked after completing all modules.
 
-The project uses **MediaPipe.js inside a WebView** because it:
-
-- Works in Expo Go (no custom development build required)
-- Provides consistent performance across iOS and Android
-- Makes updating ML models easier
-
----
-
-# 🛠️ Troubleshooting
-
-## Network Request Timed Out
-
-Verify your IP address:
-
-```bash
-ipconfig getifaddr en0
-```
-
-Ensure:
-
-- The API URL is correct.
-- Laravel is running.
-
-```bash
-php artisan serve --host=0.0.0.0 --port=8000
-```
+<div align="center">
+<img src="./assets/images/img/demo/challenge_modes.jpeg" alt="Challenge Modes" width="260"/>
+</div>
 
 ---
 
-## JSON Parse Error
+### 🧠 Adaptive Learning
+The platform identifies signs you struggle with and automatically surfaces them in targeted review sessions — powered by mastery tracking on the backend.
 
-Clear Laravel caches:
-
-```bash
-php artisan config:clear
-php artisan cache:clear
-php artisan route:clear
-```
-
-Restart Laravel:
-
-```bash
-php artisan serve --host=0.0.0.0 --port=8000
-```
+<div align="center">
+<img src="./assets/images/img/demo/adaptive learning.PNG" alt="Adaptive Learning" width="260"/>
+</div>
 
 ---
 
-## SafeAreaView Has Been Deprecated
+### 📅 Daily Challenges
+Timed daily challenges keep learners returning every day. Complete them to earn bonus XP and maintain your streak.
 
-Install:
-
-```bash
-npx expo install react-native-safe-area-context
-```
-
-Replace:
-
-```javascript
-import { SafeAreaView } from 'react-native';
-```
-
-with:
-
-```javascript
-import { SafeAreaView } from 'react-native-safe-area-context';
-```
+<div align="center">
+<img src="./assets/images/img/demo/daily_challenges.PNG" alt="Daily Challenges" width="260"/>
+</div>
 
 ---
 
-## Database Connection Error
+### 🔥 Streak Tracker
+Visual streak tracking motivates consistency — lose it and you start over, keep it and earn streak-based rewards.
 
-Check MySQL:
-
-```bash
-brew services list | grep mysql
-```
-
-Start MySQL:
-
-```bash
-brew services start mysql
-```
-
-Example `.env`:
-
-```env
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=senas_db
-DB_USERNAME=root
-DB_PASSWORD=your_password
-```
+<div align="center">
+<img src="./assets/images/img/demo/streak.PNG" alt="Streak Tracker" width="260"/>
+</div>
 
 ---
 
-## Expo Cache Issues
+### 🏆 Achievements
+Unlock badges for completing modules, maintaining streaks, scoring perfectly, and reaching milestones.
 
-```bash
-npx expo start -c
+<div align="center">
+<img src="./assets/images/img/demo/achievements.PNG" alt="Achievements" width="260"/>
+</div>
+
+---
+
+### 🏅 Leaderboard
+Compete with other learners on a global leaderboard ranked by XP — fostering healthy motivation and community.
+
+<div align="center">
+<img src="./assets/images/img/demo/leaderboard.png" alt="Leaderboard" width="260"/>
+</div>
+
+---
+
+### 🎓 Certificate
+Earn a shareable, printable certificate upon completing a module — a tangible reward for your effort.
+
+<div align="center">
+<img src="./assets/images/img/demo/certificate.PNG" alt="Certificate" width="260"/>
+</div>
+
+---
+
+### 👤 Profile
+Personal profile page showing your stats, XP, completed modules, and account settings.
+
+<div align="center">
+<img src="./assets/images/img/demo/profile.PNG" alt="Profile" width="260"/>
+</div>
+
+---
+
+## 🏗️ App Architecture
+
+This repository is the **mobile client** only. The gesture recognition ML models and all data processing run on a separate backend server.
+
 ```
-
----
-
-# 📚 Quick Commands
-
-| Command | Description |
-|----------|-------------|
-| `npm install` | Install project dependencies |
-| `composer install` | Install Laravel dependencies |
-| `php artisan serve --host=0.0.0.0 --port=8000` | Start Laravel backend |
-| `ngrok http 8000 --host-header=rewrite` | Create HTTPS tunnel |
-| `npx expo start -c` | Start Expo and clear cache |
-| `php artisan optimize:clear` | Clear Laravel caches |
-
----
-
-# 🔐 Environment Variables
-
-Optional mobile `.env`:
-
-```env
-API_URL=http://192.168.1.35:8000/api
-```
-
----
-
-# 📂 Project Structure
-
-```text
-senas_mobile_app/
-├── app/
-│   ├── (tabs)/                     # Main application tabs
+senas-mobile-app2/
+│
+├── app/                          # Expo Router file-based navigation
+│   ├── (tabs)/                   # Bottom tab screens
+│   │   ├── dashboard.tsx         # Home / daily hub
+│   │   ├── lessons.tsx           # Lesson library
+│   │   ├── achievements.tsx      # Badges & XP
+│   │   ├── gesture.tsx           # Gesture practice hub
+│   │   └── profile.tsx           # User profile & settings
+│   │
+│   ├── lesson/                   # Lesson flow screens
+│   │   ├── [id].tsx              # Dynamic lesson viewer
+│   │   ├── GesturePractice.tsx   # Camera + live sign detection
+│   │   ├── DragDropQuestion.tsx  # Drag-and-drop quiz component
+│   │   ├── streak.tsx            # Streak milestone screen
+│   │   └── xp-progress.tsx       # XP gain animation screen
+│   │
+│   ├── gesture/                  # Gesture challenge screens
+│   │   ├── unified-challenge.tsx # Multi-module challenge hub (incl. Master Mode)
+│   │   ├── challenge.tsx         # Standard gesture challenge
+│   │   ├── alphabet1.tsx         # Alphabet module (Part 1)
+│   │   ├── alphabet2.tsx         # Alphabet module (Part 2)
+│   │   ├── level2-gestures.tsx   # Survival Signs module
+│   │   ├── level3-gestures.tsx   # Numbers module
+│   │   ├── fingerspelling.tsx    # Fingerspelling practice
+│   │   ├── webview-camera.tsx    # WebView-based camera bridge
+│   │   └── webview-greetings.tsx # Greetings gesture WebView
+│   │
+│   ├── quiz/                     # Quiz types
+│   │   ├── mc.tsx                # Multiple choice
+│   │   └── dnd.tsx               # Drag and drop
+│   │
+│   ├── checkpoint-exam/          # Module checkpoint exams
+│   │   └── [id].tsx
+│   │
+│   ├── onboarding.tsx            # First-time user onboarding
+│   ├── login.tsx                 # Authentication screen
+│   ├── assessment.tsx            # Initial skill assessment
+│   ├── tutorial.tsx              # App tutorial walkthrough
+│   └── index.tsx                 # Entry / splash redirect
+│
+├── components/                   # Reusable UI components
 │   ├── gesture/
-│   │   ├── webview-camera.tsx      # WebView camera integration
-│   │   └── utils/
-│   │       └── heuristics.ts       # J/Z gesture heuristics
-│   └── _layout.tsx                 # Navigation setup
-├── assets/
-│   └── models/                     # TensorFlow Lite models
-├── services/
-│   └── api.js                      # Laravel API integration
-├── app.json                        # Expo configuration
-└── package.json
+│   │   └── HandDetectionGuideOverlay.tsx  # "Show your hands" overlay
+│   ├── ui/                       # Base UI primitives (buttons, cards, icons)
+│   ├── AppHeader.tsx             # Shared top navigation header
+│   ├── CustomTabBar.tsx          # Custom animated bottom tab bar
+│   ├── MasteryBadge.tsx          # Mastery level badge display
+│   ├── MasterySummary.tsx        # Post-lesson mastery breakdown
+│   ├── WeakSkillsSection.tsx     # Adaptive review recommendations
+│   ├── TutorialModal.tsx         # Contextual tutorial overlays
+│   ├── InfiniteModeTutorialModal.tsx  # Master Mode tutorial
+│   ├── MasterModeTutorialModal.tsx    # Master Mode intro modal
+│   ├── AchievementModal.tsx      # Achievement unlock celebration
+│   ├── PromotionModal.tsx        # Level-up promotion modal
+│   ├── CustomAlertModal.tsx      # Styled alert dialogs
+│   ├── OfflineBanner.tsx         # Offline connectivity banner
+│   └── ErrorBoundary.tsx         # Graceful error handling
+│
+├── services/                     # API & native service layer
+│   ├── api.js                    # REST API client (w/ caching & retry)
+│   ├── auth.js                   # Authentication service
+│   ├── TFLiteServices.ts         # On-device TFLite model inference
+│   ├── config.js                 # Environment configuration
+│   └── pushNotifications.ts      # Push notification registration
+│
+├── contexts/                     # React Context providers
+│   ├── SettingsContext.tsx        # App-wide settings (theme, sound, hints)
+│   ├── NetworkAlertContext.tsx   # Network status context
+│   └── LessonNotificationContext.tsx  # Lesson reminder context
+│
+├── hooks/                        # Custom React hooks
+│   ├── usePracticeTimeTracker.ts # Tracks active practice session time
+│   └── useSound.ts               # Sound effect management
+│
+├── constants/                    # Design tokens
+│   ├── Colors.ts                 # Light/dark theme color palette
+│   └── theme.ts                  # Shared typography and spacing
+│
+└── assets/                       # Static assets
+    └── images/img/demo/          # App demo screenshots
 ```
 
 ---
 
-# ⚡ Useful Shell Aliases
+## 🔧 Tech Stack
 
-```bash
-alias myip="ipconfig getifaddr en0"
-alias start-laravel="php artisan serve --host=0.0.0.0 --port=8000"
-alias start-expo="npx expo start -c"
-alias clear-laravel="php artisan optimize:clear"
+### 📱 Mobile App (This Repo)
+
+| Category | Technology |
+|---|---|
+| **Framework** | [React Native 0.81.5](https://reactnative.dev/) + [Expo SDK 54](https://expo.dev/) |
+| **Language** | TypeScript 5.9 / JavaScript (ES2022) |
+| **Navigation** | [Expo Router 6](https://expo.github.io/router/) (file-based routing) |
+| **UI & Animation** | React Native Reanimated 4, React Native Gesture Handler, Expo Linear Gradient, Expo Blur |
+| **Camera** | Expo Camera 17, React Native WebView (MediaPipe bridge) |
+| **ML Inference (On-Device)** | [react-native-fast-tflite](https://github.com/mrousavy/react-native-fast-tflite) with CoreML (iOS) + GPU delegates (Android) |
+| **ML Inference (Server)** | MediaPipe Hands (via WebView ↔ backend bridge) |
+| **Icons** | @expo/vector-icons, Lucide React Native |
+| **Storage** | AsyncStorage (local), Expo File System |
+| **Notifications** | Expo Notifications |
+| **Video / Audio** | Expo AV, Expo Video, React Native Video |
+| **Networking** | Native Fetch API with in-memory cache, deduplication & retry logic |
+| **Offline Detection** | @react-native-community/netinfo |
+| **Confetti / Effects** | react-native-confetti-cannon |
+| **Build & Deploy** | [EAS Build](https://docs.expo.dev/eas-build/introduction/) (Expo Application Services) |
+| **New Architecture** | Enabled (React Native Nitro Modules, React Compiler) |
+
+### 🌐 Backend (Separate Repo)
+
+> This mobile app communicates with a dedicated backend server hosted at `https://señas.tech/api`.  
+> The backend is responsible for ML model serving, user data management, adaptive learning logic, and leaderboard computation.
+
+| Category | Role |
+|---|---|
+| **REST API** | Lesson content, user progress, achievements, leaderboard |
+| **ML Model Serving** | Gesture classification models (FSL hand signs) |
+| **Adaptive Engine** | Mastery tracking, weak skill identification, learning path generation |
+| **Auth** | Token-based authentication (JWT) |
+| **Storage** | User media, certificates, lesson assets |
+
+---
+
+## 🤖 How Gesture Recognition Works
+
+```
+User performs a sign
+        │
+        ▼
+  📷 Device Camera (expo-camera)
+        │
+        ▼
+  🌐 WebView Bridge ──────────────────► 🖥️ Backend Server
+  (MediaPipe Hands JS)                  (ML Model Inference)
+        │                                       │
+        │◄──────────────────────────────────────┘
+        │  Prediction result (sign label + confidence)
+        ▼
+  ✅ App evaluates result
+  → Correct: XP awarded, next sign
+  → Incorrect: Hint shown, retry
+  → No hand: HandDetectionGuideOverlay shown
 ```
 
-Reload your shell:
+The `HandDetectionGuideOverlay` component activates when the camera feed does not detect a hand landmark, instructing the user to properly position their hand in frame before scoring begins.
+
+---
+
+## 📦 Getting Started
+
+### Prerequisites
+
+- Node.js ≥ 18
+- Expo CLI (`npm install -g expo-cli`)
+- iOS Simulator (macOS) or Android Emulator / physical device
+- EAS CLI for builds (`npm install -g eas-cli`)
+
+### Installation
 
 ```bash
-source ~/.zshrc
+# Clone the repository
+git clone https://github.com/your-org/senas-mobile-app2.git
+cd senas-mobile-app2
 
-# or
+# Install dependencies
+npm install
 
-source ~/.bashrc
+# Start the development server
+npx expo start
 ```
+
+### Running on Device
+
+```bash
+# iOS
+npx expo run:ios
+
+# Android
+npx expo run:android
+```
+
+> ⚠️ **Camera and gesture features require a physical device.** The iOS Simulator and Android Emulator do not support camera input.
+
+### Environment
+
+The app reads its backend URL from `app.json` extras:
+
+```json
+"extra": {
+  "apiUrl": "https://señas.tech/api",
+  "storageUrl": "https://señas.tech/storage",
+  "webUrl": "https://señas.tech"
+}
+```
+
+---
+
+## 📂 Gesture Modules
+
+| Module | Signs | Description |
+|---|---|---|
+| 🔤 **Alphabet** | A – Z (26 signs) | Filipino Sign Language fingerspelling alphabet |
+| 🔢 **Numbers** | 1 – 10 | Numeric hand signs |
+| 👋 **Greetings** | 5 signs | Hello, Thank You, See You Tomorrow, How Are You, Nice To Meet You |
+| 🆘 **Survival** | 10 signs | Understand, Know, Yes, No, Correct, Wrong, Slow, Fast, and more |
+| 🌟 **Master Mode** | All modules | Endurance challenge across all learned signs — no hints, full speed |
+
+---
+
+## 🎮 Gamification System
+
+```
+XP Points ──► Level Progress ──► Mastery Badges
+     │                                  │
+     ▼                                  ▼
+Daily Streaks              Achievement Unlocks
+     │                                  │
+     ▼                                  ▼
+Leaderboard Ranking         Completion Certificates
+```
+
+- **XP** is earned for every correct sign, completed lesson, and daily challenge
+- **Mastery** is tracked per sign — the adaptive engine surfaces low-mastery signs for review
+- **Streaks** reset if you miss a day — push notifications remind you daily
+- **Certificates** are generated and sharable/printable via Expo Print & Sharing
+
+---
+
+## 🛡️ Permissions
+
+| Permission | Purpose |
+|---|---|
+| `CAMERA` | Real-time hand gesture detection during lessons |
+| `NOTIFICATIONS` | Daily lesson reminders and streak alerts |
+| `INTERNET` | Backend API communication for lessons and progress sync |
+
+---
+
+## 👩‍💻 Development Notes
+
+- **New Architecture** is fully enabled (`newArchEnabled: true`) with React Native Nitro Modules and the React Compiler experiment active
+- **TFLite** runs on-device with **CoreML delegate** on iOS and **GPU delegate** on Android for accelerated inference
+- **WebView bridge** is used for MediaPipe Hands (JavaScript) to communicate gesture predictions back to the native layer via `postMessage`
+- **Smart API caching** in `services/api.js` deduplicates concurrent requests and applies per-endpoint TTLs to minimize backend load
+- **Offline support** via `@react-native-community/netinfo` with a persistent `OfflineBanner` component
+
+---
+
+## 📄 License
+
+This project is private and proprietary. All rights reserved © SEÑAS Team.
+
+---
+
+<div align="center">
+
+Made with 🤟 for the Filipino Deaf Community
+
+**SEÑAS** — *Salamat, mahal namin kayo!*
+
+</div>
